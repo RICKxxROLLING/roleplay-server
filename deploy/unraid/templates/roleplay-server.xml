@@ -1,0 +1,201 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>roleplay-server</Name>
+  <Repository>ghcr.io/OWNER/roleplay-server:latest</Repository>
+  <Registry>https://github.com/OWNER/roleplay-server/pkgs/container/roleplay-server</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/OWNER/roleplay-server/issues</Support>
+  <Project>https://github.com/OWNER/roleplay-server</Project>
+  <Overview>
+    Fully local AI roleplay chat. Imports SillyTavern V2 character cards, streams replies from a
+    model on your own GPU, and keeps long conversations coherent with rolling summarization.
+    Nothing leaves your server.
+
+    INSTALL roleplay-ollama FIRST and pull a model into it.
+
+    IMPORTANT — set "Ollama URL" below to your Unraid server's LAN IP, not localhost and not a
+    container name. Containers on Unraid's default bridge network cannot resolve each other by
+    name, so http://ollama:11434 will NOT work here. Use http://192.168.x.x:11434.
+    (If you put both containers on the same user-defined custom network, name resolution does
+    work and you can use http://roleplay-ollama:11434 instead.)
+  </Overview>
+  <Category>Productivity: Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8000]/</WebUI>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/OWNER/roleplay-server/main/deploy/unraid/icon.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>roleplay-ollama (or any reachable Ollama instance)</Requires>
+
+  <Config
+    Name="WebUI Port"
+    Target="8000"
+    Default="8000"
+    Mode="tcp"
+    Description="Port for the web interface."
+    Type="Port"
+    Display="always"
+    Required="true"
+    Mask="false">8000</Config>
+
+  <Config
+    Name="Appdata"
+    Target="/data"
+    Default="/mnt/user/appdata/roleplay-server"
+    Mode="rw"
+    Description="Chats, characters and imported card images. Small — safe on the cache drive."
+    Type="Path"
+    Display="always"
+    Required="true"
+    Mask="false">/mnt/user/appdata/roleplay-server</Config>
+
+  <Config
+    Name="Ollama URL"
+    Target="RP_LLM_BASE_URL"
+    Default="http://192.168.1.10:11434"
+    Mode=""
+    Description="Your Unraid server's LAN IP plus the Ollama port. NOT localhost — that resolves to this container, not the host."
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="false">http://192.168.1.10:11434</Config>
+
+  <Config
+    Name="Model"
+    Target="RP_MODEL"
+    Default="mythomax"
+    Mode=""
+    Description="Must already be pulled into the Ollama container: docker exec -it roleplay-ollama ollama pull mythomax"
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="false">mythomax</Config>
+
+  <Config
+    Name="PUID"
+    Target="PUID"
+    Default="99"
+    Mode=""
+    Description="User ID for appdata files. Unraid default is 99 (nobody)."
+    Type="Variable"
+    Display="advanced"
+    Required="true"
+    Mask="false">99</Config>
+
+  <Config
+    Name="PGID"
+    Target="PGID"
+    Default="100"
+    Mode=""
+    Description="Group ID for appdata files. Unraid default is 100 (users)."
+    Type="Variable"
+    Display="advanced"
+    Required="true"
+    Mask="false">100</Config>
+
+  <Config
+    Name="TZ"
+    Target="TZ"
+    Default="Etc/UTC"
+    Mode=""
+    Description="Timezone, e.g. America/New_York."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">Etc/UTC</Config>
+
+  <Config
+    Name="Context tokens"
+    Target="RP_CONTEXT_TOKENS"
+    Default="4096"
+    Mode=""
+    Description="Model context window. MythoMax L2 is Llama-2 based: 4096. Do not raise this beyond what your model supports."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">4096</Config>
+
+  <Config
+    Name="Max reply tokens"
+    Target="RP_MAX_NEW_TOKENS"
+    Default="400"
+    Mode=""
+    Description="Length cap on each reply."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">400</Config>
+
+  <Config
+    Name="Temperature"
+    Target="RP_TEMPERATURE"
+    Default="0.9"
+    Mode=""
+    Description="Higher is more creative and less coherent."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">0.9</Config>
+
+  <Config
+    Name="Summarization enabled"
+    Target="RP_SUMMARY_ENABLED"
+    Default="true"
+    Mode=""
+    Description="Condense old turns so chats stay coherent past the context window."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">true</Config>
+
+  <Config
+    Name="Summary trigger tokens"
+    Target="RP_SUMMARY_TRIGGER_TOKENS"
+    Default="1800"
+    Mode=""
+    Description="Fold once un-summarized history exceeds this many tokens."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">1800</Config>
+
+  <Config
+    Name="Keep recent messages"
+    Target="RP_KEEP_RECENT_MESSAGES"
+    Default="8"
+    Mode=""
+    Description="Recent turns never get condensed."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">8</Config>
+
+  <Config
+    Name="Database URL"
+    Target="RP_DATABASE_URL"
+    Default="sqlite:////data/roleplay.db"
+    Mode=""
+    Description="Leave as-is unless you know why you're changing it."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">sqlite:////data/roleplay.db</Config>
+
+  <Config
+    Name="Data dir"
+    Target="RP_DATA_DIR"
+    Default="/data"
+    Mode=""
+    Description="Leave as-is. Must match the Appdata mount above."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">/data</Config>
+</Container>

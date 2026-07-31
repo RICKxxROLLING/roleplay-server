@@ -1,0 +1,85 @@
+name: roleplay
+
+services:
+  # ---------------------------------------------------------------- inference
+  ollama:
+    image: ollama/ollama:latest
+    container_name: roleplay-ollama
+    restart: unless-stopped
+    volumes:
+      # Models are large -- keep them in a named volume so rebuilds don't
+      # trigger a multi-GB re-download.
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ------------------------------------------------- one-shot model provisioning
+  # Pulls the model on first boot so `docker compose up` is genuinely one command.
+  # Exits 0 once the model is present; re-running is a cheap no-op.
+  model-pull:
+    image: ollama/ollama:latest
+    container_name: roleplay-model-pull
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      MODEL: ${RP_MODEL:-mythomax}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ['echo "Pulling $${MODEL} (first run downloads several GB)..." && ollama pull "$${MODEL}"']
+    restart: "no"
+
+  # ---------------------------------------------------------------------- app
+  app:
+    build:
+      context: .
+    image: roleplay-server:latest
+    container_name: roleplay-app
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+      model-pull:
+        condition: service_completed_successfully
+    ports:
+      - "${RP_PORT:-8000}:8000"
+    environment:
+      RP_BACKEND: ollama
+      RP_LLM_BASE_URL: http://ollama:11434
+      RP_MODEL: ${RP_MODEL:-mythomax}
+
+      RP_CONTEXT_TOKENS: ${RP_CONTEXT_TOKENS:-4096}
+      RP_MAX_NEW_TOKENS: ${RP_MAX_NEW_TOKENS:-400}
+      RP_RESERVE_TOKENS: ${RP_RESERVE_TOKENS:-256}
+
+      RP_TEMPERATURE: ${RP_TEMPERATURE:-0.9}
+      RP_TOP_P: ${RP_TOP_P:-0.9}
+      RP_TOP_K: ${RP_TOP_K:-40}
+      RP_REPEAT_PENALTY: ${RP_REPEAT_PENALTY:-1.1}
+
+      RP_SUMMARY_ENABLED: ${RP_SUMMARY_ENABLED:-true}
+      RP_SUMMARY_TRIGGER_TOKENS: ${RP_SUMMARY_TRIGGER_TOKENS:-1800}
+      RP_KEEP_RECENT_MESSAGES: ${RP_KEEP_RECENT_MESSAGES:-8}
+      RP_SUMMARY_MAX_TOKENS: ${RP_SUMMARY_MAX_TOKENS:-400}
+      RP_SUMMARY_TEMPERATURE: ${RP_SUMMARY_TEMPERATURE:-0.3}
+
+      RP_DATABASE_URL: sqlite:////data/roleplay.db
+      RP_DATA_DIR: /data
+    volumes:
+      # Chats, characters and avatars. Survives image rebuilds.
+      - app-data:/data
+
+volumes:
+  ollama-models:
+  app-data:

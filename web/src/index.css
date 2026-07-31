@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-ink-950 text-slate-200 antialiased;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* Roleplay convention: *asterisks* are narration/action. */
+.prose-rp em {
+  @apply text-slate-400 italic;
+}
+
+.scroll-thin::-webkit-scrollbar {
+  width: 8px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  @apply bg-ink-700 rounded-full;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+.caret::after {
+  content: "▍";
+  animation: blink 1s steps(1) infinite;
+  @apply text-accent;
+}

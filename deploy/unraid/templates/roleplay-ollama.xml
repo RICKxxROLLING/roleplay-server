@@ -1,0 +1,79 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>roleplay-ollama</Name>
+  <Repository>ollama/ollama:latest</Repository>
+  <Registry>https://hub.docker.com/r/ollama/ollama</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/OWNER/roleplay-server/issues</Support>
+  <Project>https://ollama.com</Project>
+  <Overview>
+    Ollama inference server — the model backend for Roleplay Server.
+
+    INSTALL THIS FIRST, then install the roleplay-server template and point it at this container.
+
+    REQUIRES the Nvidia Driver plugin (Apps tab), plus a reboot after installing it.
+    After the container starts, pull a model from the Unraid terminal:
+
+      docker exec -it roleplay-ollama ollama pull mythomax
+
+    MythoMax L2 13B needs roughly 8-10 GB VRAM at Q4/Q5 quantization.
+  </Overview>
+  <Category>Productivity: Tools:</Category>
+  <WebUI/>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/OWNER/roleplay-server/main/deploy/unraid/icon.png</Icon>
+  <ExtraParams>--runtime=nvidia</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>Nvidia Driver plugin</Requires>
+
+  <Config
+    Name="API Port"
+    Target="11434"
+    Default="11434"
+    Mode="tcp"
+    Description="Ollama API port. The roleplay-server container connects here."
+    Type="Port"
+    Display="always"
+    Required="true"
+    Mask="false">11434</Config>
+
+  <Config
+    Name="Models"
+    Target="/root/.ollama"
+    Default="/mnt/user/appdata/roleplay-ollama"
+    Mode="rw"
+    Description="Downloaded models. Several GB each — make sure this lives on a share with room."
+    Type="Path"
+    Display="always"
+    Required="true"
+    Mask="false">/mnt/user/appdata/roleplay-ollama</Config>
+
+  <Config
+    Name="NVIDIA_VISIBLE_DEVICES"
+    Target="NVIDIA_VISIBLE_DEVICES"
+    Default="all"
+    Mode=""
+    Description="'all', or a specific GPU UUID from Settings &gt; Nvidia Driver (e.g. GPU-4a1b2c3d-...)."
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="false">all</Config>
+
+  <Config
+    Name="NVIDIA_DRIVER_CAPABILITIES"
+    Target="NVIDIA_DRIVER_CAPABILITIES"
+    Default="all"
+    Mode=""
+    Description="Leave as 'all'."
+    Type="Variable"
+    Display="advanced"
+    Required="true"
+    Mask="false">all</Config>
+</Container>

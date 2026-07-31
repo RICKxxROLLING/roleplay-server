@@ -1,0 +1,30 @@
+# Build artefacts and local state must never enter the image.
+web/node_modules
+web/dist
+data/
+*.db
+*.sqlite3
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+.env
+.git
+.gitignore
+.DS_Store
+
+Dockerfile
+docker-compose*.yml
+.dockerignore
+README.md
+*.md
+
+# Deployment and CI assets are never needed inside the image.
+deploy/
+docs/
+.github/

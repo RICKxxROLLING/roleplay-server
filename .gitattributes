@@ -1,0 +1,15 @@
+# Normalise text in the repo, let Git pick native endings on checkout.
+* text=auto
+
+# These MUST stay LF even on Windows. Git would otherwise check out
+# docker-entrypoint.sh with CRLF, and the container dies at startup with
+# "bad interpreter: /bin/sh^M" -- an obscure failure that costs an afternoon.
+*.sh            text eol=lf
+Dockerfile      text eol=lf
+.dockerignore   text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
