@@ -172,6 +172,7 @@ export default function MemoryPanel({ open, onClose, sessionId, onChanged, onOpe
             </div>
 
             <Recall
+              sessionId={sessionId}
               mem={mem}
               health={health}
               busy={busy}
@@ -186,7 +187,7 @@ export default function MemoryPanel({ open, onClose, sessionId, onChanged, onOpe
   );
 }
 
-function Recall({ mem, health, busy, onToggle, onReindex, onOpenModels }) {
+function Recall({ sessionId, mem, health, busy, onToggle, onReindex, onOpenModels }) {
   const on = mem.retrieval_enabled;
   // null means embeddings live on another host, so this list can't answer.
   const missing = health?.ok && health.embedding_model_installed === false;
