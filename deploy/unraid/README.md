@@ -12,6 +12,10 @@ you. Use the templates if you'd rather stay in Unraid's Docker tab or avoid plug
 2. Confirm the GPU is visible. Settings → Nvidia Driver should list your card. Note the
    **GPU UUID** if you want to pin one specific card.
 3. Roughly **10 GB free** on the share holding your appdata, for the model.
+4. **Enough VRAM.** The default model is a 13B needing ~11 GB. On an 8 GB card set
+   `RP_MODEL=HammerAI/smart-lemon-cookie` in `.env` before the first Compose Up — otherwise
+   Ollama silently splits the model across GPU and CPU and replies crawl. See
+   [Choosing a model](../../README.md#choosing-a-model).
 
 Sanity check from the Unraid terminal:
 
@@ -179,6 +183,28 @@ they're readable over SMB and manageable from the Unraid file manager.
 ---
 
 ## Troubleshooting
+
+**Stack fails to start: "failed to get device handle from UUID: Not Found"**
+The full error mentions a CDI modifier and names no GPU, so it reads like a driver bug. It
+almost always means `NVIDIA_VISIBLE_DEVICES` in `.env` holds a GPU UUID that doesn't match a
+live card — stale after a driver update, or mistyped. Get the real ones:
+
+```bash
+nvidia-smi -L
+```
+
+Paste the exact `GPU-...` string, or just set `NVIDIA_VISIBLE_DEVICES=all`, which is right
+unless you have several cards and need to pin one.
+
+**Replies are slow and the GPU looks idle**
+The model doesn't fit in VRAM, so Ollama split it across GPU and CPU. Confirm with:
+
+```bash
+docker exec roleplay-ollama ollama ps
+```
+
+Anything other than `100% GPU` in the PROCESSOR column means it's partly on CPU. Pick a
+smaller model — see [Choosing a model](../../README.md#choosing-a-model).
 
 **Sidebar status dot is red / "backend offline"**
 The app can't reach Ollama. Check `RP_LLM_BASE_URL`. From the Unraid terminal:

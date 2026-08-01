@@ -184,6 +184,11 @@ There's a test asserting the file has no CRLF.
 - **Retrieval and indexing never raise into the turn.** A dead embedding backend surfaces as a
   `memory` stream event and `RetrievalResult.error`; the reply proceeds without recall. Keep it
   that way — memory is best-effort around generation, not a precondition for it.
+- **`rag.probe()` and `rag.retrieve()` share `_score_all()` deliberately.** The probe is the
+  calibration tool (Memory → Test recall); if it scored differently from the live path it
+  would be worse than having no probe at all. Don't let them diverge. The probe returns
+  rejects too — that's its entire reason to exist, since a threshold can't be chosen from
+  data the floor already filtered out.
 
 ## Conventions
 
@@ -245,27 +250,41 @@ complete. Candidates, roughly by value:
 
 Whatever comes next, keep using mock LLM/embedder doubles so the suite stays fast and offline.
 
-## What has never been verified
+## Verification status
 
-Be honest about this with the user rather than implying otherwise:
+The project ran end to end on real hardware for the first time in August 2026. Keep this
+section honest in both directions — don't repeat stale warnings, and don't inflate one
+person's working setup into a general guarantee.
 
-- **The Docker image has never been built.** It was developed in a sandbox with no Docker
-  daemon. Compose files, Dockerfile and entrypoint are statically validated by
-  `tests/test_packaging.py`, and the `pip install .` + `npm run build` steps were each run
-  directly — but `docker compose up` has never executed.
-- **The stack has never run against a real model.** Every test uses `MockLLM`. Prompt format,
-  stop sequences and summarization quality are reasoned from the MythoMax/Alpaca spec, not
-  observed. Expect to tune `DEFAULT_SYSTEM` and the summarizer prompt once you see real
-  output.
-- **Retrieval has never run against a real embedding model.** `MockEmbedder` is bag-of-words,
-  so it validates the *plumbing and policy* — thresholds, budgets, dedupe, failure handling —
-  but says nothing about what `nomic-embed-text` actually scores. `retrieval_min_score=0.45`
-  is a guess. Calibrate it against real output via Settings → Inspect built prompt, which
-  lists each hit with its score, before trusting the default.
-- **The Ollama `/api/embed` → `/api/embeddings` fallback is untested against a real old
-  Ollama.** The 404-latching path in `OllamaEmbedder` is reasoned from the API history, not
-  observed.
-- **No Unraid install has completed.** One was attempted: the compose stack reached
-  `model-pull`, which failed on the bad `mythomax` tag (see Gotchas) and blocked the app from
-  starting. Both causes are fixed, but the run has not been repeated — so everything past
-  `model-pull` remains unverified, including the image build itself.
+### Confirmed on real hardware
+
+One deployment, one configuration: Unraid + RTX 2080 (8GB), `HammerAI/smart-lemon-cookie`
+(Mistral 7B, Q4_K_M) for chat and `nomic-embed-text` for embeddings, at stock settings.
+
+- **The image builds and runs.** GitHub Actions → GHCR → Unraid Compose Manager, GPU
+  passthrough working. The Dockerfile, entrypoint and compose files are no longer
+  statically-validated-only.
+- **The Alpaca prompt works against a Mistral-based model.** Cards behave, stop sequences
+  hold, the speaker-prefix stripping does its job.
+- **Summarisation folds sensibly** and the summary reads as usable prose.
+- **Retrieval returns relevant results at the stock defaults** — `retrieval_min_score=0.45`,
+  `top_k=4`, `budget=400`, `query_messages=3`. See the caveat below before treating that as
+  settled.
+
+### Still unverified
+
+- **Retrieval's *precision* has not been tested.** What was observed is that relevant things
+  come back. Nobody has run a *negative* probe — asking about something that never happened
+  and checking whether the floor rejects it. That matters because the failure mode is
+  recall that is plausible but irrelevant, which reads as fine and is the hard kind to
+  notice. `nomic-embed-text` also tends to score unrelated text higher than intuition
+  suggests, so 0.45 may be permissive. A standing signal: if the inspector returns a full
+  `top_k` on nearly every turn, the floor is probably too low.
+- **MythoMax 13B has never actually run.** It's still the default, but the only model this
+  has been used with is the 7B. Prompt tuning reflects that one model.
+- **Only one card has been exercised**, and it turned out to be misconfigured (its `name`
+  was the *user's* role — see Gotchas). Card compatibility across a library is untested.
+- **The Ollama `/api/embed` → `/api/embeddings` fallback** is still reasoned from API
+  history, not observed against an older Ollama.
+- **The XML templates** have not been imported into a live Docker tab; only the Compose
+  Manager path has been walked.

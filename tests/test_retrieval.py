@@ -286,6 +286,109 @@ def test_inspector_reports_scores(client, session, llm, embedder):
         assert 0.0 <= hit["score"] <= 1.0
 
 
+# --- calibration probe -----------------------------------------------------
+
+
+def probe(client, session, query, **kw):
+    r = client.post(f"/api/sessions/{session}/retrieve", json={"query": query, **kw})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_probe_shows_results_below_the_floor(client, session, llm, embedder):
+    """The whole point: the prompt inspector only shows what survived the floor,
+    so you can't see what scored just under it. A threshold picked from filtered
+    data is a guess."""
+    enable_retrieval(client, retrieval_min_score=0.99)
+    chat(client, session, FACT)
+    bury(client, session)
+
+    p = probe(client, session, QUERY)
+    assert p["results"], "nothing returned despite candidates existing"
+    # Nothing can pass a 0.99 floor, but we still see the scores.
+    assert all(r["would_inject"] is False for r in p["results"])
+    assert any(r["rejected_by"] == "below min_score" for r in p["results"])
+    assert any(r["score"] > 0 for r in p["results"])
+
+
+def test_probe_marks_what_would_actually_be_injected(client, session, llm, embedder):
+    enable_retrieval(client)
+    chat(client, session, FACT)
+    bury(client, session)
+
+    p = probe(client, session, QUERY)
+    injected = [r for r in p["results"] if r["would_inject"]]
+    assert injected, "the fact should pass at the test threshold"
+    assert any("Bram Halloway" in r["content"] for r in injected)
+    assert p["settings"]["min_score"] == 0.35
+
+
+def test_probe_results_are_ranked(client, session, llm, embedder):
+    enable_retrieval(client, retrieval_min_score=0.0)
+    chat(client, session, FACT)
+    bury(client, session)
+
+    scores = [r["score"] for r in probe(client, session, QUERY)["results"]]
+    assert scores == sorted(scores, reverse=True)
+
+
+def test_probe_annotates_top_k_rejections(client, session, llm, embedder):
+    """Distinguishing 'scored too low' from 'lost to top_k' is the difference
+    between raising the floor and raising k."""
+    enable_retrieval(client, retrieval_top_k=1, retrieval_min_score=0.0)
+    for i in range(4):
+        chat(client, session, f"{FACT} Note {i}.")
+    bury(client, session)
+
+    reasons = {r["rejected_by"] for r in probe(client, session, QUERY)["results"]}
+    assert "over top_k" in reasons
+
+
+def test_probe_excludes_what_is_already_verbatim(client, session, llm, embedder):
+    """A probe that returned pending messages would misrepresent the live path."""
+    enable_retrieval(client, retrieval_min_score=0.0)
+    chat(client, session, FACT)
+
+    p = probe(client, session, QUERY)
+    assert all("Bram Halloway" not in r["content"] for r in p["results"])
+
+
+def test_probe_does_not_generate(client, session, llm, embedder):
+    enable_retrieval(client)
+    chat(client, session, FACT)
+    bury(client, session)
+    before = llm.reply_count
+
+    probe(client, session, QUERY)
+    assert llm.reply_count == before, "probing must not cost a generation"
+
+
+def test_probe_rejects_an_empty_query(client, session, llm, embedder):
+    enable_retrieval(client)
+    assert client.post(f"/api/sessions/{session}/retrieve", json={"query": "  "}).status_code == 400
+
+
+def test_probe_reports_a_dead_embedder(client, session, llm, embedder):
+    enable_retrieval(client)
+    chat(client, session, FACT)
+    bury(client, session)
+
+    embedder.fail_with = RuntimeError("connection refused")
+    p = probe(client, session, QUERY)
+    assert p["error"] and "connection refused" in p["error"]
+    assert p["results"] == []
+
+
+def test_probe_works_while_retrieval_is_disabled(client, session, llm, embedder):
+    """You need to see the scores *before* deciding to switch recall on."""
+    enable_retrieval(client, retrieval_min_score=0.0)
+    chat(client, session, FACT)
+    bury(client, session)
+    client.patch("/api/settings", json={"retrieval_enabled": False})
+
+    assert probe(client, session, QUERY)["results"]
+
+
 # --- failure and opt-out ---------------------------------------------------
 
 

@@ -55,6 +55,8 @@ memory design; Phase 5 is polish and extra backends.
   on Windows it means Docker Desktop with the **WSL2 backend** and a current NVIDIA driver on
   the host (don't install the toolkit inside WSL — the Windows driver provides it)
 - ~10 GB disk for the model
+- **Enough VRAM for the model you pick** — the default is a 13B and needs ~11 GB.
+  8 GB cards need a 7B instead; see [Choosing a model](#choosing-a-model) below
 
 Verify GPU passthrough before anything else:
 
@@ -102,8 +104,46 @@ docker compose logs -f model-pull    # download progress
 docker compose logs -f app           # server
 ```
 
-MythoMax L2 13B needs roughly 8–10 GB VRAM at Q4/Q5. On a tighter GPU set `RP_MODEL` in
-`.env` to a smaller quant or a 7B model — nothing else changes.
+## Choosing a model
+
+The default, `HammerAI/mythomax-l2`, is a 13B and **needs about 11 GB of VRAM** — more than
+its 7.9 GB download suggests, because the KV cache is charged on top:
+
+| | Weights (Q4_K_M) | KV cache @ 4096 | Total |
+|---|---|---|---|
+| `HammerAI/mythomax-l2` (13B) | 7.9 GB | ~3.2 GB | **~11.1 GB** |
+| `HammerAI/smart-lemon-cookie` (7B) | 4.4 GB | ~0.5 GB | **~4.9 GB** |
+
+The cache gap is larger than the parameter gap. Llama-2 13B uses full multi-head attention —
+800 KB per token — while Mistral-7B uses grouped-query attention at 128 KB per token, six
+times cheaper.
+
+**On 8 GB (2080, 3070, 4060):** use `HammerAI/smart-lemon-cookie`. It's a merge of
+Silicon-Maid, Kunoichi and LemonadeRP, all Alpaca-formatted like MythoMax, so the prompt
+builder needs no changes. It also handles far longer context, so you can raise
+`RP_CONTEXT_TOKENS` to 8192 and still fit.
+
+**On 12 GB or more:** the default 13B is the better writer.
+
+Set it before first boot in `.env`:
+
+```
+RP_MODEL=HammerAI/smart-lemon-cookie
+```
+
+After first boot, `.env` no longer controls it — change the model in the **Models** panel
+instead, since UI settings are stored in the database and take precedence.
+
+If Ollama can't fit a model it silently splits it across GPU and CPU rather than failing, and
+the CPU half becomes the bottleneck. Symptoms are low GPU utilisation and replies that crawl.
+Check with:
+
+```bash
+docker exec roleplay-ollama ollama ps
+```
+
+`100% GPU` in the PROCESSOR column means it fits. Anything like `43%/57% CPU/GPU` means it
+doesn't, and you want a smaller model.
 
 ## First run
 
@@ -325,12 +365,31 @@ Tuning (Settings panel, or `.env`):
 | `RP_RETRIEVAL_BUDGET_TOKENS` | 400 | Context spent on recall |
 | `RP_RETRIEVAL_QUERY_MESSAGES` | 3 | Recent turns forming the search query |
 
-**Expect to tune the floor.** RAG's failure mode is different in kind from the others: a
-misfire produces context that is plausible but irrelevant, which is much harder to notice
-than a missing fact — the character just brings up an unrelated old scene as if it mattered.
-Raise `RP_RETRIEVAL_MIN_SCORE` if that happens; lower it if it forgets things it shouldn't.
-**Settings → Inspect built prompt** lists each recalled message with its score, which is the
-fastest way to calibrate.
+### Calibrating the relevance floor
+
+RAG's failure mode differs in kind from the others: a misfire produces context that is
+plausible but irrelevant, which is far harder to notice than a missing fact — the character
+just raises an unrelated old scene as though it mattered.
+
+Use **Memory → Test recall**. Type any question and it scores it against the chat's memory
+without generating anything, listing every candidate — including the ones the floor rejects,
+annotated with why. The prompt inspector can't do this: it only shows what already passed,
+and you can't choose a threshold from data that was filtered out before you saw it.
+
+What to look for is **separation**, not an absolute number:
+
+1. Ask about something you know happened. Note what the right message scores.
+2. Ask about something that **never happened**. Note what the best result scores.
+3. Put `RP_RETRIEVAL_MIN_SCORE` in the gap.
+
+Step 2 is the one people skip and the one that matters. Embedding models often score
+unrelated text higher than intuition suggests, so a floor that looks generous can be passing
+everything. If the two ranges overlap, no threshold will work — raise
+`RP_RETRIEVAL_QUERY_MESSAGES` to give the query more context, or try a different embedding
+model.
+
+A free signal during normal play: if the inspector returns a full `RP_RETRIEVAL_TOP_K` on
+nearly every turn, including turns where nothing old is relevant, the floor is too low.
 
 Two safety properties, both tested:
 
@@ -402,6 +461,7 @@ GET   /api/sessions/{id}/memory       summary, watermark, counts, index coverage
 PATCH /api/sessions/{id}/memory       hand-edit the summary
 POST  /api/sessions/{id}/summarize    force a fold, ignoring the threshold
 POST  /api/sessions/{id}/reindex      embed anything without a current vector
+POST  /api/sessions/{id}/retrieve     score a query against memory, no generation
 GET   /api/sessions/{id}/prompt       exact prompt text, incl. what was recalled
 ```
 
@@ -431,9 +491,12 @@ GET   /api/sessions/{id}/prompt       exact prompt text, incl. what was recalled
   the Memory panel lets you correct anything important the fold dropped.
 - **Vector recall only searches condensed turns.** With summarization off, nothing is ever
   condensed and recall finds nothing. The two are complements, not alternatives.
-- **Retrieval quality is untuned against a real embedding model.** The defaults are reasoned,
-  not measured — every test uses a mock embedder. Expect to move `RP_RETRIEVAL_MIN_SCORE`
-  once you see what your model actually scores.
+- **Retrieval defaults work but aren't proven precise.** They've returned relevant results
+  against `nomic-embed-text` on one real setup, unchanged. What hasn't been tested is the
+  opposite direction: whether `RP_RETRIEVAL_MIN_SCORE` actually *rejects* irrelevant matches.
+  That's the failure mode worth watching, because recall that's plausible but wrong reads as
+  fine. If the prompt inspector returns a full `RP_RETRIEVAL_TOP_K` on nearly every turn, the
+  floor is likely too low — raise it until unrelated turns stop appearing.
 - **Regenerate doesn't rewind the watermark.** If a fold already absorbed earlier turns,
   re-rolling won't un-condense them.
 - **Schema changes** are applied by a small additive migration in `app/db/database.py`

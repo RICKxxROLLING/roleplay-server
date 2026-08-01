@@ -75,6 +75,11 @@ export const api = {
     }),
   forceSummarize: (id) => j(`/sessions/${id}/summarize`, { method: "POST" }),
   reindex: (id) => j(`/sessions/${id}/reindex`, { method: "POST" }),
+  probeRetrieval: (id, query) =>
+    j(`/sessions/${id}/retrieve`, {
+      method: "POST",
+      body: JSON.stringify({ query }),
+    }),
 };
 
 /**

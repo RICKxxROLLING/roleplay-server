@@ -245,7 +245,116 @@ function Recall({ mem, health, busy, onToggle, onReindex, onOpenModels }) {
               via {mem.embedding_model}
             </span>
           </div>
+
+          <Probe sessionId={sessionId} />
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Calibration tool. The prompt inspector only shows hits that already passed
+ * the relevance floor, so it can't tell you what scored just below it -- and a
+ * threshold chosen from filtered data is a guess. This scores arbitrary text
+ * against the session's memory and shows everything, rejects included.
+ */
+function Probe({ sessionId }) {
+  const [query, setQuery] = useState("");
+  const [res, setRes] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  async function run() {
+    const q = query.trim();
+    if (!q || busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      setRes(await api.probeRetrieval(sessionId, q));
+    } catch (e) {
+      setErr(e.message);
+      setRes(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="pt-3 border-t border-ink-800/60 space-y-2">
+      <label className="text-sm block">
+        Test recall
+        <span className="text-xs text-slate-600 ml-2">
+          score any question without sending it
+        </span>
+      </label>
+
+      <div className="flex gap-2">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && run()}
+          placeholder="What was the innkeeper's name?"
+          className="flex-1 bg-ink-950 border border-ink-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-accent/60 placeholder:text-slate-600"
+        />
+        <button
+          onClick={run}
+          disabled={busy || !query.trim()}
+          className="text-sm px-3 py-1.5 rounded-lg border border-ink-700 hover:bg-ink-850 disabled:opacity-40"
+        >
+          {busy ? "…" : "Score"}
+        </button>
+      </div>
+
+      {err && <p className="text-xs text-rose-400">{err}</p>}
+
+      {res?.error && (
+        <p className="text-xs text-amber-400/90">Embedder failed: {res.error}</p>
+      )}
+
+      {res && !res.error && (
+        <div className="space-y-1.5">
+          <p className="text-xs text-slate-600">
+            {res.candidates} searchable · floor {res.settings.min_score} · top-k{" "}
+            {res.settings.top_k}
+          </p>
+
+          {res.results.length === 0 ? (
+            <p className="text-xs text-slate-600">
+              Nothing to search yet — only condensed turns are searchable.
+            </p>
+          ) : (
+            <>
+              <ul className="space-y-1 max-h-56 overflow-y-auto scroll-thin">
+                {res.results.map((r) => (
+                  <li
+                    key={r.message_id}
+                    className={`text-xs rounded-lg px-2.5 py-1.5 border ${
+                      r.would_inject
+                        ? "border-accent/40 bg-accent/10"
+                        : "border-ink-800 bg-ink-950/60 text-slate-500"
+                    }`}
+                  >
+                    <div className="flex items-baseline gap-2">
+                      <span className="tabular-nums font-medium">
+                        {r.score.toFixed(3)}
+                      </span>
+                      <span className="text-[10px] uppercase tracking-wider text-slate-600">
+                        {r.would_inject ? "injected" : r.rejected_by}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 line-clamp-2 leading-snug">{r.content}</p>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                Ask about something that <em>never happened</em> too. If unrelated
+                turns score near your real hits, the floor is too low — set it in
+                the gap between them.
+              </p>
+            </>
+          )}
+        </div>
       )}
     </div>
   );
