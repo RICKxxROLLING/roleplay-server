@@ -471,9 +471,12 @@ GET   /api/sessions/{id}/prompt       exact prompt text, incl. what was recalled
   the Memory panel lets you correct anything important the fold dropped.
 - **Vector recall only searches condensed turns.** With summarization off, nothing is ever
   condensed and recall finds nothing. The two are complements, not alternatives.
-- **Retrieval quality is untuned against a real embedding model.** The defaults are reasoned,
-  not measured — every test uses a mock embedder. Expect to move `RP_RETRIEVAL_MIN_SCORE`
-  once you see what your model actually scores.
+- **Retrieval defaults work but aren't proven precise.** They've returned relevant results
+  against `nomic-embed-text` on one real setup, unchanged. What hasn't been tested is the
+  opposite direction: whether `RP_RETRIEVAL_MIN_SCORE` actually *rejects* irrelevant matches.
+  That's the failure mode worth watching, because recall that's plausible but wrong reads as
+  fine. If the prompt inspector returns a full `RP_RETRIEVAL_TOP_K` on nearly every turn, the
+  floor is likely too low — raise it until unrelated turns stop appearing.
 - **Regenerate doesn't rewind the watermark.** If a fold already absorbed earlier turns,
   re-rolling won't un-condense them.
 - **Schema changes** are applied by a small additive migration in `app/db/database.py`
