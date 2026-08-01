@@ -55,6 +55,8 @@ memory design; Phase 5 is polish and extra backends.
   on Windows it means Docker Desktop with the **WSL2 backend** and a current NVIDIA driver on
   the host (don't install the toolkit inside WSL — the Windows driver provides it)
 - ~10 GB disk for the model
+- **Enough VRAM for the model you pick** — the default is a 13B and needs ~11 GB.
+  8 GB cards need a 7B instead; see [Choosing a model](#choosing-a-model) below
 
 Verify GPU passthrough before anything else:
 
@@ -102,8 +104,46 @@ docker compose logs -f model-pull    # download progress
 docker compose logs -f app           # server
 ```
 
-MythoMax L2 13B needs roughly 8–10 GB VRAM at Q4/Q5. On a tighter GPU set `RP_MODEL` in
-`.env` to a smaller quant or a 7B model — nothing else changes.
+## Choosing a model
+
+The default, `HammerAI/mythomax-l2`, is a 13B and **needs about 11 GB of VRAM** — more than
+its 7.9 GB download suggests, because the KV cache is charged on top:
+
+| | Weights (Q4_K_M) | KV cache @ 4096 | Total |
+|---|---|---|---|
+| `HammerAI/mythomax-l2` (13B) | 7.9 GB | ~3.2 GB | **~11.1 GB** |
+| `HammerAI/smart-lemon-cookie` (7B) | 4.4 GB | ~0.5 GB | **~4.9 GB** |
+
+The cache gap is larger than the parameter gap. Llama-2 13B uses full multi-head attention —
+800 KB per token — while Mistral-7B uses grouped-query attention at 128 KB per token, six
+times cheaper.
+
+**On 8 GB (2080, 3070, 4060):** use `HammerAI/smart-lemon-cookie`. It's a merge of
+Silicon-Maid, Kunoichi and LemonadeRP, all Alpaca-formatted like MythoMax, so the prompt
+builder needs no changes. It also handles far longer context, so you can raise
+`RP_CONTEXT_TOKENS` to 8192 and still fit.
+
+**On 12 GB or more:** the default 13B is the better writer.
+
+Set it before first boot in `.env`:
+
+```
+RP_MODEL=HammerAI/smart-lemon-cookie
+```
+
+After first boot, `.env` no longer controls it — change the model in the **Models** panel
+instead, since UI settings are stored in the database and take precedence.
+
+If Ollama can't fit a model it silently splits it across GPU and CPU rather than failing, and
+the CPU half becomes the bottleneck. Symptoms are low GPU utilisation and replies that crawl.
+Check with:
+
+```bash
+docker exec roleplay-ollama ollama ps
+```
+
+`100% GPU` in the PROCESSOR column means it fits. Anything like `43%/57% CPU/GPU` means it
+doesn't, and you want a smaller model.
 
 ## First run
 

@@ -2,7 +2,8 @@
 
 A design document for a fully local, self-hosted AI chat roleplay server.
 
-**Target environment:** NVIDIA GPU (8GB+), single machine, local-only.
+**Target environment:** NVIDIA GPU, single machine, local-only. 8GB runs a 7B; the 13B default
+needs ~11GB once the KV cache is counted — see [`../README.md`](../README.md#choosing-a-model).
 **Decided so far:** backend-agnostic LLM layer · SillyTavern V2 card compatibility · streaming web UI · character personas · long-term memory via the hybrid of §5 Route C.
 
 ---
