@@ -3,7 +3,7 @@
 A design document for a fully local, self-hosted AI chat roleplay server.
 
 **Target environment:** NVIDIA GPU (8GB+), single machine, local-only.
-**Decided so far:** backend-agnostic LLM layer · SillyTavern V2 card compatibility · streaming web UI · character personas · long-term memory (approach TBD — see §5).
+**Decided so far:** backend-agnostic LLM layer · SillyTavern V2 card compatibility · streaming web UI · character personas · long-term memory via the hybrid of §5 Route C.
 
 ---
 
@@ -183,7 +183,8 @@ PATCH  /settings                 # sampler params, backend URL, context size
 
 ## 7. Phased Roadmap
 
-> **Status:** Phases 0–3 are built and verified — see [`../README.md`](../README.md).
+> **Status:** Phases 0–4 are built and verified — see [`../README.md`](../README.md).
+> That completes Route C below: rolling summary + keyword lorebook + vector RAG.
 
 **Phase 0 — Skeleton (½ day) ✅ BUILT**
 FastAPI app, config, `LLMClient` interface + Ollama adapter, `/models` and a raw `/chat` that streams from the model over SSE. Prove the streaming pipe end to end.
@@ -205,8 +206,18 @@ Two decisions worth recording. **Matching is whole-word** rather than substring 
 
 Book-level settings are stored as flat `lorebook_*` fields rather than nesting the book in an object, so cards imported before this phase still validate — pydantic fills the defaults.
 
-**Phase 4 — Vector RAG (3–4 days)**
-Embedding model integration, sqlite-vec/Chroma store, chunking + retrieval, blend into the Memory Manager. Precise long-range recall.
+**Phase 4 — Vector RAG ✅ BUILT**
+Embedding model integration, vector store, retrieval, blended into the Memory Manager. Precise long-range recall.
+
+Three decisions departed from the sketch above, each for a reason worth keeping.
+
+**Neither sqlite-vec nor Chroma.** Vectors are float32 blobs in an ordinary table, scanned linearly. sqlite-vec needs `enable_load_extension`, which isn't compiled into every Python build, and a virtual table, which the additive-only migration helper cannot express; Chroma is a second service to run and back up. At single-user scale the scan isn't the bottleneck — ~65ms for 2000 × 768 in pure Python, against an embedding round-trip of the same order and a generation measured in seconds. Vectors are normalised at write time so scoring is a dot product, and a candidate cap bounds the worst case. `memory/rag.py` is the only module that would have to change if that ever stops being true.
+
+**Retrieval searches only what the prompt isn't already carrying** — in practice, messages below the summarisation watermark. Re-injecting a turn that's about to appear verbatim in the history block spends budget to say the same thing twice, and duplicated text encourages models to repeat themselves. This makes retrieval and summarisation complements rather than alternatives: with summarisation off, nothing is condensed and retrieval correctly finds nothing.
+
+**Messages are embedded after the turn completes, not at each insert.** One batched call covers both halves of the exchange, and the same code path backfills chats that predate the feature and repairs edited messages. Each vector stores its model and a hash of its source text, so a model switch or an edit marks vectors for recomputation instead of silently returning neighbours from a coordinate space that no longer applies.
+
+Lorebook entries are *not* embedded. Semantic matching there would be additive to the V2 keyword contract rather than a replacement for it, and it's a different enough problem to belong in its own phase.
 
 **Phase 5 — Polish & backends (ongoing)**
 llama.cpp/vLLM adapters, sampler UI, regenerate/edit/branch, export/import of sessions, optional TTS/image hooks, optional multi-user.

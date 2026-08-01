@@ -70,7 +70,7 @@ Add Container → `roleplay-ollama`. Defaults are fine. Apply and wait for it to
 
 You don't need to pull a model here — the app's **Models** panel downloads them with a
 progress bar once it's connected. (If you'd rather use the terminal:
-`docker exec -it roleplay-ollama ollama pull mythomax`.)
+`docker exec -it roleplay-ollama ollama pull HammerAI/mythomax-l2`.)
 
 ### 3. Then the app
 
@@ -98,19 +98,67 @@ Apply, then click the container's icon → **WebUI**.
 ## Publishing the image
 
 Unraid's Docker tab needs a pullable image; it can't build from source. The repo ships a
-GitHub Actions workflow that publishes to GHCR on every push to `main`:
+GitHub Actions workflow that publishes to GHCR on every push to `main` or `master`:
 
 1. Push this repo to GitHub.
 2. Actions tab → let **Publish container image** run.
 3. Packages → `roleplay-server` → set visibility **Public** (or configure Unraid with a
    registry credential for a private package).
-4. Use `ghcr.io/<your-username>/roleplay-server:latest` as the image.
+4. The image is `ghcr.io/rickxxrolling/roleplay-server:latest` — already filled in throughout
+   the templates and `.env.example`.
 
-Replace every `OWNER` placeholder in the XML templates and `.env` with your GitHub username.
+Note the casing: **GHCR image paths must be lowercase** even though the GitHub username isn't.
+The workflow lowercases automatically; the hardcoded references already account for it.
+
+The icon URL in the templates points at the `master` branch. If you rename the default branch
+to `main`, update that path — and note `deploy/unraid/icon.png` doesn't exist yet, so Unraid
+shows its default icon until you add one.
 
 **Prefer not to use a registry?** Compose can build on the NAS instead — put the full source
 on the server, then in `docker-compose.yml` comment out `image:` and uncomment `build:`.
 Templates still won't work this way; that's the tradeoff.
+
+---
+
+## Developing against the NAS
+
+Unraid runs production; development stays on your workstation. The trick is to point the dev
+server at the NAS for inference, so you get a real GPU and real models without running
+anything heavy locally:
+
+```
+Workstation (Claude Code)  ──git push──►  Actions  ──►  GHCR
+   uvicorn + vite, own DB                                 │
+        │                                                 ▼
+        └────── LAN: http://<unraid-ip>:11434 ──►  Unraid (prod)
+```
+
+The `ollama` service publishes port 11434 for exactly this. On your workstation:
+
+```powershell
+$env:RP_LLM_BASE_URL = "http://<unraid-ip>:11434"
+$env:RP_DATABASE_URL = "sqlite:///./dev.db"
+$env:RP_DATA_DIR = "./devdata"
+uvicorn app.main:app --reload --port 8000
+```
+
+Two things matter here. **Use a separate database** — `dev.db` above — so test chats never
+touch `/mnt/user/appdata`. And remember env vars are first-run defaults only: once a setting
+is saved from the UI it lives in that database, so dev and prod drift independently, which is
+what you want.
+
+This is also how you calibrate the things that have only ever been reasoned about rather than
+observed: prompt format, stop sequences, summariser quality, and `RP_RETRIEVAL_MIN_SCORE`.
+**Settings → Inspect built prompt** shows exactly what the model receives, with each recalled
+message and its score.
+
+**Promoting a change:** push → Actions builds and pushes to GHCR → on Unraid either
+`docker compose pull && docker compose up -d`, or **force update** in the Docker tab. Pin
+`RP_IMAGE` to a `sha-` or version tag rather than `latest` if you want rollbacks to be a
+one-line edit.
+
+**Security:** Ollama has no authentication. Publishing 11434 is fine on a trusted LAN, but
+never port-forward it. Set `OLLAMA_PORT=` (blank) in `.env` to keep it off the host.
 
 ---
 

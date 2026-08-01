@@ -2,7 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { api, streamTurn } from "../api";
 import { Modal, Field, Input, Button, Empty } from "./ui";
 
-const SUGGESTED = ["mythomax", "llama3:8b", "mistral-nemo", "qwen2.5:7b"];
+// nomic-embed-text is here rather than in the chat list because vector recall
+// needs it pulled, and the Memory panel points users at this dialog to do it.
+const SUGGESTED = [
+  "HammerAI/mythomax-l2",
+  "llama3:8b",
+  "mistral-nemo",
+  "qwen2.5:7b",
+  "nomic-embed-text",
+];
 
 function mb(bytes) {
   if (!bytes) return null;
@@ -125,7 +133,7 @@ export default function ModelManager({ open, onClose, onChanged }) {
                   value={pullName}
                   onChange={(e) => setPullName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && !pulling && startPull()}
-                  placeholder="mythomax"
+                  placeholder="HammerAI/mythomax-l2"
                   disabled={pulling}
                 />
                 <Button variant="primary" onClick={startPull} disabled={pulling}>

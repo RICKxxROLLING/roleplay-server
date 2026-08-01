@@ -33,10 +33,22 @@ PERSISTABLE: dict[str, type] = {
     "keep_recent_messages": int,
     "summary_max_tokens": int,
     "summary_temperature": float,
+    "retrieval_enabled": bool,
+    "embedding_model": str,
+    "embedding_base_url": str,
+    "retrieval_top_k": int,
+    "retrieval_min_score": float,
+    "retrieval_budget_tokens": int,
+    "retrieval_query_messages": int,
 }
 
 # Changing any of these invalidates the cached LLM client.
 CLIENT_KEYS = {"backend", "llm_base_url", "model"}
+
+# ...and these the cached embedder. `backend` and `llm_base_url` appear in both:
+# the embedder inherits the backend flavour, and the chat host when
+# embedding_base_url is blank.
+EMBEDDER_KEYS = {"backend", "llm_base_url", "embedding_model", "embedding_base_url"}
 
 
 def load_into_settings(db: DbSession) -> int:

@@ -80,6 +80,12 @@ export default function ChatView({
           setMemoryState({ kind: "done", folded: evt.folded });
         else if (evt.status === "failed")
           setMemoryState({ kind: "failed", message: evt.message });
+        // Recall arrives before the first token, so a later fold event in the
+        // same turn correctly replaces it -- the fold is the bigger news.
+        else if (evt.status === "recalled")
+          setMemoryState({ kind: "recalled", recalled: evt.recalled });
+        else if (evt.status === "retrieval_failed" || evt.status === "index_failed")
+          setMemoryState({ kind: "recall_failed", message: evt.message });
       },
       onDone: async () => {
         setBusy(false);
@@ -251,6 +257,12 @@ export default function ChatView({
                 `memory updated — ${memoryState.folded} earlier messages condensed`}
               {memoryState.kind === "failed" &&
                 `memory update failed (chat unaffected) — ${memoryState.message}`}
+              {memoryState.kind === "recalled" &&
+                `recalled ${memoryState.recalled} earlier ${
+                  memoryState.recalled === 1 ? "moment" : "moments"
+                }`}
+              {memoryState.kind === "recall_failed" &&
+                `vector recall unavailable (chat unaffected) — ${memoryState.message}`}
             </button>
           </div>
         )}

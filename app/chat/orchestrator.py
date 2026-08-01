@@ -14,7 +14,7 @@ from ..cards.models import CharacterCard
 from ..config import settings
 from ..db.models import ChatSession, Message
 from ..llm import GenerationParams, get_client
-from ..memory import memory_manager
+from ..memory import memory_manager, rag
 from ..prompt import build_prompt
 
 
@@ -22,11 +22,15 @@ def _card_of(session: ChatSession) -> CharacterCard:
     return CharacterCard.model_validate(session.character.card or {})
 
 
-def build_turn_prompt(session: ChatSession, overrides: dict | None = None):
+async def build_turn_prompt(
+    session: ChatSession,
+    overrides: dict | None = None,
+    db: DbSession | None = None,
+):
     card = _card_of(session)
-    ctx = memory_manager.build_context(session, card)
+    ctx = await memory_manager.build_context(session, card, db=db)
     persona = session.persona
-    return card, build_prompt(
+    return card, ctx, build_prompt(
         card=card,
         history=ctx.history,
         user_name=persona.name if persona else "You",
@@ -34,6 +38,7 @@ def build_turn_prompt(session: ChatSession, overrides: dict | None = None):
         summary=ctx.summary,
         lore_before=ctx.lore_before,
         lore_after=ctx.lore_after,
+        retrieved=ctx.retrieved,
         context_tokens=(overrides or {}).get("context_tokens", settings.context_tokens),
         max_new_tokens=(overrides or {}).get("max_new_tokens", settings.max_new_tokens),
         reserve_tokens=settings.reserve_tokens,
@@ -57,8 +62,21 @@ async def stream_reply(
     session: ChatSession,
     overrides: dict | None = None,
 ) -> AsyncIterator[dict]:
-    """Stream the character's next reply, persist it, then fold memory if due."""
-    card, built = build_turn_prompt(session, overrides)
+    """Stream the character's next reply, persist it, then update memory."""
+    card, ctx, built = await build_turn_prompt(session, overrides, db=db)
+    if ctx.retrieval_error:
+        yield {
+            "type": "memory",
+            "status": "retrieval_failed",
+            "message": ctx.retrieval_error,
+        }
+    elif ctx.retrieved:
+        yield {
+            "type": "memory",
+            "status": "recalled",
+            "recalled": len(ctx.retrieved),
+        }
+
     client = get_client()
 
     collected: list[str] = []
@@ -78,6 +96,24 @@ async def stream_reply(
     db.add(Message(session_id=session.id, role="assistant", content=reply))
     db.commit()
     db.refresh(session)
+
+    # --- Phase 4: embed both sides of the turn ---
+    # Deliberately *after* the reply is persisted rather than before generation:
+    # this way one batched call covers the user turn and the character's, and no
+    # message is left unindexed. Nothing is lost by waiting -- retrieval embeds
+    # the query text directly, and a message this recent is still verbatim in
+    # context, so it could not have been a search candidate anyway.
+    if settings.retrieval_enabled:
+        try:
+            await rag.index_session(db, session)
+        except Exception as exc:
+            # Best-effort: the reply is already saved, and the next turn (or an
+            # explicit reindex) picks up whatever this pass missed.
+            yield {
+                "type": "memory",
+                "status": "index_failed",
+                "message": f"{type(exc).__name__}: {exc}",
+            }
 
     # --- Phase 2: fold old turns into the rolling summary ---
     if memory_manager.should_summarize(session):

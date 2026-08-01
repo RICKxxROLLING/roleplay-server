@@ -22,6 +22,13 @@ services:
       # pin one card (e.g. GPU-4a1b2c3d-...).
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
       NVIDIA_DRIVER_CAPABILITIES: all
+    # Published so a workstation on the LAN can develop against the NAS GPU
+    # (point RP_LLM_BASE_URL at http://<unraid-ip>:11434). The app container
+    # does not need this -- it reaches Ollama over the project network.
+    # SECURITY: Ollama has no authentication. Trusted LAN only, never forwarded.
+    # Set OLLAMA_PORT= (empty) in .env if you do not want it exposed at all.
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
     volumes:
       - ${APPDATA:-/mnt/user/appdata}/roleplay-ollama:/root/.ollama
     healthcheck:
@@ -31,7 +38,7 @@ services:
       retries: 12
       start_period: 20s
 
-  # One-shot: downloads the model once Ollama is up, then exits.
+  # One-shot: downloads the models once Ollama is up, then exits.
   model-pull:
     image: ollama/ollama:latest
     container_name: roleplay-model-pull
@@ -40,15 +47,35 @@ services:
         condition: service_healthy
     environment:
       OLLAMA_HOST: http://ollama:11434
-      MODEL: ${RP_MODEL:-mythomax}
+      MODEL: ${RP_MODEL:-HammerAI/mythomax-l2}
+      # Pulled up front so vector recall works the moment it is switched on in
+      # the Memory panel. Small next to the chat model (~275MB vs several GB).
+      # Set RP_EMBEDDING_MODEL= (empty) to skip it.
+      EMBED_MODEL: ${RP_EMBEDDING_MODEL-nomic-embed-text}
+    # Always exits 0. A bad model name must not wedge the whole stack: the app
+    # gates on this container *completing*, and the Models panel is how you fix
+    # a bad name -- so failing hard here would lock you out of the only UI that
+    # can repair it. The wait still happens; only the hard failure is dropped.
     entrypoint: ["/bin/sh", "-c"]
-    command: ['echo "Pulling $${MODEL} (first run downloads several GB)..." && ollama pull "$${MODEL}"']
+    command:
+      - >
+        echo "Pulling $${MODEL} (first run downloads several GB)...";
+        ollama pull "$${MODEL}" ||
+        echo "WARNING: could not pull '$${MODEL}'. The app will still start --
+        pick or download a model in its Models panel.";
+        if [ -n "$${EMBED_MODEL}" ]; then
+        echo "Pulling embedding model $${EMBED_MODEL}...";
+        ollama pull "$${EMBED_MODEL}" ||
+        echo "WARNING: could not pull '$${EMBED_MODEL}'. Vector recall stays
+        unavailable until it is present.";
+        fi;
+        exit 0
     restart: "no"
 
   app:
     # Published image. To build on the NAS instead, comment `image:` out and
     # uncomment `build:` — note that needs the full source tree on the server.
-    image: ${RP_IMAGE:-ghcr.io/OWNER/roleplay-server:latest}
+    image: ${RP_IMAGE:-ghcr.io/rickxxrolling/roleplay-server:latest}
     # build:
     #   context: ../..
     container_name: roleplay-server
@@ -68,7 +95,7 @@ services:
 
       RP_BACKEND: ollama
       RP_LLM_BASE_URL: http://ollama:11434
-      RP_MODEL: ${RP_MODEL:-mythomax}
+      RP_MODEL: ${RP_MODEL:-HammerAI/mythomax-l2}
 
       RP_CONTEXT_TOKENS: ${RP_CONTEXT_TOKENS:-4096}
       RP_MAX_NEW_TOKENS: ${RP_MAX_NEW_TOKENS:-400}
@@ -85,10 +112,19 @@ services:
       RP_SUMMARY_MAX_TOKENS: ${RP_SUMMARY_MAX_TOKENS:-400}
       RP_SUMMARY_TEMPERATURE: ${RP_SUMMARY_TEMPERATURE:-0.3}
 
+      # Vector recall. Off by default; flip it in the Memory panel once the
+      # embedding model is present (model-pull fetches it above).
+      RP_RETRIEVAL_ENABLED: ${RP_RETRIEVAL_ENABLED:-false}
+      RP_EMBEDDING_MODEL: ${RP_EMBEDDING_MODEL:-nomic-embed-text}
+      RP_RETRIEVAL_TOP_K: ${RP_RETRIEVAL_TOP_K:-4}
+      RP_RETRIEVAL_MIN_SCORE: ${RP_RETRIEVAL_MIN_SCORE:-0.45}
+      RP_RETRIEVAL_BUDGET_TOKENS: ${RP_RETRIEVAL_BUDGET_TOKENS:-400}
+      RP_RETRIEVAL_QUERY_MESSAGES: ${RP_RETRIEVAL_QUERY_MESSAGES:-3}
+
       RP_DATABASE_URL: sqlite:////data/roleplay.db
       RP_DATA_DIR: /data
     volumes:
       - ${APPDATA:-/mnt/user/appdata}/roleplay-server:/data
     labels:
       net.unraid.docker.webui: "http://[IP]:[PORT:8000]/"
-      net.unraid.docker.icon: "https://raw.githubusercontent.com/OWNER/roleplay-server/main/deploy/unraid/icon.png"
+      net.unraid.docker.icon: "https://raw.githubusercontent.com/RICKxxROLLING/roleplay-server/master/deploy/unraid/icon.png"

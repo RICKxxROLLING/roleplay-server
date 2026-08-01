@@ -5,7 +5,10 @@ name: Publish container image
 
 on:
   push:
-    branches: [main]
+    # Both, so the pipeline works whether the repo ends up defaulting to `main`
+    # or `master`. The `latest` tag still tracks whichever GitHub considers the
+    # default branch, so only one of them can ever produce it.
+    branches: [main, master]
     tags: ["v*"]
   workflow_dispatch:
 

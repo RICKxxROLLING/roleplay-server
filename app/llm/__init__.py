@@ -1,4 +1,11 @@
 from .base import GenerationParams, LLMClient
-from .factory import get_client
+from .embeddings import Embedder
+from .factory import get_client, get_embedder
 
-__all__ = ["GenerationParams", "LLMClient", "get_client"]
+__all__ = [
+    "GenerationParams",
+    "LLMClient",
+    "Embedder",
+    "get_client",
+    "get_embedder",
+]

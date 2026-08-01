@@ -8,9 +8,10 @@ Nothing leaves your machine.
 Anywhere else with Docker + an NVIDIA GPU: `docker compose up -d`, then
 <http://localhost:8000>.
 
-**This is Phase 0–3** of the roadmap in [`docs/architecture.md`](docs/architecture.md) —
-chat with SillyTavern V2 cards, personas, streaming, regenerate, rolling summarization, and
-a keyword-triggered lorebook. Vector RAG (Phase 4) is next; the seam is in place.
+**This is Phase 0–4** of the roadmap in [`docs/architecture.md`](docs/architecture.md) —
+chat with SillyTavern V2 cards, personas, streaming, regenerate, rolling summarization, a
+keyword-triggered lorebook, and vector recall over past turns. That completes the hybrid
+memory design; Phase 5 is polish and extra backends.
 
 ---
 
@@ -27,6 +28,9 @@ a keyword-triggered lorebook. Vector RAG (Phase 4) is next; the seam is in place
   coherent well past 4096 tokens. Inspectable and hand-editable.
 - **Keyword lorebook** — authored world facts that inject only when their keywords appear.
   Full V2 semantics, editable in the UI.
+- **Vector recall** — semantic search over turns the summary has already condensed, so the
+  character can still name the innkeeper from chapter one. Off until you pull an embedding
+  model; toggled from the Memory panel.
 - **Everything managed from the UI** — no terminal needed after install:
   - **Personas** — create, edit and delete; swap which one you're playing mid-chat.
   - **Greeting picker** — choose among a card's alternate greetings when starting a chat.
@@ -187,6 +191,7 @@ description + personality + scenario
 example dialogue          <- trimmed first under context pressure
 [Phase 2] rolling summary
 [Phase 3] triggered lorebook entries
+[Phase 4] recalled past turns
 chat history              <- trimmed oldest-first
 ### Instruction: post_history_instructions
 ### Response: {char}:
@@ -282,6 +287,67 @@ listed as chips, along with how many were dropped for budget.
 
 ---
 
+## Vector recall (Phase 4)
+
+Summarization is good at narrative flow and bad at specifics — by its second fold, "the
+innkeeper introduced himself as Bram Halloway" has usually become "they spoke with the
+innkeeper". Vector recall is the fix: every message is embedded, and each turn the most
+relevant *condensed* turns are pulled back into the prompt verbatim.
+
+It's the third memory source, not a replacement. The summary carries the plot, the lorebook
+carries authored canon, recall carries exact details.
+
+**Setup.** It's off by default because it needs a second model:
+
+```bash
+docker compose exec ollama ollama pull nomic-embed-text
+```
+
+or from the UI: **Models → Download → `nomic-embed-text`**, then **Memory → Vector recall**.
+Switching it on embeds the existing backlog for that chat immediately.
+
+**What gets searched.** Only messages *below the summarization watermark* — turns the prompt
+is no longer carrying verbatim. Retrieving a message that's about to appear in the history
+block anyway spends budget to say the same thing twice, and duplicated text nudges models
+into repeating themselves. A consequence worth knowing: with `RP_SUMMARY_ENABLED=false`
+nothing is ever condensed, so recall has nothing to search. The two features are designed to
+work together.
+
+Tuning (Settings panel, or `.env`):
+
+| Setting | Default | Effect |
+|---|---|---|
+| `RP_RETRIEVAL_ENABLED` | false | The switch |
+| `RP_EMBEDDING_MODEL` | nomic-embed-text | Any embedding model your backend serves |
+| `RP_EMBEDDING_BASE_URL` | *(blank)* | Blank = same host as the chat model |
+| `RP_RETRIEVAL_TOP_K` | 4 | Most past turns re-injected per reply |
+| `RP_RETRIEVAL_MIN_SCORE` | 0.45 | Cosine floor — below this a hit is noise |
+| `RP_RETRIEVAL_BUDGET_TOKENS` | 400 | Context spent on recall |
+| `RP_RETRIEVAL_QUERY_MESSAGES` | 3 | Recent turns forming the search query |
+
+**Expect to tune the floor.** RAG's failure mode is different in kind from the others: a
+misfire produces context that is plausible but irrelevant, which is much harder to notice
+than a missing fact — the character just brings up an unrelated old scene as if it mattered.
+Raise `RP_RETRIEVAL_MIN_SCORE` if that happens; lower it if it forgets things it shouldn't.
+**Settings → Inspect built prompt** lists each recalled message with its score, which is the
+fastest way to calibrate.
+
+Two safety properties, both tested:
+
+- **A dead embedding backend never costs you a turn.** Indexing and retrieval are best-effort
+  around generation; failures surface as a `memory` event and the reply proceeds without
+  recall.
+- **Stale vectors are never compared.** Each vector records the model and a hash of the text
+  it came from. Editing a message or changing the embedding model marks the affected vectors
+  for recomputation rather than silently returning wrong neighbours.
+
+Embeddings live in the same SQLite file as everything else, as float32 blobs scanned
+linearly — no vector-store extension, no extra service. At single-user scale that's ~65ms for
+2000 vectors, against an embedding round-trip of a similar order and generation that takes
+seconds. `RP_RETRIEVAL_MAX_CANDIDATES` bounds the worst case.
+
+---
+
 ## Layout
 
 ```
@@ -289,19 +355,21 @@ CLAUDE.md               context for Claude Code — read before changing anythin
 Dockerfile              multi-stage: node build -> python runtime
 docker-entrypoint.sh    PUID/PGID alignment, then drops privileges
 docker-compose.yml      app + ollama + one-shot model pull
-tests/                  pytest suite (81 tests)
+tests/                  pytest suite (104 tests)
 deploy/unraid/          Unraid compose, Docker templates, install guide
 docs/architecture.md    design decisions + phase roadmap
 .github/workflows/      publishes the image to GHCR
 app/
   config.py             env-driven settings
   llm/                  LLMClient interface + Ollama / OpenAI-compat adapters
+    embeddings.py       Embedder interface + the same two backends
   cards/                V2 PNG import + normalized schema
   prompt/               Alpaca builder + token estimation
   memory/
     manager.py          watermark logic, fold triggering, lore assembly
     summarizer.py       fold prompt + LLM call
     lorebook.py         keyword matching, budget eviction
+    rag.py              message embedding, cosine search, budget eviction
   chat/orchestrator.py  per-turn flow, typed stream events
   db/                   SQLAlchemy models (SQLite) + additive migrations
   routes/               characters, personas, sessions, system
@@ -330,10 +398,11 @@ GET   /api/sessions                   list; POST to create
 POST  /api/sessions/{id}/messages     send a turn → SSE token stream
 POST  /api/sessions/{id}/regenerate   re-roll the last reply
 
-GET   /api/sessions/{id}/memory       summary, watermark, counts, fold progress
+GET   /api/sessions/{id}/memory       summary, watermark, counts, index coverage
 PATCH /api/sessions/{id}/memory       hand-edit the summary
 POST  /api/sessions/{id}/summarize    force a fold, ignoring the threshold
-GET   /api/sessions/{id}/prompt       exact prompt text incl. injected summary
+POST  /api/sessions/{id}/reindex      embed anything without a current vector
+GET   /api/sessions/{id}/prompt       exact prompt text, incl. what was recalled
 ```
 
 ---
@@ -358,8 +427,13 @@ GET   /api/sessions/{id}/prompt       exact prompt text incl. injected summary
   would break wherever `/data` isn't writable yet.
 - **1:1 chats only** and simple regenerate (no branching/swipes) — both deliberate v1 scope.
 - **Summarization is lossy.** It preserves narrative flow well and precise facts poorly —
-  that's inherent to the approach, not a bug. Phase 4's vector RAG is the fix for exact
-  recall. Meanwhile the Memory panel lets you correct anything important the fold dropped.
+  that's inherent to the approach, not a bug. Vector recall is the fix for exact recall, and
+  the Memory panel lets you correct anything important the fold dropped.
+- **Vector recall only searches condensed turns.** With summarization off, nothing is ever
+  condensed and recall finds nothing. The two are complements, not alternatives.
+- **Retrieval quality is untuned against a real embedding model.** The defaults are reasoned,
+  not measured — every test uses a mock embedder. Expect to move `RP_RETRIEVAL_MIN_SCORE`
+  once you see what your model actually scores.
 - **Regenerate doesn't rewind the watermark.** If a fold already absorbed earlier turns,
   re-rolling won't un-condense them.
 - **Schema changes** are applied by a small additive migration in `app/db/database.py`
@@ -367,13 +441,17 @@ GET   /api/sessions/{id}/prompt       exact prompt text incl. injected summary
 
 ---
 
-## Next: Phase 4
+## Next: Phase 5
 
-Vector RAG for precise long-range recall — the thing summarization is worst at. Embed each
-message plus lorebook entries, retrieve the top-k per turn, and blend into
-`MemoryContext`. The Memory Manager already composes three sources into a token budget, so
-retrieval slots in beside the summary and lorebook rather than replacing either.
+Polish and reach, now that the hybrid memory design is complete:
 
-The tradeoffs are laid out in [`docs/architecture.md`](docs/architecture.md) §5 — worth
-rereading before starting, since RAG's failure modes are different in kind from the ones
-already handled.
+- **Cancelling generation server-side** — today Stop aborts the client only.
+- **Branching and swipes** — keep alternate timelines instead of destructive regenerate.
+- **Session export/import** — move a chat between installs.
+- **Semantic lorebook matching** — embed `character_book` entries so paraphrases fire them,
+  alongside the keyword contract rather than replacing it. The V2 spec is keyword-based, so
+  this has to be additive.
+- **Optional TTS / image hooks**, and multi-user if it's ever wanted.
+
+The memory tradeoffs behind all of this are laid out in
+[`docs/architecture.md`](docs/architecture.md) §5.

@@ -12,7 +12,7 @@ from .. import settings_store
 from ..config import settings
 from ..db import get_db
 from ..llm import get_client
-from ..llm.factory import reset_client
+from ..llm.factory import reset_client, reset_embedder
 
 router = APIRouter(tags=["system"])
 
@@ -22,14 +22,24 @@ async def health() -> dict:
     """Reports whether the local inference backend is actually reachable."""
     try:
         models = await get_client().list_models()
+
+        def installed(name: str) -> bool:
+            return any(m == name or m.split(":")[0] == name for m in models)
+
         return {
             "ok": True,
             "backend": settings.backend,
             "model": settings.model,
             "models": models,
-            "model_installed": any(
-                m == settings.model or m.split(":")[0] == settings.model
-                for m in models
+            "model_installed": installed(settings.model),
+            "retrieval_enabled": settings.retrieval_enabled,
+            "embedding_model": settings.embedding_model,
+            # Only meaningful when embeddings share the chat host; if they're on
+            # a separate server this list doesn't describe it.
+            "embedding_model_installed": (
+                installed(settings.embedding_model)
+                if not settings.embedding_base_url.strip()
+                else None
             ),
         }
     except Exception as exc:
@@ -108,6 +118,14 @@ class SettingsPatch(BaseModel):
     summary_max_tokens: int | None = None
     summary_temperature: float | None = None
 
+    retrieval_enabled: bool | None = None
+    embedding_model: str | None = None
+    embedding_base_url: str | None = None
+    retrieval_top_k: int | None = None
+    retrieval_min_score: float | None = None
+    retrieval_budget_tokens: int | None = None
+    retrieval_query_messages: int | None = None
+
 
 def _settings_payload() -> dict:
     data = settings_store.current()
@@ -131,5 +149,7 @@ async def patch_settings(
     # rebuilt when any of those change or a model switch would be a no-op.
     if changed & settings_store.CLIENT_KEYS:
         await reset_client()
+    if changed & settings_store.EMBEDDER_KEYS:
+        await reset_embedder()
 
     return {**_settings_payload(), "changed": sorted(changed)}

@@ -6,9 +6,11 @@ imports conftest first -- hence the module-level os.environ writes.
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
 import json
 import os
+import re
 import tempfile
 
 import pytest
@@ -32,8 +34,75 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.cards.models import CharacterCard  # noqa: E402
 from app.llm.base import LLMClient  # noqa: E402
+from app.llm.embeddings import Embedder  # noqa: E402
 
 TMP_DIR = _TMP
+
+# Wide enough that md5-bucket collisions between the few dozen distinct words in
+# a test stay negligible -- a collision would give unrelated filler a spurious
+# similarity score and make ranking assertions flaky.
+EMBED_DIM = 512
+
+
+class MockEmbedder(Embedder):
+    """Bag-of-words vectors over a hashed vocabulary.
+
+    Not a toy that returns noise: texts sharing words genuinely score higher
+    than texts that don't, so retrieval tests can assert that the *right*
+    message came back rather than merely that something did. md5 rather than
+    hash() because Python randomises string hashing per process, and a test
+    that reshuffles its own vocabulary every run is not a test.
+    """
+
+    def __init__(self):
+        self.calls: list[list[str]] = []
+        self.fail_with: Exception | None = None
+
+    def vector(self, text: str) -> list[float]:
+        vec = [0.0] * EMBED_DIM
+        for word in re.findall(r"\w+", text.lower()):
+            idx = int(hashlib.md5(word.encode()).hexdigest()[:8], 16) % EMBED_DIM
+            vec[idx] += 1.0
+        return vec
+
+    async def embed(self, texts):
+        self.calls.append(list(texts))
+        if self.fail_with:
+            raise self.fail_with
+        return [self.vector(t) for t in texts]
+
+
+@pytest.fixture
+def embedder(monkeypatch):
+    """Install the mock everywhere a vector is requested."""
+    import app.memory.rag as rag
+
+    mock = MockEmbedder()
+    monkeypatch.setattr(rag, "get_embedder", lambda: mock)
+    return mock
+
+
+def enable_retrieval(client, **overrides):
+    """Turn retrieval on with test-friendly knobs.
+
+    Thresholds are set explicitly rather than left at their defaults so the
+    tests assert on retrieval *behaviour* and don't silently start failing when
+    a default is retuned against a real embedding model.
+    """
+    body = {
+        "retrieval_enabled": True,
+        "retrieval_top_k": 3,
+        # Sits between the ~0.24 that shared stopwords alone score against
+        # MockEmbedder and the ~0.46 of a genuine topical match, with margin on
+        # both sides -- so tests exercise the threshold rather than dodge it.
+        "retrieval_min_score": 0.35,
+        "retrieval_budget_tokens": 400,
+        "retrieval_query_messages": 1,
+    }
+    body.update(overrides)
+    r = client.patch("/api/settings", json=body)
+    assert r.status_code == 200, r.text
+    return r.json()
 
 
 class MockLLM(LLMClient):

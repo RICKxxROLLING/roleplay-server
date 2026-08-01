@@ -28,6 +28,34 @@ def read(rel):
 # --- compose ----------------------------------------------------------------
 
 @pytest.mark.parametrize("path", ["docker-compose.yml", "deploy/unraid/docker-compose.yml"])
+def test_model_pull_cannot_wedge_the_stack(path):
+    """A bad model name must not stop the app from starting.
+
+    `app` gates on model-pull *completing successfully*, and the Models panel is
+    the only place to fix a bad name -- so a hard failure here locks you out of
+    the very UI that repairs it. Observed for real: `ollama pull mythomax` fails
+    with "file does not exist" because MythoMax isn't in Ollama's official
+    library, and it took the whole stack down with it.
+    """
+    cmd = load_yaml(path)["services"]["model-pull"]["command"][0]
+    assert "exit 0" in cmd, "model-pull must always exit 0"
+    assert "||" in cmd, "pull failures must be tolerated, not chained with &&"
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["docker-compose.yml", "deploy/unraid/docker-compose.yml", ".env.example",
+     "deploy/unraid/.env.example"],
+)
+def test_default_model_is_namespaced(path):
+    """Bare `mythomax` resolves to Ollama's official library, where it does not
+    exist. Community models must carry their namespace."""
+    assert not re.search(r"(?<![\w/-])mythomax", read(path)), (
+        "unqualified 'mythomax' will fail to pull; use a namespaced tag"
+    )
+
+
+@pytest.mark.parametrize("path", ["docker-compose.yml", "deploy/unraid/docker-compose.yml"])
 def test_compose_parses_with_expected_services(path):
     d = load_yaml(path)
     assert set(d["services"]) == {"ollama", "model-pull", "app"}
@@ -120,6 +148,38 @@ def test_ollama_template_requests_nvidia_runtime():
         os.path.join(ROOT, "deploy/unraid/templates/roleplay-ollama.xml")
     ).getroot()
     assert "--runtime=nvidia" in (root.findtext("ExtraParams") or "")
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "deploy/unraid/docker-compose.yml",
+        "deploy/unraid/.env.example",
+        "deploy/unraid/templates/roleplay-server.xml",
+        "deploy/unraid/templates/roleplay-ollama.xml",
+    ],
+)
+def test_no_unreplaced_owner_placeholders(path):
+    """A stray OWNER means an image path that resolves to nothing on the NAS."""
+    assert "OWNER" not in read(path)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "deploy/unraid/docker-compose.yml",
+        "deploy/unraid/.env.example",
+        "deploy/unraid/templates/roleplay-server.xml",
+    ],
+)
+def test_ghcr_paths_are_lowercase(path):
+    """GHCR rejects uppercase in image paths, but GitHub usernames may contain
+    it -- so the two can't simply share a spelling. Easy to get wrong by hand,
+    and the failure is a 404 at pull time on the NAS."""
+    # Stop at XML tag / quote boundaries -- a greedy \S+ would swallow the
+    # closing </Repository> and fail on its capital R.
+    for ref in re.findall(r"ghcr\.io/[^\s<>\"']+", read(path)):
+        assert ref == ref.lower(), f"{ref} must be lowercase"
 
 
 def test_app_template_warns_against_container_name_url():

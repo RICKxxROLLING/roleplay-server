@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from ..config import settings
 from .base import LLMClient
+from .embeddings import Embedder, OllamaEmbedder, OpenAICompatEmbedder
 from .ollama import OllamaClient
 from .openai_compat import OpenAICompatClient
 
@@ -11,6 +12,7 @@ from .openai_compat import OpenAICompatClient
 # earlier lru_cache version constructed a client purely so it could close it,
 # which meant a settings save failed whenever the old config was unbuildable.
 _client: LLMClient | None = None
+_embedder: Embedder | None = None
 
 
 def _build() -> LLMClient:
@@ -47,4 +49,38 @@ async def reset_client() -> None:
             await old.close()
         except Exception:
             # A failure closing the old client must not block the new config.
+            pass
+
+
+def _build_embedder() -> Embedder:
+    # Embeddings normally share the chat backend's host; embedding_base_url only
+    # exists for the case where they don't.
+    base_url = settings.embedding_base_url.strip() or settings.llm_base_url
+    backend = settings.backend.lower()
+    if backend == "ollama":
+        return OllamaEmbedder(base_url, settings.embedding_model)
+    if backend in {"openai_compat", "llamacpp", "vllm", "lmstudio"}:
+        return OpenAICompatEmbedder(
+            base_url, settings.embedding_model, settings.llm_api_key
+        )
+    raise ValueError(
+        f"Unknown backend {settings.backend!r}. Use 'ollama' or 'openai_compat'."
+    )
+
+
+def get_embedder() -> Embedder:
+    global _embedder
+    if _embedder is None:
+        _embedder = _build_embedder()
+    return _embedder
+
+
+async def reset_embedder() -> None:
+    """Mirror of `reset_client` for the embedding backend."""
+    global _embedder
+    old, _embedder = _embedder, None
+    if old is not None:
+        try:
+            await old.close()
+        except Exception:
             pass

@@ -141,6 +141,85 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
             )}
           </div>
 
+          {/* Tuning only. The on/off switch lives in the Memory panel, next to
+              the summary it works alongside. */}
+          {s.retrieval_enabled && (
+            <div className="pt-3 border-t border-ink-800 space-y-4">
+              <div className="text-sm">
+                Vector recall
+                <span className="text-xs text-slate-600 ml-2">
+                  tuning · toggle in the Memory panel
+                </span>
+              </div>
+
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <label>Moments recalled</label>
+                  <span className="text-accent tabular-nums">{s.retrieval_top_k}</span>
+                </div>
+                <input
+                  type="range"
+                  min={1}
+                  max={10}
+                  step={1}
+                  value={s.retrieval_top_k}
+                  onChange={(e) => update("retrieval_top_k", Number(e.target.value))}
+                  className="w-full accent-accent"
+                />
+                <p className="text-xs text-slate-600 mt-0.5">
+                  Most past turns re-injected per reply
+                </p>
+              </div>
+
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <label>Relevance floor</label>
+                  <span className="text-accent tabular-nums">
+                    {s.retrieval_min_score}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0.1}
+                  max={0.9}
+                  step={0.05}
+                  value={s.retrieval_min_score}
+                  onChange={(e) =>
+                    update("retrieval_min_score", Number(e.target.value))
+                  }
+                  className="w-full accent-accent"
+                />
+                <p className="text-xs text-slate-600 mt-0.5">
+                  Raise it if the character brings up unrelated old scenes; lower
+                  it if it fails to remember things it should
+                </p>
+              </div>
+
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <label>Recall budget</label>
+                  <span className="text-accent tabular-nums">
+                    {s.retrieval_budget_tokens} tokens
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={100}
+                  max={1200}
+                  step={50}
+                  value={s.retrieval_budget_tokens}
+                  onChange={(e) =>
+                    update("retrieval_budget_tokens", Number(e.target.value))
+                  }
+                  className="w-full accent-accent"
+                />
+                <p className="text-xs text-slate-600 mt-0.5">
+                  Context spent on recall, taken from what history could use
+                </p>
+              </div>
+            </div>
+          )}
+
           {sessionId && (
             <div className="pt-2 border-t border-ink-800">
               <button
@@ -156,7 +235,29 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
                     trimmed · {prompt.lore_entries ?? 0} lore entries
                     {prompt.lore_dropped > 0 &&
                       ` (${prompt.lore_dropped} over budget)`}
+                    {" · "}
+                    {prompt.retrieved_entries ?? 0} recalled
+                    {prompt.retrieval_dropped > 0 &&
+                      ` (${prompt.retrieval_dropped} over budget)`}
                   </div>
+                  {prompt.retrieval_error && (
+                    <div className="text-xs text-amber-400/90 mb-1">
+                      Vector recall unavailable: {prompt.retrieval_error}
+                    </div>
+                  )}
+                  {prompt.retrieved?.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {prompt.retrieved.map((h) => (
+                        <span
+                          key={h.message_id}
+                          title={h.content}
+                          className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/15 border border-sky-500/25 text-sky-300/90"
+                        >
+                          #{h.message_id} · {h.score.toFixed(2)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {prompt.lore_fired?.length > 0 && (
                     <div className="flex flex-wrap gap-1 mb-2">
                       {prompt.lore_fired.map((f, i) => (

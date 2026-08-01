@@ -12,7 +12,7 @@ from ..cards.models import CharacterCard
 from ..chat import build_turn_prompt, stream_reply
 from ..config import settings
 from ..db import Character, ChatSession, Message, Persona, SessionLocal, get_db
-from ..memory import memory_manager
+from ..memory import memory_manager, rag
 from ..prompt import estimate_tokens, substitute
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -177,13 +177,14 @@ def regenerate(session_id: int, db: DbSession = Depends(get_db)) -> StreamingRes
 
 
 @router.get("/{session_id}/prompt")
-def inspect_prompt(session_id: int, db: DbSession = Depends(get_db)) -> dict:
+async def inspect_prompt(session_id: int, db: DbSession = Depends(get_db)) -> dict:
     """Debug view -- exactly what the model will receive."""
     s = db.get(ChatSession, session_id)
     if not s:
         raise HTTPException(404, "Session not found")
-    card, built = build_turn_prompt(s)
-    ctx = memory_manager.build_context(s, card)
+    # One build, not two: retrieval embeds the query, so calling build_context
+    # again here would double the round-trips just to report on them.
+    _card, ctx, built = await build_turn_prompt(s, db=db)
     return {
         "prompt": built.text,
         "stop": built.stop,
@@ -192,6 +193,18 @@ def inspect_prompt(session_id: int, db: DbSession = Depends(get_db)) -> dict:
         "lore_entries": built.lore_entries,
         "lore_fired": ctx.lore_fired,
         "lore_dropped": ctx.lore_dropped,
+        "retrieved_entries": built.retrieved_entries,
+        "retrieved": [
+            {
+                "message_id": h.message_id,
+                "role": h.role,
+                "score": round(h.score, 4),
+                "content": h.content,
+            }
+            for h in ctx.retrieved_hits
+        ],
+        "retrieval_dropped": ctx.retrieval_dropped,
+        "retrieval_error": ctx.retrieval_error,
     }
 
 
@@ -292,6 +305,7 @@ def get_memory(session_id: int, db: DbSession = Depends(get_db)) -> dict:
     if not s:
         raise HTTPException(404, "Session not found")
     pending = memory_manager.pending(s)
+    index = rag.index_state(db, s)
     return {
         "summary": s.summary or "",
         "summarized_upto_id": s.summarized_upto_id or 0,
@@ -300,7 +314,33 @@ def get_memory(session_id: int, db: DbSession = Depends(get_db)) -> dict:
         "pending_tokens": sum(estimate_tokens(m.content) for m in pending),
         "trigger_tokens": settings.summary_trigger_tokens,
         "will_summarize_next_turn": memory_manager.should_summarize(s),
+        "retrieval_enabled": settings.retrieval_enabled,
+        "embedding_model": index["model"],
+        "indexed_count": index["indexed"],
+        "unindexed_count": index["stale"],
+        "embeddable_count": index["embeddable"],
+        # Retrieval only searches what has left the prompt, so with nothing
+        # folded there is nothing for it to find. Worth saying plainly in the UI.
+        "searchable_count": len(s.messages) - len(pending),
     }
+
+
+@router.post("/{session_id}/reindex")
+async def reindex(session_id: int, db: DbSession = Depends(get_db)) -> dict:
+    """Embed any message without a current vector.
+
+    Normally this happens on each turn, so it's here for the two cases that
+    can't wait: a chat that predates retrieval being switched on, and a change
+    of embedding model, which invalidates every stored vector at once.
+    """
+    s = db.get(ChatSession, session_id)
+    if not s:
+        raise HTTPException(404, "Session not found")
+    try:
+        written = await rag.index_session(db, s)
+    except Exception as exc:
+        raise HTTPException(502, f"Embedding backend failed: {type(exc).__name__}: {exc}")
+    return {"indexed": written, **rag.index_state(db, s)}
 
 
 @router.patch("/{session_id}/memory")

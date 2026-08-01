@@ -1,5 +1,12 @@
 from .database import SessionLocal, engine, get_db, init_db
-from .models import Base, Character, ChatSession, Message, Persona
+from .models import (
+    Base,
+    Character,
+    ChatSession,
+    Message,
+    MessageEmbedding,
+    Persona,
+)
 
 __all__ = [
     "SessionLocal",
@@ -10,5 +17,6 @@ __all__ = [
     "Character",
     "ChatSession",
     "Message",
+    "MessageEmbedding",
     "Persona",
 ]
