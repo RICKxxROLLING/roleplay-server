@@ -33,10 +33,27 @@ from .tokens import estimate_tokens
 DEFAULT_SYSTEM = (
     "You are {{char}} in an ongoing roleplay with {{user}}. Stay in character at "
     "all times. Write vivid, immersive prose in third person, past tense. Describe "
-    "{{char}}'s actions, speech and internal state. Never write {{user}}'s dialogue "
-    "or decide their actions. Advance the scene with concrete detail rather than "
-    "summarising."
+    "{{char}}'s actions, speech and internal state. Advance the scene with concrete "
+    "detail rather than summarising."
 )
+
+# Deliberately NOT part of DEFAULT_SYSTEM. A card's `system_prompt` replaces the
+# default wholesale, per the V2 contract -- and community cards are authored
+# against SillyTavern, which supplies its own persistent anti-impersonation
+# directive. So card authors never write one, and folding ours into the default
+# meant importing any card with a system_prompt silently dropped the only copy.
+# Observed against a real model: the character narrated the user's actions and
+# dialogue outright.
+IMPERSONATION_GUARD = (
+    "Write only {{char}}'s speech, actions and inner life. Never write {{user}}'s "
+    "words or actions, and never decide what {{user}} does next -- end your reply "
+    "and let {{user}} answer."
+)
+
+# Repeated immediately before the generation point. Small models weight recency
+# far more heavily than a directive sitting thousands of tokens up the prompt,
+# and impersonation is exactly the instruction they drop first.
+TAIL_REMINDER = "Continue as {{char}}. Do not write {{user}}'s dialogue or actions."
 
 INSTRUCTION = "### Instruction:"
 RESPONSE = "### Response:"
@@ -102,8 +119,10 @@ def build_prompt(
     budget = context_tokens - max_new_tokens - reserve_tokens
 
     # --- Mandatory head ---
+    # The guard is appended rather than baked into the default, so it survives a
+    # card supplying its own system_prompt.
     system = substitute(card.system_prompt or DEFAULT_SYSTEM, char, user_name)
-    head_parts = [system]
+    head_parts = [system, substitute(IMPERSONATION_GUARD, char, user_name)]
 
     if user_persona:
         head_parts.append(f"{user_name}'s persona: {substitute(user_persona, char, user_name)}")
@@ -158,10 +177,13 @@ def build_prompt(
     # --- Tail: post-history instructions sit closest to the generation point ---
     # Wrapped as a proper Alpaca instruction block; a bare paragraph between two
     # ### Response: headers confuses Llama-2 instruct tunes.
-    tail = substitute(card.post_history_instructions, char, user_name)
-    if tail:
-        tail = f"{INSTRUCTION}\n{tail}"
-        used += estimate_tokens(tail)
+    # The card's own tail comes first; ours lands last, closest to generation.
+    tail_parts = [
+        substitute(card.post_history_instructions, char, user_name),
+        substitute(TAIL_REMINDER, char, user_name),
+    ]
+    tail = f"{INSTRUCTION}\n" + "\n".join(p for p in tail_parts if p)
+    used += estimate_tokens(tail)
 
     priming = f"{RESPONSE}\n{char}:"
     used += estimate_tokens(priming)
@@ -187,8 +209,9 @@ def build_prompt(
     if retrieved_block:
         sections.append(retrieved_block)
     sections.extend(kept)
-    if tail:
-        sections.append(tail)
+    # Always present now -- the tail carries the impersonation reminder even when
+    # the card has no post_history_instructions of its own.
+    sections.append(tail)
     sections.append(priming)
 
     return BuiltPrompt(

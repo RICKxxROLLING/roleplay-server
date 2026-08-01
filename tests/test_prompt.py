@@ -39,6 +39,47 @@ def test_post_history_wrapped_as_instruction():
     assert p.text.index("Stay in character.") > p.text.index("Seraphine is an archivist.")
 
 
+def test_impersonation_guard_survives_a_card_system_prompt():
+    """The bug this exists for, seen against a real model: the character wrote
+    the user's dialogue.
+
+    A card's `system_prompt` replaces the default wholesale per the V2 contract.
+    The anti-impersonation rule used to live inside that default, so importing
+    any card carrying its own system_prompt silently dropped it -- and community
+    cards never supply one, because SillyTavern adds its own separately.
+    """
+    p = build_prompt(
+        card(system_prompt="You are Seraphine. Be terse."), [], user_name="Riley"
+    )
+    assert "Be terse." in p.text, "card's own directive must still be honoured"
+    assert "Never write Riley's words or actions" in p.text
+
+
+def test_impersonation_guard_is_not_duplicated_by_default():
+    p = build_prompt(card(), [], user_name="Riley")
+    assert p.text.count("Never write Riley's words or actions") == 1
+
+
+def test_reminder_sits_closest_to_generation():
+    """Small models weight recency; the head directive is thousands of tokens away."""
+    p = build_prompt(card(), [("user", "hi")], user_name="Riley")
+    reminder = "Do not write Riley's dialogue or actions."
+    assert reminder in p.text
+    assert p.text.index(reminder) > p.text.index("Seraphine is an archivist.")
+    # Nothing but the response priming may follow it.
+    assert p.text[p.text.index(reminder) + len(reminder):].strip() == f"{RESPONSE}\nSeraphine:"
+
+
+def test_card_tail_and_reminder_coexist():
+    """The card's own post-history text must not be displaced by ours."""
+    p = build_prompt(card(post_history_instructions="Stay in character."), [])
+    assert "Stay in character." in p.text
+    assert "Do not write" in p.text
+    assert p.text.index("Stay in character.") < p.text.index("Do not write")
+    # Still one instruction block, not two competing headers.
+    assert p.text.count(INSTRUCTION) == 1
+
+
 def test_stop_sequences_are_newline_anchored():
     """A bare 'Riley:' would truncate prose like: she turned to Riley: "..." """
     p = build_prompt(card(), [], user_name="Riley")
