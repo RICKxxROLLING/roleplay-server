@@ -203,3 +203,21 @@ def test_publish_workflow_can_push_packages():
     wf = load_yaml(".github/workflows/publish.yml")
     job = wf["jobs"]["build-and-push"]
     assert job["permissions"]["packages"] == "write"
+
+
+def test_image_build_is_gated_on_checks():
+    """Both suites must pass before anything reaches GHCR.
+
+    The frontend half matters as much as pytest: `vite build` does no scope
+    analysis, so a component referencing an unbound identifier compiles fine
+    and only fails when the page renders. That shipped once -- the Memory panel
+    went blank in production with every check green.
+    """
+    wf = load_yaml(".github/workflows/publish.yml")
+    assert wf["jobs"]["build-and-push"].get("needs") == "checks"
+
+    run_steps = " ".join(
+        s.get("run", "") for s in wf["jobs"]["checks"]["steps"]
+    )
+    assert "pytest" in run_steps
+    assert "npm run lint" in run_steps
