@@ -184,6 +184,11 @@ There's a test asserting the file has no CRLF.
 - **Retrieval and indexing never raise into the turn.** A dead embedding backend surfaces as a
   `memory` stream event and `RetrievalResult.error`; the reply proceeds without recall. Keep it
   that way — memory is best-effort around generation, not a precondition for it.
+- **`rag.probe()` and `rag.retrieve()` share `_score_all()` deliberately.** The probe is the
+  calibration tool (Memory → Test recall); if it scored differently from the live path it
+  would be worse than having no probe at all. Don't let them diverge. The probe returns
+  rejects too — that's its entire reason to exist, since a threshold can't be chosen from
+  data the floor already filtered out.
 
 ## Conventions
 

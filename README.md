@@ -365,12 +365,31 @@ Tuning (Settings panel, or `.env`):
 | `RP_RETRIEVAL_BUDGET_TOKENS` | 400 | Context spent on recall |
 | `RP_RETRIEVAL_QUERY_MESSAGES` | 3 | Recent turns forming the search query |
 
-**Expect to tune the floor.** RAG's failure mode is different in kind from the others: a
-misfire produces context that is plausible but irrelevant, which is much harder to notice
-than a missing fact — the character just brings up an unrelated old scene as if it mattered.
-Raise `RP_RETRIEVAL_MIN_SCORE` if that happens; lower it if it forgets things it shouldn't.
-**Settings → Inspect built prompt** lists each recalled message with its score, which is the
-fastest way to calibrate.
+### Calibrating the relevance floor
+
+RAG's failure mode differs in kind from the others: a misfire produces context that is
+plausible but irrelevant, which is far harder to notice than a missing fact — the character
+just raises an unrelated old scene as though it mattered.
+
+Use **Memory → Test recall**. Type any question and it scores it against the chat's memory
+without generating anything, listing every candidate — including the ones the floor rejects,
+annotated with why. The prompt inspector can't do this: it only shows what already passed,
+and you can't choose a threshold from data that was filtered out before you saw it.
+
+What to look for is **separation**, not an absolute number:
+
+1. Ask about something you know happened. Note what the right message scores.
+2. Ask about something that **never happened**. Note what the best result scores.
+3. Put `RP_RETRIEVAL_MIN_SCORE` in the gap.
+
+Step 2 is the one people skip and the one that matters. Embedding models often score
+unrelated text higher than intuition suggests, so a floor that looks generous can be passing
+everything. If the two ranges overlap, no threshold will work — raise
+`RP_RETRIEVAL_QUERY_MESSAGES` to give the query more context, or try a different embedding
+model.
+
+A free signal during normal play: if the inspector returns a full `RP_RETRIEVAL_TOP_K` on
+nearly every turn, including turns where nothing old is relevant, the floor is too low.
 
 Two safety properties, both tested:
 
@@ -442,6 +461,7 @@ GET   /api/sessions/{id}/memory       summary, watermark, counts, index coverage
 PATCH /api/sessions/{id}/memory       hand-edit the summary
 POST  /api/sessions/{id}/summarize    force a fold, ignoring the threshold
 POST  /api/sessions/{id}/reindex      embed anything without a current vector
+POST  /api/sessions/{id}/retrieve     score a query against memory, no generation
 GET   /api/sessions/{id}/prompt       exact prompt text, incl. what was recalled
 ```
 

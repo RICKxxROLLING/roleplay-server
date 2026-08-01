@@ -325,6 +325,56 @@ def get_memory(session_id: int, db: DbSession = Depends(get_db)) -> dict:
     }
 
 
+class ProbeIn(BaseModel):
+    query: str
+    limit: int = 20
+
+
+@router.post("/{session_id}/retrieve")
+async def probe_retrieval(
+    session_id: int, body: ProbeIn, db: DbSession = Depends(get_db)
+) -> dict:
+    """Score arbitrary text against this session's memory, without generating.
+
+    The calibration tool for `retrieval_min_score`. Unlike the prompt
+    inspector, it shows results that fall *below* the floor -- you cannot pick
+    a threshold from data that was filtered out before you saw it.
+    """
+    s = db.get(ChatSession, session_id)
+    if not s:
+        raise HTTPException(404, "Session not found")
+    if not body.query.strip():
+        raise HTTPException(400, "Query cannot be empty")
+
+    # Same exclusion as a real turn: pending messages are already verbatim in
+    # the prompt, so a probe that returned them would misrepresent the live path.
+    pending = {m.id for m in memory_manager.pending(s)}
+    result = await rag.probe(db, s, body.query, exclude_ids=pending, limit=body.limit)
+
+    return {
+        "query": body.query,
+        "candidates": result.candidates,
+        "error": result.error,
+        "settings": {
+            "embedding_model": settings.embedding_model,
+            "min_score": settings.retrieval_min_score,
+            "top_k": settings.retrieval_top_k,
+            "budget_tokens": settings.retrieval_budget_tokens,
+        },
+        "results": [
+            {
+                "message_id": p.message_id,
+                "role": p.role,
+                "score": round(p.score, 4),
+                "would_inject": p.would_inject,
+                "rejected_by": p.rejected_by,
+                "content": p.content,
+            }
+            for p in result.results
+        ],
+    }
+
+
 @router.post("/{session_id}/reindex")
 async def reindex(session_id: int, db: DbSession = Depends(get_db)) -> dict:
     """Embed any message without a current vector.

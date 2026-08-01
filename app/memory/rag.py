@@ -222,6 +222,47 @@ def build_query(history: list[tuple[str, str]]) -> str:
     return "\n".join(content for _, content in history[-n:] if content.strip())
 
 
+def _candidates(
+    db: DbSession, session: ChatSession, exclude_ids: set[int] | None
+) -> list[MessageEmbedding]:
+    """Vectors eligible for search: this session, current model, not already
+    verbatim in the prompt."""
+    exclude = exclude_ids or set()
+    rows = (
+        db.query(MessageEmbedding)
+        .filter(
+            MessageEmbedding.session_id == session.id,
+            MessageEmbedding.model == settings.embedding_model,
+        )
+        .order_by(MessageEmbedding.message_id.desc())
+        .limit(max(1, settings.retrieval_max_candidates))
+        .all()
+    )
+    return [r for r in rows if r.message_id not in exclude]
+
+
+async def _score_all(
+    query: str, candidates: list[MessageEmbedding]
+) -> tuple[list[tuple[float, MessageEmbedding]], str | None]:
+    """Score every candidate, unfiltered, highest first.
+
+    Shared by `retrieve` and `probe` so the calibration tool can never drift
+    from what the live path actually does -- a probe that scored differently
+    would be worse than no probe at all.
+    """
+    try:
+        vectors = await get_embedder().embed([query])
+    except Exception as exc:
+        return [], f"{type(exc).__name__}: {exc}"
+    if not vectors:
+        return [], "Embedder returned no vector"
+
+    q = unpack(pack(vectors[0]))
+    scored = [(similarity(q, unpack(row.vector)), row) for row in candidates]
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    return scored, None
+
+
 async def retrieve(
     db: DbSession,
     session: ChatSession,
@@ -240,38 +281,15 @@ async def retrieve(
     if not query.strip():
         return RetrievalResult()
 
-    exclude = exclude_ids or set()
-    model = settings.embedding_model
-
-    rows = (
-        db.query(MessageEmbedding)
-        .filter(
-            MessageEmbedding.session_id == session.id,
-            MessageEmbedding.model == model,
-        )
-        .order_by(MessageEmbedding.message_id.desc())
-        .limit(max(1, settings.retrieval_max_candidates))
-        .all()
-    )
-    candidates = [r for r in rows if r.message_id not in exclude]
+    candidates = _candidates(db, session, exclude_ids)
     if not candidates:
         return RetrievalResult()
 
-    try:
-        vectors = await get_embedder().embed([query])
-    except Exception as exc:
-        return RetrievalResult(error=f"{type(exc).__name__}: {exc}", candidates=len(candidates))
-    if not vectors:
-        return RetrievalResult(error="Embedder returned no vector", candidates=len(candidates))
+    all_scored, error = await _score_all(query, candidates)
+    if error:
+        return RetrievalResult(error=error, candidates=len(candidates))
 
-    q = unpack(pack(vectors[0]))
-
-    scored: list[tuple[float, MessageEmbedding]] = []
-    for row in candidates:
-        score = similarity(q, unpack(row.vector))
-        if score >= settings.retrieval_min_score:
-            scored.append((score, row))
-    scored.sort(key=lambda pair: pair[0], reverse=True)
+    scored = [(s, r) for s, r in all_scored if s >= settings.retrieval_min_score]
 
     top_k = max(0, settings.retrieval_top_k)
     budget = settings.retrieval_budget_tokens
@@ -298,6 +316,92 @@ async def retrieve(
     # block reads as a fragment of the story rather than a ranked list.
     hits.sort(key=lambda h: h.message_id)
     return RetrievalResult(hits=hits, dropped=dropped, candidates=len(candidates))
+
+
+@dataclass
+class Probe:
+    message_id: int
+    role: str
+    content: str
+    score: float
+    #: Whether the live path would actually inject this at current settings.
+    would_inject: bool
+    #: Why not, when it wouldn't. None when it would.
+    rejected_by: str | None = None
+
+
+@dataclass
+class ProbeResult:
+    results: list[Probe] = field(default_factory=list)
+    candidates: int = 0
+    error: str | None = None
+
+
+async def probe(
+    db: DbSession,
+    session: ChatSession,
+    query: str,
+    exclude_ids: set[int] | None = None,
+    limit: int = 20,
+) -> ProbeResult:
+    """Score arbitrary text against the session's vectors without generating.
+
+    Exists because calibrating `retrieval_min_score` from the live path is
+    close to impossible: the prompt inspector only shows hits that already
+    passed the floor, so you cannot see what scored just below it, and the
+    query is whatever the last message happened to be. Setting a threshold
+    from data you cannot see is guesswork.
+
+    This returns *everything* scored, including rejects, and marks what the
+    current settings would do with each. The point is to make the gap between
+    a real hit and the best irrelevant one visible -- the floor belongs
+    between them.
+    """
+    candidates = _candidates(db, session, exclude_ids)
+    if not query.strip() or not candidates:
+        return ProbeResult(candidates=len(candidates))
+
+    scored, error = await _score_all(query, candidates)
+    if error:
+        return ProbeResult(candidates=len(candidates), error=error)
+
+    top_k = max(0, settings.retrieval_top_k)
+    budget = settings.retrieval_budget_tokens
+    kept = 0
+    used = 0
+    results: list[Probe] = []
+
+    for score, row in scored[:limit]:
+        msg = db.get(Message, row.message_id)
+        if msg is None:
+            continue
+
+        # Mirror the live path's decisions in order, so the annotation explains
+        # the real reason rather than just the score.
+        rejected: str | None = None
+        if score < settings.retrieval_min_score:
+            rejected = "below min_score"
+        elif kept >= top_k:
+            rejected = "over top_k"
+        elif budget and used + estimate_tokens(msg.content) > budget:
+            rejected = "over token budget"
+
+        if rejected is None:
+            kept += 1
+            used += estimate_tokens(msg.content)
+
+        results.append(
+            Probe(
+                message_id=msg.id,
+                role=msg.role,
+                content=msg.content,
+                score=score,
+                would_inject=rejected is None,
+                rejected_by=rejected,
+            )
+        )
+
+    return ProbeResult(results=results, candidates=len(candidates))
 
 
 def render(hits: list[Hit], char_name: str, user_name: str) -> list[str]:
