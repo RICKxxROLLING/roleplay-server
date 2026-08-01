@@ -84,6 +84,7 @@ export default function App() {
         onClose={() => setPanel(null)}
         sessionId={activeId}
         onChanged={refresh}
+        onOpenModels={() => setPanel("models")}
       />
 
       <PersonaManager

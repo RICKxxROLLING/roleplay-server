@@ -7,7 +7,7 @@
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/OWNER/roleplay-server/issues</Support>
+  <Support>https://github.com/RICKxxROLLING/roleplay-server/issues</Support>
   <Project>https://ollama.com</Project>
   <Overview>
     Ollama inference server — the model backend for Roleplay Server.
@@ -17,14 +17,14 @@
     REQUIRES the Nvidia Driver plugin (Apps tab), plus a reboot after installing it.
     After the container starts, pull a model from the Unraid terminal:
 
-      docker exec -it roleplay-ollama ollama pull mythomax
+      docker exec -it roleplay-ollama ollama pull HammerAI/mythomax-l2
 
     MythoMax L2 13B needs roughly 8-10 GB VRAM at Q4/Q5 quantization.
   </Overview>
   <Category>Productivity: Tools:</Category>
   <WebUI/>
   <TemplateURL/>
-  <Icon>https://raw.githubusercontent.com/OWNER/roleplay-server/main/deploy/unraid/icon.png</Icon>
+  <Icon>https://raw.githubusercontent.com/RICKxxROLLING/roleplay-server/master/deploy/unraid/icon.png</Icon>
   <ExtraParams>--runtime=nvidia</ExtraParams>
   <PostArgs/>
   <CPUset/>

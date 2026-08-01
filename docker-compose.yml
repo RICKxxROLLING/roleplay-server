@@ -6,6 +6,11 @@ services:
     image: ollama/ollama:latest
     container_name: roleplay-ollama
     restart: unless-stopped
+    # Published so a host-side dev server can use the same GPU and models.
+    # SECURITY: Ollama has no authentication. Trusted networks only.
+    # Set OLLAMA_PORT= (empty) in .env to keep it off the host entirely.
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
     volumes:
       # Models are large -- keep them in a named volume so rebuilds don't
       # trigger a multi-GB re-download.
@@ -35,9 +40,29 @@ services:
         condition: service_healthy
     environment:
       OLLAMA_HOST: http://ollama:11434
-      MODEL: ${RP_MODEL:-mythomax}
+      MODEL: ${RP_MODEL:-HammerAI/mythomax-l2}
+      # Pulled up front so vector recall works the moment it is switched on in
+      # the Memory panel. Small next to the chat model (~275MB vs several GB).
+      # Set RP_EMBEDDING_MODEL= (empty) to skip it.
+      EMBED_MODEL: ${RP_EMBEDDING_MODEL-nomic-embed-text}
+    # Always exits 0. A bad model name must not wedge the whole stack: the app
+    # gates on this container *completing*, and the Models panel is how you fix
+    # a bad name -- so failing hard here would lock you out of the only UI that
+    # can repair it. The wait still happens; only the hard failure is dropped.
     entrypoint: ["/bin/sh", "-c"]
-    command: ['echo "Pulling $${MODEL} (first run downloads several GB)..." && ollama pull "$${MODEL}"']
+    command:
+      - >
+        echo "Pulling $${MODEL} (first run downloads several GB)...";
+        ollama pull "$${MODEL}" ||
+        echo "WARNING: could not pull '$${MODEL}'. The app will still start --
+        pick or download a model in its Models panel.";
+        if [ -n "$${EMBED_MODEL}" ]; then
+        echo "Pulling embedding model $${EMBED_MODEL}...";
+        ollama pull "$${EMBED_MODEL}" ||
+        echo "WARNING: could not pull '$${EMBED_MODEL}'. Vector recall stays
+        unavailable until it is present.";
+        fi;
+        exit 0
     restart: "no"
 
   # ---------------------------------------------------------------------- app
@@ -57,7 +82,7 @@ services:
     environment:
       RP_BACKEND: ollama
       RP_LLM_BASE_URL: http://ollama:11434
-      RP_MODEL: ${RP_MODEL:-mythomax}
+      RP_MODEL: ${RP_MODEL:-HammerAI/mythomax-l2}
 
       RP_CONTEXT_TOKENS: ${RP_CONTEXT_TOKENS:-4096}
       RP_MAX_NEW_TOKENS: ${RP_MAX_NEW_TOKENS:-400}
@@ -73,6 +98,15 @@ services:
       RP_KEEP_RECENT_MESSAGES: ${RP_KEEP_RECENT_MESSAGES:-8}
       RP_SUMMARY_MAX_TOKENS: ${RP_SUMMARY_MAX_TOKENS:-400}
       RP_SUMMARY_TEMPERATURE: ${RP_SUMMARY_TEMPERATURE:-0.3}
+
+      # Vector recall. Off by default; flip it in the Memory panel once the
+      # embedding model is present (model-pull fetches it above).
+      RP_RETRIEVAL_ENABLED: ${RP_RETRIEVAL_ENABLED:-false}
+      RP_EMBEDDING_MODEL: ${RP_EMBEDDING_MODEL:-nomic-embed-text}
+      RP_RETRIEVAL_TOP_K: ${RP_RETRIEVAL_TOP_K:-4}
+      RP_RETRIEVAL_MIN_SCORE: ${RP_RETRIEVAL_MIN_SCORE:-0.45}
+      RP_RETRIEVAL_BUDGET_TOKENS: ${RP_RETRIEVAL_BUDGET_TOKENS:-400}
+      RP_RETRIEVAL_QUERY_MESSAGES: ${RP_RETRIEVAL_QUERY_MESSAGES:-3}
 
       RP_DATABASE_URL: sqlite:////data/roleplay.db
       RP_DATA_DIR: /data

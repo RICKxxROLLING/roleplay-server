@@ -1,9 +1,9 @@
 """Memory Manager -- the seam every later phase plugs into.
 
 Phase 1:         return full history; the prompt builder trims to fit.
-Phase 2 (now):   fold old turns into ChatSession.summary behind a watermark.
-Phase 3 (next):  keyword-match card.character_book, return triggered entries.
-Phase 4:         vector-retrieve relevant old turns.
+Phase 2:         fold old turns into ChatSession.summary behind a watermark.
+Phase 3:         keyword-match card.character_book, return triggered entries.
+Phase 4 (now):   vector-retrieve relevant old turns.
 
 The watermark (`ChatSession.summarized_upto_id`) is the core idea: messages at or
 below it have been folded into the summary and are no longer sent verbatim.
@@ -11,6 +11,9 @@ Everything above it is recent history. This is deliberately *not* driven by the
 prompt builder's `dropped_messages`, because that count is a per-turn budget
 artefact that changes as samplers and card size change -- summarisation needs a
 stable, monotonic boundary it can commit to.
+
+That same watermark is what makes retrieval cheap to scope: everything below it
+has left the prompt, so it is exactly the set worth searching.
 """
 from __future__ import annotations
 
@@ -22,7 +25,7 @@ from ..cards.models import CharacterCard
 from ..config import settings
 from ..db.models import ChatSession, Message
 from ..prompt.tokens import estimate_tokens
-from . import lorebook
+from . import lorebook, rag
 from .summarizer import summarize
 
 
@@ -35,6 +38,12 @@ class MemoryContext:
     #: Entry names/keys that fired, for the inspector.
     lore_fired: list[str] = field(default_factory=list)
     lore_dropped: int = 0
+    #: Rendered, speaker-labelled retrieval hits, ready for the prompt.
+    retrieved: list[str] = field(default_factory=list)
+    #: The same hits with ids and scores, for the inspector.
+    retrieved_hits: list[rag.Hit] = field(default_factory=list)
+    retrieval_dropped: int = 0
+    retrieval_error: str | None = None
 
     @property
     def lore(self) -> list[str]:
@@ -61,14 +70,25 @@ class MemoryManager:
         mark = session.summarized_upto_id or 0
         return [m for m in session.messages if m.id > mark]
 
-    def build_context(self, session: ChatSession, card: CharacterCard) -> MemoryContext:
+    async def build_context(
+        self,
+        session: ChatSession,
+        card: CharacterCard,
+        db: DbSession | None = None,
+    ) -> MemoryContext:
+        """Compose the three memory sources into one context.
+
+        Async because retrieval has to embed the query, which is a network call.
+        `db` is optional so callers that only want summary + lorebook (and have
+        no session handy) can skip retrieval entirely.
+        """
         msgs = self.pending(session)
         history = [(m.role, m.content) for m in msgs]
 
         # Lorebook scans recent turns only, so it runs on pending history.
         lore = lorebook.select(card, history)
 
-        return MemoryContext(
+        ctx = MemoryContext(
             history=history,
             summary=session.summary or "",
             lore_before=lorebook.render(lore.before_char),
@@ -76,6 +96,20 @@ class MemoryManager:
             lore_fired=[_label(e) for e in lore.all],
             lore_dropped=lore.dropped,
         )
+
+        if db is not None and settings.retrieval_enabled:
+            # Anything still pending is about to be sent verbatim, so retrieving
+            # it would only buy a duplicate.
+            result = await rag.retrieve(
+                db, session, history, exclude_ids={m.id for m in msgs}
+            )
+            user_name = session.persona.name if session.persona else "You"
+            ctx.retrieved = rag.render(result.hits, card.name or "Character", user_name)
+            ctx.retrieved_hits = result.hits
+            ctx.retrieval_dropped = result.dropped
+            ctx.retrieval_error = result.error
+
+        return ctx
 
     # --- summarisation -----------------------------------------------------
 

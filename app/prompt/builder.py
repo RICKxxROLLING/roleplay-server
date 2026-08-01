@@ -9,12 +9,19 @@ cards behave the way their authors intended:
     4. Lore entries positioned "after_char"
     5. Example dialogue (mes_example)   <- trimmed first under pressure
     6. Rolling summary
-    7. Chat history                     <- trimmed oldest-first
-    8. post_history_instructions (card) <- deliberately last, closest to output
-    9. Response header priming the character's name
+    7. Retrieved past turns             <- Phase 4; sits with the summary, not history
+    8. Chat history                     <- trimmed oldest-first
+    9. post_history_instructions (card) <- deliberately last, closest to output
+   10. Response header priming the character's name
 
 Budgeting is greedy from the top: mandatory blocks first, then history newest-first
 until the budget is spent.
+
+Retrieved turns go *above* the history rather than inline with it. They are out
+of sequence by construction -- a line from twenty chapters ago -- and splicing
+them into the recent-history block would present them as things that just
+happened. Grouped under their own header they read as recollection, which is
+what they are.
 """
 from __future__ import annotations
 
@@ -42,6 +49,7 @@ class BuiltPrompt:
     used_tokens: int
     dropped_messages: int
     lore_entries: int = 0
+    retrieved_entries: int = 0
 
 
 def substitute(text: str, char_name: str, user_name: str) -> str:
@@ -84,6 +92,7 @@ def build_prompt(
     summary: str = "",
     lore_before: list[str] | None = None,
     lore_after: list[str] | None = None,
+    retrieved: list[str] | None = None,
     context_tokens: int = 4096,
     max_new_tokens: int = 400,
     reserve_tokens: int = 256,
@@ -133,6 +142,19 @@ def build_prompt(
         summary_block = f"Story so far: {summary}"
         used += estimate_tokens(summary_block)
 
+    # --- Phase 4 hook: retrieved past turns ---
+    # Already capped by the retriever's own token budget, so it competes with
+    # history for what's left rather than being trimmed again here.
+    retrieved = [t for t in (retrieved or []) if t.strip()]
+    retrieved_block = ""
+    if retrieved:
+        lines = "\n".join(substitute(t, char, user_name) for t in retrieved)
+        retrieved_block = (
+            "Relevant moments from earlier in this conversation, out of order:\n"
+            f"{lines}"
+        )
+        used += estimate_tokens(retrieved_block)
+
     # --- Tail: post-history instructions sit closest to the generation point ---
     # Wrapped as a proper Alpaca instruction block; a bare paragraph between two
     # ### Response: headers confuses Llama-2 instruct tunes.
@@ -162,6 +184,8 @@ def build_prompt(
         sections.append(example)
     if summary_block:
         sections.append(summary_block)
+    if retrieved_block:
+        sections.append(retrieved_block)
     sections.extend(kept)
     if tail:
         sections.append(tail)
@@ -176,4 +200,5 @@ def build_prompt(
         used_tokens=used,
         dropped_messages=dropped,
         lore_entries=lore_count,
+        retrieved_entries=len(retrieved),
     )

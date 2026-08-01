@@ -4,7 +4,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Any
 
-from sqlalchemy import ForeignKey, JSON, String, Text, DateTime
+from sqlalchemy import ForeignKey, JSON, LargeBinary, String, Text, DateTime
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -90,3 +90,38 @@ class Message(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
 
     session: Mapped[ChatSession] = relationship(back_populates="messages")
+    embedding: Mapped["MessageEmbedding | None"] = relationship(
+        back_populates="message", cascade="all, delete-orphan", uselist=False
+    )
+
+
+class MessageEmbedding(Base):
+    """One vector per message (Phase 4).
+
+    Stored as a raw float32 blob rather than in a vector-index extension:
+    sqlite-vec would mean a loadable SQLite extension, which isn't available in
+    every Python build and can't be expressed through the additive-only
+    migration helper. At single-user scale a linear scan is quick enough --
+    see `memory/rag.py` for the numbers.
+
+    `model` and `content_hash` are what make the index self-healing: a vector
+    computed by a different embedding model, or from text that has since been
+    edited, is not comparable and gets recomputed rather than silently returning
+    wrong neighbours.
+    """
+
+    __tablename__ = "message_embeddings"
+
+    message_id: Mapped[int] = mapped_column(
+        ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True
+    )
+    # Denormalised so a search can filter by session without joining messages.
+    session_id: Mapped[int] = mapped_column(ForeignKey("sessions.id"), index=True)
+    model: Mapped[str] = mapped_column(String(200))
+    dim: Mapped[int] = mapped_column()
+    content_hash: Mapped[str] = mapped_column(String(64))
+    # float32, little-endian, L2-normalised at write time so scoring is a dot product.
+    vector: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+
+    message: Mapped[Message] = relationship(back_populates="embedding")

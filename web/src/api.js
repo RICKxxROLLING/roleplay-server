@@ -74,6 +74,7 @@ export const api = {
       body: JSON.stringify({ summary }),
     }),
   forceSummarize: (id) => j(`/sessions/${id}/summarize`, { method: "POST" }),
+  reindex: (id) => j(`/sessions/${id}/reindex`, { method: "POST" }),
 };
 
 /**

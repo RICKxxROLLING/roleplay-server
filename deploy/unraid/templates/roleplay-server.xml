@@ -1,14 +1,14 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>roleplay-server</Name>
-  <Repository>ghcr.io/OWNER/roleplay-server:latest</Repository>
-  <Registry>https://github.com/OWNER/roleplay-server/pkgs/container/roleplay-server</Registry>
+  <Repository>ghcr.io/rickxxrolling/roleplay-server:latest</Repository>
+  <Registry>https://github.com/RICKxxROLLING/roleplay-server/pkgs/container/roleplay-server</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/OWNER/roleplay-server/issues</Support>
-  <Project>https://github.com/OWNER/roleplay-server</Project>
+  <Support>https://github.com/RICKxxROLLING/roleplay-server/issues</Support>
+  <Project>https://github.com/RICKxxROLLING/roleplay-server</Project>
   <Overview>
     Fully local AI roleplay chat. Imports SillyTavern V2 character cards, streams replies from a
     model on your own GPU, and keeps long conversations coherent with rolling summarization.
@@ -25,7 +25,7 @@
   <Category>Productivity: Tools:</Category>
   <WebUI>http://[IP]:[PORT:8000]/</WebUI>
   <TemplateURL/>
-  <Icon>https://raw.githubusercontent.com/OWNER/roleplay-server/main/deploy/unraid/icon.png</Icon>
+  <Icon>https://raw.githubusercontent.com/RICKxxROLLING/roleplay-server/master/deploy/unraid/icon.png</Icon>
   <ExtraParams/>
   <PostArgs/>
   <CPUset/>
@@ -70,13 +70,13 @@
   <Config
     Name="Model"
     Target="RP_MODEL"
-    Default="mythomax"
+    Default="HammerAI/mythomax-l2"
     Mode=""
-    Description="Must already be pulled into the Ollama container: docker exec -it roleplay-ollama ollama pull mythomax"
+    Description="Must already be pulled into the Ollama container: docker exec -it roleplay-ollama ollama pull HammerAI/mythomax-l2"
     Type="Variable"
     Display="always"
     Required="true"
-    Mask="false">mythomax</Config>
+    Mask="false">HammerAI/mythomax-l2</Config>
 
   <Config
     Name="PUID"

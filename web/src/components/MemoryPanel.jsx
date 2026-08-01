@@ -5,9 +5,15 @@ import { api } from "../api";
  * Summarization is lossy by nature, so this panel exists to make it inspectable
  * and correctable -- being able to fix a bad fold is what makes the whole
  * approach tolerable over long chats.
+ *
+ * Vector recall lives here too rather than in generation settings: the two are
+ * one story from the user's side. The summary is what the character remembers
+ * of the plot, recall is what it can look up verbatim, and understanding one
+ * means seeing the other next to it.
  */
-export default function MemoryPanel({ open, onClose, sessionId, onChanged }) {
+export default function MemoryPanel({ open, onClose, sessionId, onChanged, onOpenModels }) {
   const [mem, setMem] = useState(null);
+  const [health, setHealth] = useState(null);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
@@ -16,6 +22,9 @@ export default function MemoryPanel({ open, onClose, sessionId, onChanged }) {
     const m = await api.memory(sessionId);
     setMem(m);
     setDraft(m.summary);
+    // Best-effort: a dead backend shouldn't blank the panel, it just means we
+    // can't say whether the embedding model is present.
+    api.health().then(setHealth).catch(() => setHealth(null));
   };
 
   useEffect(() => {
@@ -53,6 +62,38 @@ export default function MemoryPanel({ open, onClose, sessionId, onChanged }) {
         r.folded ? `Folded ${r.folded} messages.` : "Nothing eligible to fold yet."
       );
       onChanged?.();
+    } catch (e) {
+      setNote(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleRecall(on) {
+    setMem((prev) => ({ ...prev, retrieval_enabled: on }));
+    setBusy(true);
+    try {
+      await api.patchSettings({ retrieval_enabled: on });
+      // Switching it on mid-chat leaves the backlog unembedded, so do it now
+      // rather than letting recall look broken until enough turns have passed.
+      if (on) await api.reindex(sessionId);
+      await load();
+      setNote(on ? "Vector recall on." : "Vector recall off.");
+    } catch (e) {
+      setNote(e.message);
+      await load().catch(() => {});
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reindexNow() {
+    setBusy(true);
+    setNote("Embedding…");
+    try {
+      const r = await api.reindex(sessionId);
+      await load();
+      setNote(r.indexed ? `Embedded ${r.indexed} messages.` : "Already up to date.");
     } catch (e) {
       setNote(e.message);
     } finally {
@@ -129,9 +170,83 @@ export default function MemoryPanel({ open, onClose, sessionId, onChanged }) {
               </button>
               {note && <span className="text-xs text-slate-500">{note}</span>}
             </div>
+
+            <Recall
+              mem={mem}
+              health={health}
+              busy={busy}
+              onToggle={toggleRecall}
+              onReindex={reindexNow}
+              onOpenModels={onOpenModels}
+            />
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function Recall({ mem, health, busy, onToggle, onReindex, onOpenModels }) {
+  const on = mem.retrieval_enabled;
+  // null means embeddings live on another host, so this list can't answer.
+  const missing = health?.ok && health.embedding_model_installed === false;
+
+  return (
+    <div className="pt-4 border-t border-ink-800 space-y-3">
+      <label className="flex items-center gap-2.5 text-sm cursor-pointer">
+        <input
+          type="checkbox"
+          checked={on}
+          disabled={busy}
+          onChange={(e) => onToggle(e.target.checked)}
+          className="accent-accent w-4 h-4"
+        />
+        Vector recall
+        <span className="text-xs text-slate-600">
+          look up exact details the summary blurred
+        </span>
+      </label>
+
+      {on && (
+        <>
+          {missing && (
+            <div className="text-xs text-amber-400/90 bg-amber-950/30 border border-amber-900/40 rounded-lg px-3 py-2">
+              <span className="font-medium">{mem.embedding_model}</span> isn't
+              installed, so nothing can be embedded yet.{" "}
+              {onOpenModels && (
+                <button onClick={onOpenModels} className="underline hover:text-amber-300">
+                  Download it
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3 text-center">
+            <Stat label="embedded" value={mem.indexed_count} />
+            <Stat label="searchable" value={mem.searchable_count} />
+          </div>
+
+          <p className="text-xs text-slate-600 leading-relaxed">
+            Only condensed turns are searchable — anything still verbatim is in
+            the prompt already, so recalling it would just repeat it.
+            {mem.searchable_count === 0 &&
+              " Nothing has been condensed yet, so recall has nothing to search."}
+          </p>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onReindex}
+              disabled={busy}
+              className="text-sm px-3 py-1.5 rounded-lg border border-ink-700 hover:bg-ink-850 disabled:opacity-40"
+            >
+              Re-embed{mem.unindexed_count > 0 ? ` (${mem.unindexed_count})` : ""}
+            </button>
+            <span className="text-xs text-slate-600">
+              via {mem.embedding_model}
+            </span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
