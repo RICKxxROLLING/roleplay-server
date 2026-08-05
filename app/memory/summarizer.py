@@ -22,7 +22,7 @@ You maintain the memory log for an ongoing roleplay between {user} and {char}.
 Rewrite the memory log so it absorbs the new events below. Preserve, in priority order:
 1. Concrete facts: names, places, objects, numbers, titles.
 2. Decisions made, promises given, and threads left unresolved.
-3. How the relationship between {char} and {user} has shifted.
+3. What {char} and {user} did to each other and how they now stand.
 4. {char}'s current goals, location, and emotional state.
 
 Rules:
@@ -87,6 +87,36 @@ def _clean(text: str) -> str:
     return out.strip()
 
 
+#: Mental-state verbs. A summary may record what the user *did*; asserting what
+#: they knew or felt is deciding their interior life for them.
+_MENTAL = (r"(?:knew|felt|thought|hoped|wondered|realis\w+|realiz\w+|understood|"
+           r"sensed|believed|wanted|intended|feared|considered)")
+
+
+def narrates_user(text: str, user_name: str) -> bool:
+    """Whether the summary asserts what the *user* thought or felt.
+
+    Seen live after many folds: "He knew that their paths would diverge",
+    "Riley's thoughts turned to his own goals". It is the impersonation problem
+    migrating into memory, and because the summary is re-injected every turn it
+    quietly teaches the model that narrating the user is in bounds.
+
+    Adding a rule to the fold prompt was tried and measured against the live
+    model: it did not work. Given an already-contaminated log the model
+    reproduces its opening almost verbatim, scoring 4.25 such phrases per
+    summary before the rule and 5.50 after. From a clean log it produces none
+    either way. So there is nothing for a rule to prevent and nothing it can
+    repair -- the leverage is entirely in refusing to store the first one.
+    """
+    name = re.escape(user_name.strip())
+    if not name:
+        return False
+    if re.search(rf"\b{name}'s (?:thoughts|feelings|mind|heart|hopes|fears)\b",
+                 text, re.I):
+        return True
+    return re.search(rf"\b{name}\b[^.]{{0,40}}?\b{_MENTAL}\b", text, re.I) is not None
+
+
 def looks_like_roleplay(text: str) -> bool:
     """Whether the model carried on the scene instead of summarising it.
 
@@ -132,6 +162,11 @@ async def summarize(
         top_p=0.9,
         top_k=40,
         repeat_penalty=1.0,
+        # The fold prompt carries a whole transcript slice and can outgrow the
+        # chat prompt, so it needs the same explicit window -- otherwise the
+        # backend truncates the instructions off the front and the model is
+        # left with bare dialogue to continue.
+        context_tokens=settings.context_tokens,
         max_new_tokens=settings.summary_max_tokens,
         stop=["### Instruction:", "</s>"],
     )
@@ -146,5 +181,7 @@ async def summarize(
     # exactly what pulls the model back toward summarising. Retrying is the
     # recovery path, not just a safety net.
     if looks_like_roleplay(cleaned):
+        return existing
+    if narrates_user(cleaned, user_name):
         return existing
     return cleaned

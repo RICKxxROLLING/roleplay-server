@@ -185,3 +185,45 @@ def test_prose_summaries_are_accepted():
         "Elizabeth gathered evidence that the manuscript was a forgery and agreed "
         "to present it at the hearing. Riley waited by the river."
     )
+
+
+def test_a_summary_narrating_the_user_is_rejected(client, session, llm, monkeypatch):
+    """Impersonation migrating into memory. Seen live after many folds:
+    "He knew that their paths would diverge", "Riley's thoughts turned to his
+    own goals". Because the summary is re-injected every turn, storing one
+    quietly teaches the model that narrating the user is in bounds."""
+    flood(client, session)
+    db = SessionLocal()
+    before = db.get(ChatSession, session).summary
+    db.close()
+
+    async def narrates(prompt, params):
+        return (
+            "Riley watched as she stepped into the sunshine. He knew their paths "
+            "would diverge. Riley's thoughts turned to his own goals and the sea."
+        )
+
+    import app.memory.summarizer as summarizer
+
+    monkeypatch.setattr(summarizer.get_client(), "generate", narrates)
+    client.post(f"/api/sessions/{session}/summarize")
+
+    db = SessionLocal()
+    assert db.get(ChatSession, session).summary == before
+    db.close()
+
+
+def test_the_character_may_still_have_an_inner_life():
+    """Only the *user's* interiority is off limits -- a roleplay summary that
+    couldn't say how the character felt would be useless."""
+    from app.memory.summarizer import narrates_user
+
+    text = ("Elizabeth felt a rush of fear but agreed. She knew the road would be "
+            "long. Riley warned her he would not always be present.")
+    assert not narrates_user(text, "Riley")
+
+
+def test_user_narration_check_needs_a_name():
+    from app.memory.summarizer import narrates_user
+
+    assert not narrates_user("She knew the road would be long.", "")

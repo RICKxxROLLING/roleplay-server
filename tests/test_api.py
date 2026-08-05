@@ -229,3 +229,46 @@ def test_repeat_window_is_persistable(client):
     assert r.status_code == 200, r.text
     assert r.json()["repeat_last_n"] == 512
     assert client.get("/api/settings").json()["repeat_last_n"] == 512
+
+
+def test_context_window_reaches_the_backend(monkeypatch):
+    """Ollama does not infer its window from the prompt -- it applies its own
+    default and silently truncates from the front, where the system prompt and
+    character card sit. Demonstrated against a real model: an ~8500-token
+    prompt with num_ctx unset answered "the text provided does not mention a
+    vault password" about a marker in its own first line."""
+    import asyncio
+
+    import httpx
+
+    from app.llm.base import GenerationParams
+    from app.llm.ollama import OllamaClient
+
+    sent = {}
+
+    class FakeStream:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        async def aiter_lines(self):
+            yield '{"response": "hi", "done": true}'
+
+    monkeypatch.setattr(
+        httpx.AsyncClient, "stream",
+        lambda self, method, url, **kw: (sent.update(kw["json"]), FakeStream())[1],
+    )
+
+    client = OllamaClient("http://x", "m")
+
+    async def run():
+        async for _ in client.generate_stream("p", GenerationParams(context_tokens=8192)):
+            pass
+
+    asyncio.run(run())
+    assert sent["options"]["num_ctx"] == 8192
