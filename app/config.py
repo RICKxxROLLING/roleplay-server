@@ -62,8 +62,14 @@ class Settings(BaseSettings):
     # 0.60 sits in the observed gap. See "Verification status" in CLAUDE.md.
     retrieval_min_score: float = 0.60
     retrieval_budget_tokens: int = 400
-    # How many recent messages form the query. More context, blurrier query.
-    retrieval_query_messages: int = 3
+    # How many recent *user* turns form the query. One, because more is worse:
+    # measured on a real chat, "what was the innkeeper's name?" alone found the
+    # message naming him at rank 1, while blending in the adjacent user turns
+    # dropped it to rank 3 where a long narration hit ate the token budget and
+    # pushed it out entirely. The model then invented a name. Even a bare
+    # fragment ("And your father's name?") retrieved correctly on its own, so
+    # the context this was meant to supply is not worth the dilution.
+    retrieval_query_messages: int = 1
     # Cap on vectors scanned per search. Scoring is pure Python (see rag.py);
     # this keeps the worst case bounded on a very long chat.
     retrieval_max_candidates: int = 2000
