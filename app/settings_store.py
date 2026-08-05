@@ -28,6 +28,7 @@ PERSISTABLE: dict[str, type] = {
     "top_p": float,
     "top_k": int,
     "repeat_penalty": float,
+    "repeat_last_n": int,
     "summary_enabled": bool,
     "summary_trigger_tokens": int,
     "keep_recent_messages": int,

@@ -31,6 +31,7 @@ class OllamaClient(LLMClient):
                 "top_p": params.top_p,
                 "top_k": params.top_k,
                 "repeat_penalty": params.repeat_penalty,
+                "repeat_last_n": params.repeat_last_n,
                 "num_predict": params.max_new_tokens,
                 "stop": params.stop,
             },

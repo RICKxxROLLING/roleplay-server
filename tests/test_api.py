@@ -179,3 +179,53 @@ def test_unknown_setting_is_ignored(client):
     from app.config import settings
 
     assert settings.data_dir == TMP_DIR
+
+
+def test_repeat_window_reaches_the_backend(monkeypatch):
+    """The bug this fixes was silent: Ollama defaults repeat_last_n to 64 --
+    shorter than one reply here -- so the penalty could not see the previous
+    turn and phrasing recycled while repeat_penalty looked correctly set.
+    Nothing surfaces that unless the option is actually sent."""
+    import httpx
+
+    from app.llm.base import GenerationParams
+    from app.llm.ollama import OllamaClient
+
+    sent = {}
+
+    class FakeStream:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        async def aiter_lines(self):
+            yield '{"response": "hi", "done": true}'
+
+    def fake_stream(self, method, url, **kw):
+        sent.update(kw["json"])
+        return FakeStream()
+
+    monkeypatch.setattr(httpx.AsyncClient, "stream", fake_stream)
+
+    import asyncio
+
+    client = OllamaClient("http://x", "m")
+
+    async def run():
+        async for _ in client.generate_stream("p", GenerationParams(repeat_last_n=1024)):
+            pass
+
+    asyncio.run(run())
+    assert sent["options"]["repeat_last_n"] == 1024
+
+
+def test_repeat_window_is_persistable(client):
+    r = client.patch("/api/settings", json={"repeat_last_n": 512})
+    assert r.status_code == 200, r.text
+    assert r.json()["repeat_last_n"] == 512
+    assert client.get("/api/settings").json()["repeat_last_n"] == 512

@@ -109,6 +109,7 @@ class SettingsPatch(BaseModel):
     top_p: float | None = None
     top_k: int | None = None
     repeat_penalty: float | None = None
+    repeat_last_n: int | None = None
     max_new_tokens: int | None = None
     context_tokens: int | None = None
 

@@ -34,6 +34,15 @@ class Settings(BaseSettings):
     top_p: float = 0.9
     top_k: int = 40
     repeat_penalty: float = 1.1
+    # How far back the repeat penalty looks, in tokens. Ollama's own default is
+    # 64 -- shorter than one reply here (~300 tokens), so the penalty could not
+    # see the end of the sentence being written, let alone the previous turn,
+    # and phrasing recycled across the chat while repeat_penalty looked set.
+    # Measured on a real chat, sampling continuations of a live prompt and
+    # scoring vocabulary not already used: 15.4% new at 64, 24.4% at 1024.
+    # Raising repeat_penalty to 1.18 on top reached 29.7%, but that is a
+    # sharper instrument -- this window is the part that was simply missing.
+    repeat_last_n: int = 1024
 
     # --- Phase 2: rolling summarization ---
     summary_enabled: bool = True

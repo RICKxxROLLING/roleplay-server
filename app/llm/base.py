@@ -19,6 +19,11 @@ class GenerationParams:
     top_p: float = 0.9
     top_k: int = 40
     repeat_penalty: float = 1.1
+    #: How far back the repeat penalty looks. Ollama defaults this to 64 tokens,
+    #: which is shorter than a single reply here -- so the penalty cannot see
+    #: the previous turn and phrasing recycles across the chat while the
+    #: penalty appears to be set. See config.repeat_last_n for the measurements.
+    repeat_last_n: int = 1024
     max_new_tokens: int = 400
     # Stop sequences keep the model from writing the user's side of the scene.
     stop: list[str] = field(default_factory=list)
