@@ -107,6 +107,14 @@ def narrates_user(text: str, user_name: str) -> bool:
     summary before the rule and 5.50 after. From a clean log it produces none
     either way. So there is nothing for a rule to prevent and nothing it can
     repair -- the leverage is entirely in refusing to store the first one.
+
+    Known gap, and a deliberate one: a pronoun reference in a later sentence
+    ("Riley watched her go. He knew their paths would diverge.") is not caught.
+    Catching it would mean flagging "He knew" in general, which is
+    indistinguishable from the *character's* interiority -- and that has to stay
+    allowed, or a roleplay summary could never say how the character felt. Real
+    degraded summaries have carried the possessive form as well, so this catches
+    them in practice without buying that false positive.
     """
     name = re.escape(user_name.strip())
     if not name:
@@ -115,6 +123,36 @@ def narrates_user(text: str, user_name: str) -> bool:
                  text, re.I):
         return True
     return re.search(rf"\b{name}\b[^.]{{0,40}}?\b{_MENTAL}\b", text, re.I) is not None
+
+
+#: First and second person. A third-person past-tense summary has no business
+#: containing these outside quoted speech, which is rejected separately.
+_PERSONAL = re.compile(r"\b(?:I|me|my|mine|you|your|yours|we|us|our)\b", re.I)
+
+#: A handful could be a quirk of phrasing; a cluster means the voice is wrong.
+_PERSONAL_LIMIT = 3
+
+
+def wrong_voice(text: str) -> bool:
+    """Whether the summary is written in first or second person.
+
+    A third failure mode, found only by running the chat: the fold came back as
+    the *user* speaking, in character, directly to the character --
+
+        "Elizabeth, remember that even when I am not physically present, my
+        spirit will always be with you..."
+
+    Fourteen first- and second-person pronouns in seventy-nine words, and every
+    existing guard missed it. There were no stage directions, no quoted speech,
+    no "Name:" label (the opening is a vocative comma, not a speaker tag) and no
+    "Riley knew" construction. It was fluent third-person-free prose that
+    happened to be a farewell speech, and it replaced a summary that had been
+    carrying real facts.
+
+    Person is the cheap invariant the other checks were dancing around: whatever
+    else a summary is, it is written *about* these people, not *by* one of them.
+    """
+    return len(_PERSONAL.findall(text)) >= _PERSONAL_LIMIT
 
 
 def looks_like_roleplay(text: str) -> bool:
@@ -181,6 +219,8 @@ async def summarize(
     # exactly what pulls the model back toward summarising. Retrying is the
     # recovery path, not just a safety net.
     if looks_like_roleplay(cleaned):
+        return existing
+    if wrong_voice(cleaned):
         return existing
     if narrates_user(cleaned, user_name):
         return existing
