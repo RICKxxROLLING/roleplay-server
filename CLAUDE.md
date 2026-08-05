@@ -267,19 +267,26 @@ One deployment, one configuration: Unraid + RTX 2080 (8GB), `HammerAI/smart-lemo
 - **The Alpaca prompt works against a Mistral-based model.** Cards behave, stop sequences
   hold, the speaker-prefix stripping does its job.
 - **Summarisation folds sensibly** and the summary reads as usable prose.
-- **Retrieval returns relevant results at the stock defaults** — `retrieval_min_score=0.45`,
-  `top_k=4`, `budget=400`, `query_messages=3`. See the caveat below before treating that as
-  settled.
+- **Retrieval was calibrated against `nomic-embed-text`, and the shipped floor was wrong.**
+  Three positive probes (facts planted below the watermark) scored 0.65 / 0.72 / 0.84.
+  Three negative probes — questions about events that never happened — still scored
+  0.46 / 0.48 / 0.55. At the old `retrieval_min_score=0.45` **every** negative probe
+  injected results; one filled all four slots with pure noise. The default is now **0.60**,
+  which sits in the measured gap: the same six probes then produced four injections, all
+  genuinely relevant, and rejected all three negatives.
+  The lesson generalises — this embedding model scores unrelated text far higher than
+  intuition suggests, so a floor that *feels* generous can be passing everything. Recalibrate
+  with **Memory → Test recall** after any embedding-model change, and always include a
+  negative probe; positives alone would have shown this configuration as working perfectly.
 
 ### Still unverified
 
-- **Retrieval's *precision* has not been tested.** What was observed is that relevant things
-  come back. Nobody has run a *negative* probe — asking about something that never happened
-  and checking whether the floor rejects it. That matters because the failure mode is
-  recall that is plausible but irrelevant, which reads as fine and is the hard kind to
-  notice. `nomic-embed-text` also tends to score unrelated text higher than intuition
-  suggests, so 0.45 may be permissive. A standing signal: if the inspector returns a full
-  `top_k` on nearly every turn, the floor is probably too low.
+- **Retrieval precision was measured on one chat, of nine folded messages.** Six probes is
+  enough to show 0.45 was badly wrong; it is not enough to prove 0.60 is optimal. The margin
+  either side is roughly 0.05, so a differently-worded question could still land the wrong
+  side of it. Re-probe on a long real chat before treating 0.60 as settled.
+- **Only `nomic-embed-text` has been characterised.** The floor is a property of the
+  embedding model, not of this code — any other model needs its own calibration run.
 - **MythoMax 13B has never actually run.** It's still the default, but the only model this
   has been used with is the 7B. Prompt tuning reflects that one model.
 - **Only one card has been exercised**, and it turned out to be misconfigured (its `name`

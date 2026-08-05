@@ -51,9 +51,12 @@ class Settings(BaseSettings):
     # Set it only if embeddings run on a separate server.
     embedding_base_url: str = ""
     retrieval_top_k: int = 4
-    # Cosine floor. Below this a hit is noise, and irrelevant retrieved context
-    # is worse than none -- it reads as plausible and derails the scene.
-    retrieval_min_score: float = 0.45
+    # Cosine floor, measured rather than guessed. Against nomic-embed-text,
+    # genuinely relevant turns scored 0.65-0.84 while questions about events
+    # that never happened still reached 0.46-0.55 -- so the earlier 0.45 passed
+    # essentially everything, and every negative probe injected pure noise.
+    # 0.60 sits in the observed gap. See "Verification status" in CLAUDE.md.
+    retrieval_min_score: float = 0.60
     retrieval_budget_tokens: int = 400
     # How many recent messages form the query. More context, blurrier query.
     retrieval_query_messages: int = 3
