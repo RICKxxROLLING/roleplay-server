@@ -24,6 +24,13 @@ class GenerationParams:
     #: the previous turn and phrasing recycles across the chat while the
     #: penalty appears to be set. See config.repeat_last_n for the measurements.
     repeat_last_n: int = 1024
+    #: The window the backend should allocate. Ollama does NOT infer this from
+    #: the prompt -- it applies its own default and silently truncates anything
+    #: longer, from the front, which is exactly where the system prompt and
+    #: character card sit. Demonstrated: an ~8500-token prompt with this unset
+    #: came back "the text provided does not mention a vault password" about a
+    #: marker placed in its first line; sent, the same prompt answered.
+    context_tokens: int = 4096
     max_new_tokens: int = 400
     # Stop sequences keep the model from writing the user's side of the scene.
     stop: list[str] = field(default_factory=list)

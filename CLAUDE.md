@@ -136,6 +136,26 @@ what the model was trained with and our symmetric embedding looks like an oversi
 Measured: they raise the right answer 0.596 → 0.623 but raise the distractors more,
 collapsing separation from +0.131 to +0.042. Tested and rejected, not overlooked.
 
+**`num_ctx` is sent explicitly, and `context_tokens` is a lie without it.** Ollama does not
+infer its window from the prompt — it applies its own default and silently truncates anything
+longer *from the front*, which is exactly where the system prompt, the impersonation guard and
+the character card sit. Demonstrated: an ~8500-token prompt with `num_ctx` unset answered
+"the text provided does not mention a vault password" about a marker placed in its own first
+line; with `num_ctx: 8192` the same prompt answered correctly. Raising `context_tokens`
+without this does not widen the window, it just builds a longer prompt for the backend to
+throw the top off. The summariser sends it too — a fold prompt carries a transcript slice and
+can outgrow the chat prompt.
+
+**A summary that narrates the *user's* interior life is rejected too.** Same shape as the
+roleplay guard, same reason: it is re-injected every turn, so storing one teaches the model
+that narrating the user is in bounds. Note what was tried first — adding a rule to the fold
+prompt ("never write what {user} thought or felt"). Measured against the live model it did
+nothing: from a contaminated log the model reproduces its opening near-verbatim, 4.25 such
+phrases per summary before the rule and 5.50 after; from a clean log it produces none either
+way. There is nothing for a rule to prevent and nothing it can repair. Don't re-add it.
+The character's interiority is explicitly still allowed — a roleplay summary that couldn't say
+how the character felt would be useless.
+
 **`repeat_last_n` is set explicitly, because Ollama's default of 64 is a trap.** The repeat
 penalty only looks back that many tokens. Replies here run ~300, so at the default the
 penalty could not see the end of the sentence being written, let alone the previous turn —

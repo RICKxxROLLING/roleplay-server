@@ -32,6 +32,9 @@ class OllamaClient(LLMClient):
                 "top_k": params.top_k,
                 "repeat_penalty": params.repeat_penalty,
                 "repeat_last_n": params.repeat_last_n,
+                # Without this Ollama uses its own default window and truncates
+                # the front of anything longer -- see GenerationParams.
+                "num_ctx": params.context_tokens,
                 "num_predict": params.max_new_tokens,
                 "stop": params.stop,
             },

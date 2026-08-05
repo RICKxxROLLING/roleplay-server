@@ -53,6 +53,7 @@ def _params(built_stop: list[str], overrides: dict | None) -> GenerationParams:
         top_k=o.get("top_k", settings.top_k),
         repeat_penalty=o.get("repeat_penalty", settings.repeat_penalty),
         repeat_last_n=o.get("repeat_last_n", settings.repeat_last_n),
+        context_tokens=o.get("context_tokens", settings.context_tokens),
         max_new_tokens=o.get("max_new_tokens", settings.max_new_tokens),
         stop=built_stop,
     )
