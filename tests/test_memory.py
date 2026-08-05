@@ -110,3 +110,78 @@ def test_summarization_can_be_disabled(client, session, llm):
     client.patch("/api/settings", json={"summary_enabled": False})
     flood(client, session)
     assert client.get(f"/api/sessions/{session}/memory").json()["summarized_count"] == 0
+
+
+# --- summaries must not turn back into roleplay ---------------------------
+
+
+def test_a_roleplay_summary_is_rejected(client, session, llm, monkeypatch):
+    """Observed live: a fold came back as stage directions and dialogue, which
+    then got injected as "Story so far" on every later turn.
+
+    Worse, it is self-perpetuating -- the next fold is handed that summary and
+    told to rewrite it, so dialogue begets dialogue. Never storing one is what
+    stops the loop starting."""
+    flood(client, session)
+    db = SessionLocal()
+    before = db.get(ChatSession, session).summary
+    db.close()
+    assert before.startswith("FOLD#"), "setup: expected a normal summary first"
+
+    async def in_character(prompt, params):
+        return (
+            'Elizabeth: *She looks up with relief in her eyes.* "Without your help '
+            'I could not have done it." *She takes his hand.* "Thank you."'
+        )
+
+    import app.memory.summarizer as summarizer
+
+    monkeypatch.setattr(summarizer.get_client(), "generate", in_character)
+    client.post(f"/api/sessions/{session}/summarize")
+
+    db = SessionLocal()
+    after = db.get(ChatSession, session).summary
+    db.close()
+    assert after == before, "roleplay output must not replace a good summary"
+
+
+def test_rejecting_a_summary_leaves_the_watermark(client, session, llm, monkeypatch):
+    """Retrying is the recovery path: the same turns get folded again next time
+    against a longer transcript, which is what pulls the model back to
+    summarising."""
+    flood(client, session)
+    db = SessionLocal()
+    before = db.get(ChatSession, session).summarized_upto_id
+    db.close()
+
+    async def in_character(prompt, params):
+        return '*She nods once.* "As you wish," she whispered, taking his hand gently.'
+
+    import app.memory.summarizer as summarizer
+
+    monkeypatch.setattr(summarizer.get_client(), "generate", in_character)
+    client.post(f"/api/sessions/{session}/summarize")
+
+    db = SessionLocal()
+    after = db.get(ChatSession, session).summarized_upto_id
+    db.close()
+    assert before == after
+
+
+def test_speaker_label_is_stripped_before_judging():
+    """A stray "Name:" prefix alone shouldn't discard an otherwise good summary."""
+    from app.memory.summarizer import _clean, looks_like_roleplay
+
+    text = "Elizabeth Rockwell: She travelled north with him and reached Aldermere."
+    cleaned = _clean(text)
+    assert cleaned.startswith("She travelled north")
+    assert not looks_like_roleplay(cleaned)
+
+
+def test_prose_summaries_are_accepted():
+    from app.memory.summarizer import looks_like_roleplay
+
+    assert not looks_like_roleplay(
+        "Elizabeth gathered evidence that the manuscript was a forgery and agreed "
+        "to present it at the hearing. Riley waited by the river."
+    )
