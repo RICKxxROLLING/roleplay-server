@@ -227,3 +227,55 @@ def test_user_narration_check_needs_a_name():
     from app.memory.summarizer import narrates_user
 
     assert not narrates_user("She knew the road would be long.", "")
+
+
+def test_a_first_person_summary_is_rejected(client, session, llm, monkeypatch):
+    """The third failure mode, and the one every earlier guard missed: the fold
+    came back as the *user* speaking in character, directly to the character.
+    No stage directions, no quoted speech, no "Name:" label (the opening is a
+    vocative comma), no "Riley knew" construction -- just fluent prose in the
+    wrong voice, replacing a summary that had been carrying real facts."""
+    flood(client, session)
+    db = SessionLocal()
+    before = db.get(ChatSession, session).summary
+    db.close()
+
+    async def farewell(prompt, params):
+        return (
+            "Elizabeth, remember that even when I am not physically present, my "
+            "spirit will always be with you. You have the strength to continue "
+            "your journey, and I have faith in your ability to find the answers."
+        )
+
+    import app.memory.summarizer as summarizer
+
+    monkeypatch.setattr(summarizer.get_client(), "generate", farewell)
+    client.post(f"/api/sessions/{session}/summarize")
+
+    db = SessionLocal()
+    assert db.get(ChatSession, session).summary == before
+    db.close()
+
+
+def test_third_person_summaries_pass_the_voice_check():
+    """Whatever else a summary is, it is written *about* these people rather
+    than by one of them -- but it must not trip on ordinary prose."""
+    from app.memory.summarizer import wrong_voice
+
+    assert not wrong_voice(
+        "Elizabeth left the Church and took a room above Wenna the bookbinder. "
+        "Riley told her he would not always be present and urged her north."
+    )
+    assert not wrong_voice(
+        "She promised to return by winter and he agreed to wait at the coast."
+    )
+
+
+def test_a_stray_pronoun_does_not_reject_a_summary():
+    """One slip is a quirk of phrasing; a cluster is the wrong voice."""
+    from app.memory.summarizer import wrong_voice
+
+    assert not wrong_voice(
+        "Elizabeth authenticated the manuscript and was vindicated at the hearing. "
+        "She told the panel it was your signature that convinced her."
+    )

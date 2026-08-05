@@ -146,6 +146,15 @@ without this does not widen the window, it just builds a longer prompt for the b
 throw the top off. The summariser sends it too — a fold prompt carries a transcript slice and
 can outgrow the chat prompt.
 
+**A summary written in first or second person is rejected.** The third failure mode, and the
+one that got past every earlier guard: a fold came back as the *user* speaking in character —
+*"Elizabeth, remember that even when I am not physically present, my spirit will always be
+with you…"* — fourteen first/second-person pronouns in seventy-nine words. No stage
+directions, no quoted speech, no `Name:` label (the opening is a vocative comma), no "Riley
+knew" construction. Fluent prose in the wrong voice, replacing a summary that had been
+carrying real facts. Person is the cheap invariant the other checks were circling: whatever
+else a summary is, it is written *about* these people rather than by one of them.
+
 **A summary that narrates the *user's* interior life is rejected too.** Same shape as the
 roleplay guard, same reason: it is re-injected every turn, so storing one teaches the model
 that narrating the user is in bounds. Note what was tried first — adding a rule to the fold
@@ -348,6 +357,13 @@ One deployment, one configuration: Unraid + RTX 2080 (8GB), `HammerAI/smart-lemo
 
 ### Still unverified
 
+- **`summary_trigger_tokens` does not control how much stays verbatim; `keep_recent_messages`
+  does.** Raising the trigger from 1800 to 4000 cut fold *events* from 27 to 7 across an
+  identical 34-turn run, but the end state was unchanged at 61 condensed / 8 verbatim — a
+  fold always keeps exactly `keep_recent_messages`, so however rarely it fires, it catches up
+  when it does. It was also actively worse: each fold then digested ~4000 tokens into a
+  400-token budget, and one came back as a farewell speech in the user's voice. 1800 with an
+  8192 window measured best. Raise `keep_recent_messages` if you want more verbatim history.
 - **Long-chat behaviour was measured once, over 32 turns and 7 folds.** Repetition was not
   the problem people assume: consecutive replies overlapped 0.18 on vocabulary (max 0.37) and
   exactly one sentence recurred verbatim across 33 replies. Nor was card fixation — the story
