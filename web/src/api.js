@@ -28,6 +28,8 @@ export const api = {
 
   characters: () => j("/characters"),
   character: (id) => j(`/characters/${id}`),
+  createCharacter: (body) =>
+    j("/characters", { method: "POST", body: JSON.stringify(body) }),
   updateCharacter: (id, patch) =>
     j(`/characters/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteCharacter: (id) => j(`/characters/${id}`, { method: "DELETE" }),

@@ -14,10 +14,14 @@ class Settings(BaseSettings):
     # For llama.cpp/vLLM/LM Studio point at their /v1 endpoint.
     llm_base_url: str = "http://localhost:11434"
     llm_api_key: str = "not-needed-for-local"
-    # Namespaced on purpose: there is no bare `mythomax` in Ollama's official
-    # library, so `ollama pull mythomax` fails with "file does not exist".
-    # MythoMax only exists under community namespaces.
-    model: str = "HammerAI/mythomax-l2"
+    # A 7B by default, not the 13B this project was designed around. The stated
+    # requirement is an 8GB card, and MythoMax 13B needs ~11GB once the KV cache
+    # is counted -- so the old default could not run on the hardware the docs
+    # advertised. Mistral's grouped-query attention also makes its cache six
+    # times cheaper per token, so this fits with room to spare.
+    # Namespaced on purpose: bare names resolve to Ollama's official library,
+    # where these community models do not exist.
+    model: str = "HammerAI/smart-lemon-cookie"
 
     # --- Context / prompt budgeting ---
     # MythoMax L2 13B is Llama-2 based: 4096 native context.

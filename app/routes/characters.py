@@ -49,6 +49,52 @@ async def import_card(
     return {"id": char.id, "name": char.name, "card": char.card}
 
 
+class CharacterIn(BaseModel):
+    """A character written by hand rather than imported from a PNG.
+
+    Only `name` is required. Everything else is optional so a character can be
+    started from an idea and filled in from the editor afterwards -- the same
+    fields, the same validation, just no card file behind it.
+    """
+
+    name: str
+    description: str = ""
+    personality: str = ""
+    scenario: str = ""
+    first_mes: str = ""
+    mes_example: str = ""
+    system_prompt: str = ""
+    post_history_instructions: str = ""
+    alternate_greetings: list[str] = []
+    tags: list[str] = []
+
+    character_book: list[LoreEntry] = []
+
+
+@router.post("")
+def create_character(body: CharacterIn, db: DbSession = Depends(get_db)) -> dict:
+    """Create a character from scratch.
+
+    Stored in exactly the same shape as an imported card, so everything
+    downstream -- prompt building, the editor, the lorebook -- cannot tell the
+    difference. The only thing a hand-written character lacks is `avatar_path`,
+    which is already nullable for cards whose PNG went missing.
+    """
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(400, "Character name is required")
+
+    # Round-trip through the schema so a hand-written character can't be created
+    # in a shape the importer would have rejected.
+    card = CharacterCard.model_validate({**body.model_dump(), "name": name})
+
+    char = Character(name=card.name, card=card.model_dump(), avatar_path=None)
+    db.add(char)
+    db.commit()
+    db.refresh(char)
+    return {"id": char.id, "name": char.name, "card": char.card}
+
+
 @router.get("")
 def list_characters(db: DbSession = Depends(get_db)) -> list[dict]:
     rows = db.query(Character).order_by(Character.name).all()

@@ -147,11 +147,16 @@ There's a test asserting the file has no CRLF.
 
 ## Gotchas
 
-- **There is no bare `mythomax` in Ollama's official library.** `ollama pull mythomax` fails
-  with `pull model manifest: file does not exist`. MythoMax exists only under community
-  namespaces; the default is `HammerAI/mythomax-l2` (Gryphe/MythoMax-L2-13b, Q4_K_M, 4K
-  context — which is what `context_tokens: 4096` and the Alpaca builder assume). This was
-  found the hard way on a real Unraid deploy; a test now guards the unqualified name.
+- **Model names must carry their namespace.** Bare names resolve to Ollama's official
+  library; `ollama pull mythomax` fails with `pull model manifest: file does not exist`
+  because MythoMax exists only under community namespaces. Found the hard way on a real
+  Unraid deploy; a test now guards the unqualified name.
+- **The default is a 7B, not the 13B this was designed around.** `HammerAI/smart-lemon-cookie`
+  (Mistral 7B, Q4_K_M) needs ~4.9GB against MythoMax 13B's ~11GB, and the project advertises
+  an 8GB card — the old default could not run on the hardware the docs promised. It's a merge
+  of Alpaca-formatted models, so the prompt builder is unaffected. MythoMax remains the
+  documented 12GB+ option, and `context_tokens: 4096` is still what the Alpaca builder
+  assumes even though Mistral could go far higher.
 - **`model-pull` always exits 0.** The app gates on that container *completing successfully*,
   and the Models panel is the only place to fix a bad model name — so a hard failure there
   locked the user out of the very UI that repairs it. Failures now warn loudly and let the
@@ -287,8 +292,9 @@ One deployment, one configuration: Unraid + RTX 2080 (8GB), `HammerAI/smart-lemo
   side of it. Re-probe on a long real chat before treating 0.60 as settled.
 - **Only `nomic-embed-text` has been characterised.** The floor is a property of the
   embedding model, not of this code — any other model needs its own calibration run.
-- **MythoMax 13B has never actually run.** It's still the default, but the only model this
-  has been used with is the 7B. Prompt tuning reflects that one model.
+- **MythoMax 13B has never actually run.** No longer the default, but it is still what the
+  Alpaca prompt was designed against, and it remains the documented 12GB+ option. The only
+  model this has been used with is the 7B, so prompt tuning reflects that one model.
 - **Only one card has been exercised**, and it turned out to be misconfigured (its `name`
   was the *user's* role — see Gotchas). Card compatibility across a library is untested.
 - **The Ollama `/api/embed` → `/api/embeddings` fallback** is still reasoned from API

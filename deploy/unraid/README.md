@@ -74,7 +74,7 @@ Add Container → `roleplay-ollama`. Defaults are fine. Apply and wait for it to
 
 You don't need to pull a model here — the app's **Models** panel downloads them with a
 progress bar once it's connected. (If you'd rather use the terminal:
-`docker exec -it roleplay-ollama ollama pull HammerAI/mythomax-l2`.)
+`docker exec -it roleplay-ollama ollama pull HammerAI/smart-lemon-cookie`.)
 
 ### 3. Then the app
 
