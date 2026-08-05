@@ -6,6 +6,7 @@ const SLIDERS = [
   { key: "top_p", min: 0.1, max: 1, step: 0.05, hint: "Nucleus sampling cutoff" },
   { key: "top_k", min: 0, max: 200, step: 1, hint: "0 disables top-k" },
   { key: "repeat_penalty", min: 1, max: 1.5, step: 0.01, hint: "Curbs looping; >1.2 can flatten voice" },
+  { key: "repeat_last_n", min: 64, max: 2048, step: 64, hint: "How far back that penalty looks. 64 is shorter than one reply, which is what makes phrasing recycle across turns" },
   { key: "max_new_tokens", min: 64, max: 1024, step: 16, hint: "Reply length cap" },
 ];
 

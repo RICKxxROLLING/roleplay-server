@@ -136,6 +136,15 @@ what the model was trained with and our symmetric embedding looks like an oversi
 Measured: they raise the right answer 0.596 → 0.623 but raise the distractors more,
 collapsing separation from +0.131 to +0.042. Tested and rejected, not overlooked.
 
+**`repeat_last_n` is set explicitly, because Ollama's default of 64 is a trap.** The repeat
+penalty only looks back that many tokens. Replies here run ~300, so at the default the
+penalty could not see the end of the sentence being written, let alone the previous turn —
+phrasing recycled across the whole chat while `repeat_penalty` sat at a sensible-looking 1.1.
+Measured by sampling continuations of a real prompt and scoring words not already used in
+that chat: **15.4% new at 64, 24.4% at 1024**. Raising `repeat_penalty` to 1.18 on top
+reached 29.7%, but that is the sharper instrument and it is already exposed; the window was
+the part simply missing. Don't drop this option believing `repeat_penalty` alone covers it.
+
 **Stop sequences are newline-anchored (`\nRiley:`, not `Riley:`).** A bare name would
 truncate legitimate prose like `she turned to Riley: "..."`.
 

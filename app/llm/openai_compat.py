@@ -39,6 +39,7 @@ class OpenAICompatClient(LLMClient):
             # Non-standard but honoured by llama.cpp / vLLM; ignored elsewhere.
             "top_k": params.top_k,
             "repetition_penalty": params.repeat_penalty,
+            "repeat_last_n": params.repeat_last_n,
         }
         async with self._client.stream(
             "POST", f"{self.base_url}/completions", json=payload
