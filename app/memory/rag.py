@@ -213,13 +213,28 @@ def index_state(db: DbSession, session: ChatSession) -> dict:
 
 
 def build_query(history: list[tuple[str, str]]) -> str:
-    """The search query is the tail of the conversation, not just the last line.
+    """The search query is the tail of the *user's* turns, not the raw tail.
 
-    One message alone is often a pronoun-heavy fragment ("do you remember him?")
-    that embeds to nothing useful; a few turns of context anchor it.
+    A few turns of context are wanted, because one message alone is often a
+    pronoun-heavy fragment ("do you remember him?") that embeds to nothing
+    useful. But assistant replies must be excluded, and that took a real chat
+    to discover: they run several times longer than a user turn and are
+    stylistically near-identical to each other ("*She nods...*"), so blending
+    them in makes the query embed as generic narration and match other
+    narration. Observed live -- asking "what was the innkeeper's name?" scored
+    0.81 against the message naming him when queried alone, and dropped out of
+    the top four entirely once the surrounding prose was mixed in. The model
+    then invented a name.
+
+    The user's turns carry the intent; the assistant's carry the house style.
     """
     n = max(1, settings.retrieval_query_messages)
-    return "\n".join(content for _, content in history[-n:] if content.strip())
+    asked = [c for role, c in history if role == "user" and c.strip()]
+    if asked:
+        return "\n".join(asked[-n:])
+    # Nothing from the user yet -- a session that opens on the card's greeting.
+    # Fall back rather than returning nothing at all.
+    return "\n".join(c for _, c in history[-n:] if c.strip())
 
 
 def _candidates(

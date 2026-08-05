@@ -286,6 +286,44 @@ def test_inspector_reports_scores(client, session, llm, embedder):
         assert 0.0 <= hit["score"] <= 1.0
 
 
+# --- query construction ----------------------------------------------------
+
+
+def test_query_uses_only_user_turns():
+    """Assistant replies are several times longer than a user turn and read
+    almost identically to each other, so blending them in makes the query embed
+    as generic narration. Observed live: asking for a name scored 0.81 against
+    the message stating it when queried alone, and fell out of the top four
+    once the surrounding prose was mixed in -- the model then invented one."""
+    from app.memory.rag import build_query
+
+    history = [
+        ("user", "The innkeeper was Bram Halloway."),
+        ("assistant", "*She nods, committing the name to memory.*"),
+        ("user", "Take the northern road."),
+        ("assistant", "*She nods, a mix of uncertainty and excitement swirling within her.*"),
+        ("user", "What was the innkeeper's name?"),
+    ]
+    q = build_query(history)
+    assert "innkeeper's name" in q
+    assert "She nods" not in q, "assistant narration must not dilute the query"
+
+
+def test_query_falls_back_before_the_user_has_spoken():
+    """A session opens on the card's greeting; there is no user turn yet."""
+    from app.memory.rag import build_query
+
+    assert build_query([("assistant", "Hello, traveller.")]) == "Hello, traveller."
+
+
+def test_query_respects_the_message_count(client):
+    from app.memory.rag import build_query
+
+    client.patch("/api/settings", json={"retrieval_query_messages": 2})
+    history = [("user", "one"), ("user", "two"), ("user", "three")]
+    assert build_query(history) == "two\nthree"
+
+
 # --- calibration probe -----------------------------------------------------
 
 

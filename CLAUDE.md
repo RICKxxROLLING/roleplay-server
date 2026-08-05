@@ -103,6 +103,26 @@ append-only memory log grows until it eats the context window, defeating the pur
 **A failed fold must not advance the watermark.** Otherwise turns vanish into a black hole.
 `summarize_now()` only advances if the summary actually changed. Tested.
 
+**A summary that reads as roleplay is rejected, not stored.** Roleplay finetunes — the
+models most likely to be pointed at this — sometimes answer "compress this scene" by writing
+more of the scene. Seen live: a whole fold came back as stage directions and dialogue, then
+got injected as "Story so far" on every later turn, pinning ~440 tokens of emotional dialogue
+permanently in context. The vicious part is that it self-perpetuates: the next fold is handed
+that summary and told to rewrite it, so dialogue begets dialogue. Measured against the real
+model — a clean summary stayed clean whether the new turns were sparse or dense with
+narration, while a degraded one reproduced itself. So the loop cannot start if a degraded
+summary is never stored. Rejection also *is* the recovery path: the watermark stays put, the
+same turns are refolded next time against a longer transcript, and a longer transcript is
+what pulls the model back toward summarising.
+
+**The retrieval query is built from user turns only, not the raw tail.** Assistant replies
+run several times longer than a user turn and are stylistically near-identical to one another
+("*She nods...*"), so blending them in makes the query embed as generic narration and match
+other narration. Measured live: "what was the innkeeper's name?" scored 0.81 against the
+message naming him when queried alone, and fell out of the top four entirely once the
+surrounding prose was mixed in — the model then invented a name. The user's turns carry
+intent; the assistant's carry house style.
+
 **Stop sequences are newline-anchored (`\nRiley:`, not `Riley:`).** A bare name would
 truncate legitimate prose like `she turned to Riley: "..."`.
 
@@ -286,6 +306,14 @@ One deployment, one configuration: Unraid + RTX 2080 (8GB), `HammerAI/smart-lemo
 
 ### Still unverified
 
+- **Long-chat behaviour was measured once, over 32 turns and 7 folds.** Repetition was not
+  the problem people assume: consecutive replies overlapped 0.18 on vocabulary (max 0.37) and
+  exactly one sentence recurred verbatim across 33 replies. Nor was card fixation — the story
+  was walked deliberately from the card's temple through a road, a university archive and a
+  forgery hearing, and card anchors fell to 0.25 per 100 words in the act that never mentioned
+  them. The model follows the scene. What *did* break were the two memory bugs above, and a
+  degraded summary looping in context is the most likely thing behind reports of "it keeps
+  repeating itself".
 - **Retrieval precision was measured on one chat, of nine folded messages.** Six probes is
   enough to show 0.45 was badly wrong; it is not enough to prove 0.60 is optimal. The margin
   either side is roughly 0.05, so a differently-worded question could still land the wrong

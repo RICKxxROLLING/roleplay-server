@@ -10,6 +10,8 @@ is exactly what naive summarisation throws away first.
 """
 from __future__ import annotations
 
+import re
+
 from ..cards.models import CharacterCard
 from ..config import settings
 from ..llm import GenerationParams, get_client
@@ -63,6 +65,12 @@ def build_summary_prompt(
     )
 
 
+#: Stage directions -- "*She nods once.*" -- the clearest roleplay tell.
+_STAGE_DIRECTION = re.compile(r"\*[^*\n]{3,}\*")
+#: A leading "Elizabeth Rockwell:" speaker label.
+_SPEAKER_LABEL = re.compile(r"^[A-Z][\w' .-]{1,40}:\s")
+
+
 def _clean(text: str) -> str:
     """Strip artefacts small models tack onto summaries."""
     out = text.strip()
@@ -71,10 +79,37 @@ def _clean(text: str) -> str:
         if idx != -1:
             out = out[:idx]
     # Models sometimes label the output despite being told not to.
-    for prefix in ("MEMORY LOG:", "Memory log:", "Summary:", "SUMMARY:"):
+    for prefix in ("MEMORY LOG:", "Memory log:", "Summary:", "SUMMARY:", "Updated report:"):
         if out.startswith(prefix):
             out = out[len(prefix) :]
+    # A roleplay model may open with the character's own name as a speaker label.
+    out = _SPEAKER_LABEL.sub("", out.strip(), count=1)
     return out.strip()
+
+
+def looks_like_roleplay(text: str) -> bool:
+    """Whether the model carried on the scene instead of summarising it.
+
+    Roleplay finetunes are the ones most likely to be used here, and they are
+    strongly biased toward staying in character -- asked to compress a scene,
+    they sometimes just write more of it. Observed against a real model: an
+    entire fold came back as stage directions and quoted dialogue, which then
+    got injected as "Story so far" on every subsequent turn.
+
+    What makes that failure vicious is that it is self-perpetuating. The next
+    fold is handed the previous summary and told to rewrite it, so a summary
+    that is dialogue produces more dialogue. Measured against the live model:
+    a clean summary stayed clean whether the new turns were sparse or dense
+    with narration, while a degraded one reproduced itself. The loop cannot
+    start if a degraded summary is never stored, which is what this guards.
+    """
+    if _STAGE_DIRECTION.search(text):
+        return True
+    if _SPEAKER_LABEL.match(text.strip()):
+        return True
+    # Reproduced dialogue. Summaries of these chats came back with none at all,
+    # so two or more quoted spans means it is transcribing rather than digesting.
+    return text.count('"') >= 4
 
 
 async def summarize(
@@ -103,4 +138,13 @@ async def summarize(
 
     raw = await get_client().generate(prompt, params)
     cleaned = _clean(raw)
-    return cleaned if len(cleaned) >= 40 else existing
+
+    if len(cleaned) < 40:
+        return existing
+    # Rejecting leaves the watermark where it is, so the same turns are folded
+    # again next time against a larger transcript -- and a larger transcript is
+    # exactly what pulls the model back toward summarising. Retrying is the
+    # recovery path, not just a safety net.
+    if looks_like_roleplay(cleaned):
+        return existing
+    return cleaned
