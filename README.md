@@ -361,7 +361,7 @@ Tuning (Settings panel, or `.env`):
 | `RP_EMBEDDING_MODEL` | nomic-embed-text | Any embedding model your backend serves |
 | `RP_EMBEDDING_BASE_URL` | *(blank)* | Blank = same host as the chat model |
 | `RP_RETRIEVAL_TOP_K` | 4 | Most past turns re-injected per reply |
-| `RP_RETRIEVAL_MIN_SCORE` | 0.45 | Cosine floor — below this a hit is noise |
+| `RP_RETRIEVAL_MIN_SCORE` | 0.60 | Cosine floor — below this a hit is noise |
 | `RP_RETRIEVAL_BUDGET_TOKENS` | 400 | Context spent on recall |
 | `RP_RETRIEVAL_QUERY_MESSAGES` | 3 | Recent turns forming the search query |
 
@@ -382,9 +382,25 @@ What to look for is **separation**, not an absolute number:
 2. Ask about something that **never happened**. Note what the best result scores.
 3. Put `RP_RETRIEVAL_MIN_SCORE` in the gap.
 
-Step 2 is the one people skip and the one that matters. Embedding models often score
-unrelated text higher than intuition suggests, so a floor that looks generous can be passing
-everything. If the two ranges overlap, no threshold will work — raise
+Step 2 is the one people skip and the one that matters — here's what it caught on a real
+chat with `nomic-embed-text`:
+
+| Probe | Best score |
+|---|---|
+| "What was the innkeeper's name?" | 0.72 ✅ the right message |
+| "Tell me about my sister who died." | 0.65 ✅ the right message |
+| "Which key opens the reliquary?" | 0.84 ✅ the right message |
+| "What did the dragon say?" *(never happened)* | 0.55 ❌ noise |
+| "How much for the horse?" *(never happened)* | 0.48 ❌ noise |
+| "What colour was the airship?" *(never happened)* | 0.46 ❌ noise |
+
+The original 0.45 default passed **all** of it — every invented question injected results,
+one filling all four slots with unrelated narration. Positive probes alone would have shown
+this as working perfectly. At 0.60 the same six probes inject four results, all correct, and
+reject every negative.
+
+That's why the default is 0.60, and why the floor is a property of your **embedding model**
+rather than of this app. If the two ranges overlap, no threshold will work — raise
 `RP_RETRIEVAL_QUERY_MESSAGES` to give the query more context, or try a different embedding
 model.
 
