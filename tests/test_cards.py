@@ -127,3 +127,68 @@ def test_edit_card_fields(client, imported):
     assert r.json()["card"]["personality"] == "Warmer now."
     # the list view reflects the rename
     assert client.get("/api/characters").json()[0]["name"] == "Seraphine V"
+
+
+# --- characters written by hand -------------------------------------------
+
+
+def test_create_character_from_scratch(client):
+    """Not every character comes from a community PNG."""
+    r = client.post(
+        "/api/characters",
+        json={
+            "name": "Bram Halloway",
+            "description": "Keeps a brass ledger behind the bar.",
+            "first_mes": "Hello, {{user}}.",
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["name"] == "Bram Halloway"
+    assert r.json()["card"]["description"].startswith("Keeps a brass ledger")
+
+
+def test_created_character_needs_only_a_name(client):
+    """Start from an idea; fill the rest in from the editor later."""
+    r = client.post("/api/characters", json={"name": "Nameless Stranger"})
+    assert r.status_code == 200, r.text
+    card = r.json()["card"]
+    assert card["description"] == ""
+    assert card["character_book"] == []
+
+
+def test_created_character_rejects_a_blank_name(client):
+    assert client.post("/api/characters", json={"name": "   "}).status_code == 400
+
+
+def test_created_character_is_indistinguishable_downstream(client):
+    """It must be storable, listable, editable and playable like any import --
+    the only thing it lacks is an avatar."""
+    cid = client.post(
+        "/api/characters",
+        json={"name": "Bram", "first_mes": "Evening, {{user}}."},
+    ).json()["id"]
+
+    listed = [c for c in client.get("/api/characters").json() if c["id"] == cid][0]
+    assert listed["has_avatar"] is False
+    assert client.get(f"/api/characters/{cid}/avatar").status_code == 404
+
+    # editable through the same endpoint an imported card uses
+    assert client.patch(
+        f"/api/characters/{cid}", json={"personality": "Gruff."}
+    ).json()["card"]["personality"] == "Gruff."
+
+    # and a session seeds its greeting with substitution applied
+    sid = client.post("/api/sessions", json={"character_id": cid}).json()
+    assert sid["messages"][0]["content"] == "Evening, You."
+
+
+def test_created_character_can_carry_a_lorebook(client):
+    r = client.post(
+        "/api/characters",
+        json={
+            "name": "Bram",
+            "character_book": [{"keys": ["ledger"], "content": "The ledger is brass."}],
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["card"]["character_book"][0]["keys"] == ["ledger"]

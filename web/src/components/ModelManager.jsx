@@ -5,7 +5,7 @@ import { Modal, Field, Input, Button, Empty } from "./ui";
 // nomic-embed-text is here rather than in the chat list because vector recall
 // needs it pulled, and the Memory panel points users at this dialog to do it.
 const SUGGESTED = [
-  "HammerAI/mythomax-l2",
+  "HammerAI/smart-lemon-cookie",
   "llama3:8b",
   "mistral-nemo",
   "qwen2.5:7b",
@@ -133,7 +133,7 @@ export default function ModelManager({ open, onClose, onChanged }) {
                   value={pullName}
                   onChange={(e) => setPullName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && !pulling && startPull()}
-                  placeholder="HammerAI/mythomax-l2"
+                  placeholder="HammerAI/smart-lemon-cookie"
                   disabled={pulling}
                 />
                 <Button variant="primary" onClick={startPull} disabled={pulling}>

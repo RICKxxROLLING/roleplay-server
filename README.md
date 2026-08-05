@@ -55,8 +55,8 @@ memory design; Phase 5 is polish and extra backends.
   on Windows it means Docker Desktop with the **WSL2 backend** and a current NVIDIA driver on
   the host (don't install the toolkit inside WSL — the Windows driver provides it)
 - ~10 GB disk for the model
-- **Enough VRAM for the model you pick** — the default is a 13B and needs ~11 GB.
-  8 GB cards need a 7B instead; see [Choosing a model](#choosing-a-model) below
+- **~5 GB VRAM** for the default 7B. A 13B needs ~11 GB — see
+  [Choosing a model](#choosing-a-model) below
 
 Verify GPU passthrough before anything else:
 
@@ -106,29 +106,28 @@ docker compose logs -f app           # server
 
 ## Choosing a model
 
-The default, `HammerAI/mythomax-l2`, is a 13B and **needs about 11 GB of VRAM** — more than
-its 7.9 GB download suggests, because the KV cache is charged on top:
+The default is **`HammerAI/smart-lemon-cookie`** — a 7B that fits comfortably on an 8 GB
+card, which is the hardware this project advertises. Budget VRAM by weights *plus* KV cache,
+not by download size:
 
 | | Weights (Q4_K_M) | KV cache @ 4096 | Total |
 |---|---|---|---|
+| `HammerAI/smart-lemon-cookie` (7B) — **default** | 4.4 GB | ~0.5 GB | **~4.9 GB** |
 | `HammerAI/mythomax-l2` (13B) | 7.9 GB | ~3.2 GB | **~11.1 GB** |
-| `HammerAI/smart-lemon-cookie` (7B) | 4.4 GB | ~0.5 GB | **~4.9 GB** |
 
-The cache gap is larger than the parameter gap. Llama-2 13B uses full multi-head attention —
-800 KB per token — while Mistral-7B uses grouped-query attention at 128 KB per token, six
-times cheaper.
+The cache gap is wider than the parameter gap. Llama-2 13B uses full multi-head attention —
+800 KB per token — while Mistral-7B uses grouped-query attention at 128 KB, six times
+cheaper.
 
-**On 8 GB (2080, 3070, 4060):** use `HammerAI/smart-lemon-cookie`. It's a merge of
-Silicon-Maid, Kunoichi and LemonadeRP, all Alpaca-formatted like MythoMax, so the prompt
-builder needs no changes. It also handles far longer context, so you can raise
-`RP_CONTEXT_TOKENS` to 8192 and still fit.
+Smart-Lemon-Cookie is a merge of Silicon-Maid, Kunoichi and LemonadeRP, all **Alpaca**
+formatted like MythoMax, so the prompt builder needs no changes. It also handles far longer
+context, so on 8 GB you can raise `RP_CONTEXT_TOKENS` to 8192 and still fit.
 
-**On 12 GB or more:** the default 13B is the better writer.
-
-Set it before first boot in `.env`:
+**On 12 GB or more**, MythoMax 13B is the better writer and the model this project's prompt
+was originally tuned against. Set it before first boot in `.env`:
 
 ```
-RP_MODEL=HammerAI/smart-lemon-cookie
+RP_MODEL=HammerAI/mythomax-l2
 ```
 
 After first boot, `.env` no longer controls it — change the model in the **Models** panel

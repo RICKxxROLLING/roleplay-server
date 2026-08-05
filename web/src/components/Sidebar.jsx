@@ -8,6 +8,7 @@ export default function Sidebar({
   onOpenSession,
   onNewChat,
   onEditCharacter,
+  onNewCharacter,
   onImported,
   onDeleteSession,
   onManagePersonas,
@@ -62,6 +63,12 @@ export default function Sidebar({
         >
           Import character card
         </button>
+        <button
+          onClick={onNewCharacter}
+          className="w-full text-xs rounded-lg border border-ink-700 py-1.5 hover:bg-ink-850 transition"
+        >
+          Write one from scratch
+        </button>
         <div className="flex gap-2">
           <button
             onClick={onManagePersonas}
@@ -88,12 +95,21 @@ export default function Sidebar({
                 className="flex items-center gap-2.5 px-3 py-2 text-left flex-1 min-w-0"
                 title={c.description}
               >
-                <img
-                  src={api.avatarUrl(c.id)}
-                  alt=""
-                  className="w-8 h-8 rounded-full object-cover bg-ink-700 shrink-0"
-                  onError={(e) => (e.currentTarget.style.visibility = "hidden")}
-                />
+                {/* Characters written by hand have no PNG behind them, and the
+                    list already says so -- rendering the <img> anyway would fire
+                    a guaranteed 404 per character on every load. */}
+                {c.has_avatar ? (
+                  <img
+                    src={api.avatarUrl(c.id)}
+                    alt=""
+                    className="w-8 h-8 rounded-full object-cover bg-ink-700 shrink-0"
+                    onError={(e) => (e.currentTarget.style.visibility = "hidden")}
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-ink-700 shrink-0 grid place-items-center text-[11px] font-semibold text-slate-300">
+                    {c.name.slice(0, 2).toUpperCase()}
+                  </div>
+                )}
                 <span className="text-sm truncate">{c.name}</span>
               </button>
               <button

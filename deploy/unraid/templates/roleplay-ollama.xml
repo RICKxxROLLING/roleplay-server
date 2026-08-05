@@ -17,7 +17,7 @@
     REQUIRES the Nvidia Driver plugin (Apps tab), plus a reboot after installing it.
     After the container starts, pull a model from the Unraid terminal:
 
-      docker exec -it roleplay-ollama ollama pull HammerAI/mythomax-l2
+      docker exec -it roleplay-ollama ollama pull HammerAI/smart-lemon-cookie
 
     MythoMax L2 13B needs roughly 8-10 GB VRAM at Q4/Q5 quantization.
   </Overview>

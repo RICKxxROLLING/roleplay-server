@@ -31,6 +31,7 @@ export default function Message({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(msg.content);
   const [note, setNote] = useState(null);
+  const [avatarFailed, setAvatarFailed] = useState(false);
 
   const isUser = msg.role === "user";
   const name = isUser ? userName || "You" : charName || "Character";
@@ -62,12 +63,15 @@ export default function Message({
   return (
     <div className={`group flex gap-3 ${isUser ? "flex-row-reverse" : ""}`}>
       <div className="shrink-0">
-        {!isUser && charId ? (
+        {/* Falls back to initials rather than hiding, since a character written
+            by hand has no avatar and would otherwise leave a blank gap on every
+            one of its messages. */}
+        {!isUser && charId && !avatarFailed ? (
           <img
             src={api.avatarUrl(charId)}
             alt={name}
             className="w-9 h-9 rounded-full object-cover bg-ink-700"
-            onError={(e) => (e.currentTarget.style.visibility = "hidden")}
+            onError={() => setAvatarFailed(true)}
           />
         ) : (
           <div className="w-9 h-9 rounded-full bg-ink-700 grid place-items-center text-xs font-semibold text-slate-300">

@@ -47,7 +47,7 @@ services:
         condition: service_healthy
     environment:
       OLLAMA_HOST: http://ollama:11434
-      MODEL: ${RP_MODEL:-HammerAI/mythomax-l2}
+      MODEL: ${RP_MODEL:-HammerAI/smart-lemon-cookie}
       # Pulled up front so vector recall works the moment it is switched on in
       # the Memory panel. Small next to the chat model (~275MB vs several GB).
       # Set RP_EMBEDDING_MODEL= (empty) to skip it.
@@ -95,7 +95,7 @@ services:
 
       RP_BACKEND: ollama
       RP_LLM_BASE_URL: http://ollama:11434
-      RP_MODEL: ${RP_MODEL:-HammerAI/mythomax-l2}
+      RP_MODEL: ${RP_MODEL:-HammerAI/smart-lemon-cookie}
 
       RP_CONTEXT_TOKENS: ${RP_CONTEXT_TOKENS:-4096}
       RP_MAX_NEW_TOKENS: ${RP_MAX_NEW_TOKENS:-400}

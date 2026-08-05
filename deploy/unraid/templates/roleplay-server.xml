@@ -70,13 +70,13 @@
   <Config
     Name="Model"
     Target="RP_MODEL"
-    Default="HammerAI/mythomax-l2"
+    Default="HammerAI/smart-lemon-cookie"
     Mode=""
-    Description="Must already be pulled into the Ollama container: docker exec -it roleplay-ollama ollama pull HammerAI/mythomax-l2"
+    Description="Must already be pulled into the Ollama container: docker exec -it roleplay-ollama ollama pull HammerAI/smart-lemon-cookie"
     Type="Variable"
     Display="always"
     Required="true"
-    Mask="false">HammerAI/mythomax-l2</Config>
+    Mask="false">HammerAI/smart-lemon-cookie</Config>
 
   <Config
     Name="PUID"
