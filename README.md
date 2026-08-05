@@ -362,7 +362,7 @@ Tuning (Settings panel, or `.env`):
 | `RP_RETRIEVAL_TOP_K` | 4 | Most past turns re-injected per reply |
 | `RP_RETRIEVAL_MIN_SCORE` | 0.60 | Cosine floor — below this a hit is noise |
 | `RP_RETRIEVAL_BUDGET_TOKENS` | 400 | Context spent on recall |
-| `RP_RETRIEVAL_QUERY_MESSAGES` | 3 | Recent turns forming the search query |
+| `RP_RETRIEVAL_QUERY_MESSAGES` | 1 | Recent **user** turns forming the search query |
 
 ### Calibrating the relevance floor
 

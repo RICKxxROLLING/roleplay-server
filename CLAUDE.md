@@ -115,13 +115,26 @@ summary is never stored. Rejection also *is* the recovery path: the watermark st
 same turns are refolded next time against a longer transcript, and a longer transcript is
 what pulls the model back toward summarising.
 
-**The retrieval query is built from user turns only, not the raw tail.** Assistant replies
+**The retrieval query is one user turn by default, and never an assistant turn.** Two
+separate dilution effects, both measured on real chats. Assistant replies
 run several times longer than a user turn and are stylistically near-identical to one another
 ("*She nods...*"), so blending them in makes the query embed as generic narration and match
 other narration. Measured live: "what was the innkeeper's name?" scored 0.81 against the
 message naming him when queried alone, and fell out of the top four entirely once the
 surrounding prose was mixed in — the model then invented a name. The user's turns carry
 intent; the assistant's carry house style.
+
+Excluding assistant turns was not sufficient, which is why `retrieval_query_messages`
+defaults to **1**. The user's own adjacent turns dilute too: asking for the innkeeper while a
+neighbouring turn said "look back at the woman in that temple" pulled two long opening-scene
+passages above the answer, and they ate the token budget so it was never injected. Blending
+even two questions was enough to break it. The fragment case this setting was meant to serve
+("And your father's name?") retrieved correctly on its own anyway.
+
+**Don't add nomic's `search_query:` / `search_document:` prefixes.** Tempting, since that is
+what the model was trained with and our symmetric embedding looks like an oversight.
+Measured: they raise the right answer 0.596 → 0.623 but raise the distractors more,
+collapsing separation from +0.131 to +0.042. Tested and rejected, not overlooked.
 
 **Stop sequences are newline-anchored (`\nRiley:`, not `Riley:`).** A bare name would
 truncate legitimate prose like `she turned to Riley: "..."`.
