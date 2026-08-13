@@ -26,6 +26,16 @@ export const api = {
 
   models: () => j("/models"),
 
+  authStatus: () => j("/auth/status"),
+  login: (password) =>
+    j("/auth/login", { method: "POST", body: JSON.stringify({ password }) }),
+  logout: () => j("/auth/logout", { method: "POST" }),
+  setPassword: (password, current_password) =>
+    j("/auth/password", {
+      method: "POST",
+      body: JSON.stringify({ password, current_password }),
+    }),
+
   characters: () => j("/characters"),
   character: (id) => j(`/characters/${id}`),
   createCharacter: (body) =>

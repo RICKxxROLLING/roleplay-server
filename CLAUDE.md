@@ -75,6 +75,21 @@ expecting Alpaca instruction format, not a chat template. We render the full pro
 and send it raw (`raw: true` on Ollama). This is what makes SillyTavern cards behave as
 authored. Switching to chat-completions would silently degrade every card.
 
+**Auth is middleware over `/api`, not a per-route dependency.** The guarantee wanted is
+"nothing under `/api` answers without a session", and that is only true if it cannot be
+forgotten on a route added later. Static files stay public deliberately — the login screen has
+to load from somewhere, and the bundle holds no chat data.
+
+**Auth is off until a password is set.** An upgrade must not lock anyone out of their own
+chats, so `is_enabled()` is simply "has a hash been stored". The settings panel warns in amber
+while it is unset; that nag is the other half of the trade.
+
+**Sessions are opaque random tokens stored hashed, not signed cookies.** A signed cookie needs
+a server secret that survives restarts — another thing to generate, persist and rotate. A
+random token is its own secret, revocable by deleting a row, and storing only its SHA-256
+means a database leak cannot be replayed. Passwords use `hashlib.scrypt`; adding bcrypt or
+argon2 for one call is not worth a dependency in a project that has almost none.
+
 **The API is namespaced under `/api`.** The UI and API share one origin in the container. An
 unprefixed API means a static asset path could shadow an endpoint. Also kills CORS entirely.
 
