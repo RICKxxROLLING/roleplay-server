@@ -9,6 +9,7 @@ import NewChatDialog from "./components/NewChatDialog";
 import CharacterEditor from "./components/CharacterEditor";
 import NewCharacterDialog from "./components/NewCharacterDialog";
 import ModelManager from "./components/ModelManager";
+import LoginScreen from "./components/LoginScreen";
 
 export default function App() {
   const [characters, setCharacters] = useState([]);
@@ -16,6 +17,9 @@ export default function App() {
   const [personas, setPersonas] = useState([]);
   const [activeId, setActiveId] = useState(null);
   const [health, setHealth] = useState(null);
+  // null while unknown -- rendering the app before we know would flash
+  // the chat list at someone who is not signed in.
+  const [authed, setAuthed] = useState(null);
 
   const [panel, setPanel] = useState(null); // settings | memory | personas | models
   const [newChatFor, setNewChatFor] = useState(null);
@@ -38,10 +42,24 @@ export default function App() {
     []
   );
 
+  const checkAuth = useCallback(
+    () =>
+      api
+        .authStatus()
+        .then((s) => setAuthed(s.authenticated))
+        .catch(() => setAuthed(true)), // status is public; a failure here is not a lockout
+    []
+  );
+
   useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
+
+  useEffect(() => {
+    if (!authed) return;
     refresh();
     refreshHealth();
-  }, [refresh, refreshHealth]);
+  }, [authed, refresh, refreshHealth]);
 
   async function removeSession(id) {
     if (!confirm("Delete this chat? Cannot be undone.")) return;
@@ -49,6 +67,9 @@ export default function App() {
     if (activeId === id) setActiveId(null);
     refresh();
   }
+
+  if (authed === null) return <div className="h-full bg-ink-950" />;
+  if (!authed) return <LoginScreen onSignedIn={() => setAuthed(true)} />;
 
   return (
     <div className="h-full flex bg-ink-950">

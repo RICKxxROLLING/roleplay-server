@@ -221,6 +221,8 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
             </div>
           )}
 
+          <PasswordSection />
+
           {sessionId && (
             <div className="pt-2 border-t border-ink-800">
               <button
@@ -280,6 +282,124 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Set, change or clear the password.
+ *
+ * Lives in settings rather than a separate screen because it is a property of
+ * the server, not of a user -- there is only ever one. The warning when it is
+ * unset is deliberately blunt: an open server means anyone who reaches the
+ * port can read every chat.
+ */
+function PasswordSection() {
+  const [status, setStatus] = useState(null);
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(null);
+
+  useEffect(() => {
+    api.authStatus().then(setStatus).catch(() => {});
+  }, []);
+
+  if (!status) return null;
+
+  async function save(value) {
+    setBusy(true);
+    setNote(null);
+    try {
+      const r = await api.setPassword(value, current || undefined);
+      setCurrent("");
+      setNext("");
+      if (r.enabled) {
+        // Every session was revoked, including this one -- reload straight
+        // into the login screen rather than leaving a dead page up.
+        window.location.reload();
+      } else {
+        setStatus({ ...status, enabled: false });
+        setNote("Password removed. The server is open again.");
+      }
+    } catch (e) {
+      setNote(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="pt-3 border-t border-ink-800 space-y-3">
+      <div className="text-sm">
+        Password
+        <span className="text-xs text-slate-600 ml-2">
+          required before any chat can be read
+        </span>
+      </div>
+
+      {!status.enabled && (
+        <div className="text-xs text-amber-400/90 bg-amber-950/30 border border-amber-900/40 rounded-lg px-3 py-2">
+          No password set — anyone who can reach this server can read and delete
+          every chat.
+        </div>
+      )}
+
+      {status.enabled && (
+        <input
+          type="password"
+          value={current}
+          onChange={(e) => setCurrent(e.target.value)}
+          placeholder="Current password"
+          autoComplete="current-password"
+          className="w-full bg-ink-950 border border-ink-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-accent/60 placeholder:text-slate-600"
+        />
+      )}
+
+      <input
+        type="password"
+        value={next}
+        onChange={(e) => setNext(e.target.value)}
+        placeholder={status.enabled ? "New password" : "Set a password (8+ characters)"}
+        autoComplete="new-password"
+        className="w-full bg-ink-950 border border-ink-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-accent/60 placeholder:text-slate-600"
+      />
+
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => save(next)}
+          disabled={busy || next.length < 8 || (status.enabled && !current)}
+          className="text-sm px-3 py-1.5 rounded-lg bg-accent/25 border border-accent/40 hover:bg-accent/35 disabled:opacity-40"
+        >
+          {status.enabled ? "Change password" : "Set password"}
+        </button>
+        {status.enabled && (
+          <>
+            <button
+              onClick={() => save("")}
+              disabled={busy || !current}
+              className="text-sm px-3 py-1.5 rounded-lg border border-ink-700 hover:bg-ink-850 disabled:opacity-40"
+            >
+              Remove
+            </button>
+            <button
+              onClick={async () => {
+                await api.logout().catch(() => {});
+                window.location.reload();
+              }}
+              className="text-sm px-3 py-1.5 rounded-lg border border-ink-700 hover:bg-ink-850"
+            >
+              Sign out
+            </button>
+          </>
+        )}
+        {note && <span className="text-xs text-slate-500">{note}</span>}
+      </div>
+
+      <p className="text-[11px] text-slate-600 leading-relaxed">
+        One password for the whole server — there are no accounts. Changing or
+        removing it signs out every device.
+      </p>
     </div>
   );
 }

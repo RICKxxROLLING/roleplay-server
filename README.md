@@ -494,9 +494,12 @@ GET   /api/sessions/{id}/prompt       exact prompt text, incl. what was recalled
   Memory panel instead.
 - **Stop during streaming aborts the client, not the server.** The backend finishes its turn
   and persists it; the UI resyncs. Cancelling server-side generation is a Phase 5 item.
-- **Single-user, no auth.** The container binds `0.0.0.0:8000`, so anything that can reach
-  the host can use it. Keep the published port on a trusted network, or put a reverse proxy
-  with auth in front. Don't port-forward this to the internet.
+- **Single-user, one password.** There are no accounts. Set a password under **Settings →
+  Password** and every `/api` route refuses to answer without a session; until you do, the
+  server is open to anything that can reach it and the settings panel says so in amber.
+  A password is not a substitute for network controls — the container binds `0.0.0.0:8000`,
+  so keep the published port on a trusted network or behind a VPN. Don't port-forward this
+  to the internet.
 - **No filesystem side effects at import.** Data directories are created in `init_db()` and
   on first avatar upload, not at module load — otherwise the image build and any tooling
   would break wherever `/data` isn't writable yet.

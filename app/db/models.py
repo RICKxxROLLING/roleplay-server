@@ -44,6 +44,21 @@ class AppSetting(Base):
     value: Mapped[Any] = mapped_column(JSON)
 
 
+class AuthToken(Base):
+    """A live login session.
+
+    Stored as a hash of the token rather than the token itself, so a leak of
+    this table cannot be replayed against the server. Deleting a row is a
+    logout; deleting them all is what changing the password does.
+    """
+
+    __tablename__ = "auth_tokens"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime)
+
+
 class Persona(Base):
     """The *user's* side -- who you are in the scene."""
 
