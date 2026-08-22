@@ -30,10 +30,10 @@ export default function LoginScreen({ onSignedIn }) {
   }
 
   return (
-    <div className="h-full grid place-items-center bg-ink-950">
+    <div className="h-full grid place-items-center bg-ink-950 p-4">
       <form
         onSubmit={submit}
-        className="w-[320px] bg-ink-900 border border-ink-700 rounded-xl p-6 space-y-4"
+        className="w-full max-w-[320px] bg-ink-900 border border-ink-700 rounded-xl p-6 space-y-4"
       >
         <div>
           <h1 className="font-semibold">Roleplay</h1>

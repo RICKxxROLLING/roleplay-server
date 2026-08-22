@@ -80,11 +80,12 @@ export default function Message({
         )}
       </div>
 
-      <div className={`max-w-[72%] min-w-0 ${isUser ? "text-right" : ""}`}>
+      <div className={`max-w-[85%] sm:max-w-[72%] min-w-0 ${isUser ? "text-right" : ""}`}>
         <div className="text-xs text-slate-500 mb-1 flex items-center gap-2">
           <span className={isUser ? "ml-auto" : ""}>{name}</span>
+          {/* Always visible on touch: there is no hover, so these were unreachable. */}
           {editable && !editing && (
-            <span className="opacity-0 group-hover:opacity-100 flex gap-1.5 transition">
+            <span className="opacity-100 md:opacity-0 md:group-hover:opacity-100 flex gap-1.5 transition">
               <button
                 onClick={() => {
                   setDraft(msg.content);

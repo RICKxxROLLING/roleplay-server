@@ -30,9 +30,9 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 grid place-items-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/60 grid place-items-center z-50 p-4" onClick={onClose}>
       <div
-        className="bg-ink-900 border border-ink-700 rounded-xl w-[560px] max-h-[85vh] overflow-y-auto scroll-thin"
+        className="bg-ink-900 border border-ink-700 rounded-xl w-full max-w-[560px] max-h-[85vh] overflow-y-auto scroll-thin"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-5 py-4 border-b border-ink-800 flex items-center justify-between">
