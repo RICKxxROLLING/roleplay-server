@@ -14,6 +14,8 @@ export default function Sidebar({
   onManagePersonas,
   onManageModels,
   health,
+  open,
+  onClose,
 }) {
   const fileRef = useRef(null);
 
@@ -33,7 +35,23 @@ export default function Sidebar({
   const modelMissing = health?.ok && health?.model_installed === false;
 
   return (
-    <aside className="w-72 shrink-0 bg-ink-900 border-r border-ink-800 flex flex-col">
+    <>
+      {/* Backdrop, mobile only. Tapping it closes the drawer the way a phone
+          user expects; on desktop the sidebar is permanent and this never renders. */}
+      {open && (
+        <div
+          className="fixed inset-0 bg-black/60 z-30 md:hidden"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={`bg-ink-900 border-r border-ink-800 flex flex-col
+          fixed inset-y-0 left-0 z-40 w-72 transition-transform duration-200
+          ${open ? "translate-x-0" : "-translate-x-full"}
+          md:static md:translate-x-0 md:shrink-0 md:z-auto`}
+      >
       <div className="p-4 border-b border-ink-800">
         <h1 className="font-semibold tracking-tight">Roleplay</h1>
         <button
@@ -91,7 +109,7 @@ export default function Sidebar({
           {characters.map((c) => (
             <div key={c.id} className="group flex items-center hover:bg-ink-850">
               <button
-                onClick={() => onNewChat(c)}
+                onClick={() => { onNewChat(c); onClose?.(); }}
                 className="flex items-center gap-2.5 px-3 py-2 text-left flex-1 min-w-0"
                 title={c.description}
               >
@@ -113,8 +131,8 @@ export default function Sidebar({
                 <span className="text-sm truncate">{c.name}</span>
               </button>
               <button
-                onClick={() => onEditCharacter(c.id)}
-                className="px-2 text-xs text-slate-600 hover:text-slate-300 opacity-0 group-hover:opacity-100"
+                onClick={() => { onEditCharacter(c.id); onClose?.(); }}
+                className="px-2 text-xs text-slate-600 hover:text-slate-300 opacity-100 md:opacity-0 md:group-hover:opacity-100"
                 title="Edit character"
               >
                 edit
@@ -137,7 +155,7 @@ export default function Sidebar({
               }`}
             >
               <button
-                onClick={() => onOpenSession(s.id)}
+                onClick={() => { onOpenSession(s.id); onClose?.(); }}
                 className="flex-1 px-3 py-2 text-left hover:bg-ink-850 min-w-0"
               >
                 <div className="text-sm truncate">{s.title}</div>
@@ -145,7 +163,7 @@ export default function Sidebar({
               </button>
               <button
                 onClick={() => onDeleteSession(s.id)}
-                className="px-2 text-slate-600 hover:text-rose-400 opacity-0 group-hover:opacity-100"
+                className="px-2 text-slate-600 hover:text-rose-400 opacity-100 md:opacity-0 md:group-hover:opacity-100"
                 title="Delete chat"
               >
                 ×
@@ -159,7 +177,8 @@ export default function Sidebar({
           )}
         </Section>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
 

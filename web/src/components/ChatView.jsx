@@ -8,6 +8,7 @@ export default function ChatView({
   onOpenSettings,
   onOpenMemory,
   onDirty,
+  onOpenNav,
 }) {
   const [session, setSession] = useState(null);
   const [draft, setDraft] = useState("");
@@ -139,10 +140,18 @@ export default function ChatView({
 
   if (!sessionId)
     return (
-      <div className="flex-1 grid place-items-center text-slate-600">
+      <div className="flex-1 grid place-items-center text-slate-600 p-6">
         <div className="text-center">
           <p className="text-sm">Pick a character to start a chat.</p>
           <p className="text-xs mt-1">Import a SillyTavern V2 card if the list is empty.</p>
+          {/* Without this there is no way to reach the drawer on a phone when
+              no chat is open -- the header that normally holds it is not rendered. */}
+          <button
+            onClick={onOpenNav}
+            className="md:hidden mt-4 text-sm px-4 py-2 rounded-lg border border-ink-700 hover:bg-ink-850"
+          >
+            Browse characters
+          </button>
         </div>
       </div>
     );
@@ -150,6 +159,17 @@ export default function ChatView({
   return (
     <div className="flex-1 flex flex-col min-w-0">
       <header className="px-5 py-3 border-b border-ink-800 flex items-center gap-3">
+        {/* The sidebar is off-canvas below md, so this is the only way back to
+            the chat list on a phone. */}
+        <button
+          onClick={onOpenNav}
+          aria-label="Open menu"
+          className="md:hidden -ml-1 mr-1 p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-ink-850 shrink-0"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M3 6h18M3 12h18M3 18h18" />
+          </svg>
+        </button>
         <div className="min-w-0">
           {renaming ? (
             <input
@@ -192,23 +212,23 @@ export default function ChatView({
             </select>
           </div>
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1.5 sm:gap-2 shrink-0">
           <button
             onClick={regenerate}
             disabled={busy}
-            className="text-sm px-3 py-1.5 rounded-lg border border-ink-700 hover:bg-ink-850 disabled:opacity-40"
+            className="text-xs sm:text-sm px-2 sm:px-3 py-1.5 rounded-lg border border-ink-700 hover:bg-ink-850 disabled:opacity-40"
           >
             Regenerate
           </button>
           <button
             onClick={onOpenMemory}
-            className="text-sm px-3 py-1.5 rounded-lg border border-ink-700 hover:bg-ink-850"
+            className="text-xs sm:text-sm px-2 sm:px-3 py-1.5 rounded-lg border border-ink-700 hover:bg-ink-850"
           >
             Memory
           </button>
           <button
             onClick={onOpenSettings}
-            className="text-sm px-3 py-1.5 rounded-lg border border-ink-700 hover:bg-ink-850"
+            className="text-xs sm:text-sm px-2 sm:px-3 py-1.5 rounded-lg border border-ink-700 hover:bg-ink-850"
           >
             Settings
           </button>

@@ -25,6 +25,8 @@ export default function App() {
   const [newChatFor, setNewChatFor] = useState(null);
   const [editingCharId, setEditingCharId] = useState(null);
   const [creatingChar, setCreatingChar] = useState(false);
+  // Drawer state is only meaningful below md; above it the sidebar is static.
+  const [navOpen, setNavOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     const [c, s, p] = await Promise.all([
@@ -86,9 +88,12 @@ export default function App() {
         onDeleteSession={removeSession}
         onManagePersonas={() => setPanel("personas")}
         onManageModels={() => setPanel("models")}
+        open={navOpen}
+        onClose={() => setNavOpen(false)}
       />
 
       <ChatView
+        onOpenNav={() => setNavOpen(true)}
         sessionId={activeId}
         personas={personas}
         onOpenSettings={() => setPanel("settings")}

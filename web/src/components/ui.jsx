@@ -8,8 +8,10 @@ export function Modal({ open, onClose, title, width = 560, children }) {
       onClick={onClose}
     >
       <div
-        style={{ width }}
-        className="bg-ink-900 border border-ink-700 rounded-xl max-h-[85vh] overflow-y-auto scroll-thin"
+        // maxWidth rather than width: a fixed pixel width cannot shrink below
+        // itself, so on a phone the dialog ran off both edges of the screen.
+        style={{ maxWidth: width }}
+        className="w-full bg-ink-900 border border-ink-700 rounded-xl max-h-[85vh] overflow-y-auto scroll-thin"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-5 py-4 border-b border-ink-800 flex items-center justify-between sticky top-0 bg-ink-900">
