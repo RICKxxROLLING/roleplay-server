@@ -214,3 +214,11 @@ def test_no_persona_possessive_reads_naturally():
     assert substitute("<USER>’s hand", "Dina", "You") == "your hand"
     # Only the default: a real name keeps its possessive.
     assert substitute("{{user}}'s door", "Dina", "Riley") == "Riley's door"
+
+
+def test_example_dialogue_survives_a_heavy_card_on_a_wide_window():
+    """Examples anchor the narrator's voice; a big persona alone must not evict them."""
+    persona = "Riley is a quiet mechanic. " * 400  # ~3000 tokens of head
+    p = build_prompt(card(mes_example="{{char}}: Hello."), [], user_persona=persona,
+                     context_tokens=8192, max_new_tokens=512, reserve_tokens=256)
+    assert "Example dialogue:" in p.text

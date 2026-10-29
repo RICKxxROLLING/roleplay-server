@@ -174,7 +174,12 @@ def build_prompt(
     example = ""
     if card.mes_example:
         candidate = substitute(card.mes_example, char, user_name).replace("<START>", "").strip()
-        if candidate and used + estimate_tokens(candidate) < budget * 0.5:
+        # Kept while a third of the budget is left for history. It used to go
+        # at half, which a full persona plus lore crosses on an 8K window --
+        # and the examples are what hold the narrator's voice. Measured on
+        # Stheno with the Dina card: first-person words in the first reply
+        # 0/0/0/1 with them, 11/0/16/13 without.
+        if candidate and used + estimate_tokens(candidate) <= budget * 2 / 3:
             example = f"Example dialogue:\n{candidate}"
             used += estimate_tokens(example)
 
