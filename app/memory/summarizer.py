@@ -15,7 +15,7 @@ import re
 from ..cards.models import CharacterCard
 from ..config import settings
 from ..llm import GenerationParams, get_client
-from ..prompt.formats import ALL_MARKERS, get_format
+from ..prompt.formats import ALL_MARKERS, ALPACA, get_format
 
 SUMMARY_PROMPT = """You maintain the memory log for an ongoing roleplay between {user} and {char}.
 
@@ -38,6 +38,17 @@ NEW EVENTS:
 {transcript}"""
 
 _TARGET_WORDS = "150-250"
+
+SUMMARY_RESTATEMENT = """
+
+END OF NEW EVENTS.
+
+Now write the updated memory log: {words} words of plain third-person past-tense prose \
+recording what happened. This is a record, not a scene -- no dialogue, no quotation marks, \
+no asterisks."""
+
+#: Starts the model's answer for it, so it continues a log rather than a scene.
+SUMMARY_PREFILL = "Memory log:\n\n"
 
 
 def render_transcript(
@@ -67,7 +78,17 @@ def build_summary_prompt(
         summary=existing.strip() or "(nothing recorded yet)",
         transcript=render_transcript(turns, char_name, user_name),
     )
-    return fmt.user.format(text=body) + fmt.joiner + fmt.response_open
+    if fmt is ALPACA:
+        # Unchanged: measured folding cleanly on the Alpaca models it was built for.
+        return fmt.user.format(text=body) + fmt.joiner + fmt.response_open
+    # Chat-format RP tunes need both of these. Measured on Stheno 8B, 5 seeded
+    # folds each: the plain prompt was accepted 1/5 -- the rest rewrote the
+    # scene in quotes and first person. Restating the task after the transcript
+    # (recency beats a header thousands of tokens up) reached 3/5, and opening
+    # the answer as a log removed the scene rewrites entirely; what remains is
+    # narrates_user, which a retry next turn absorbs.
+    body += SUMMARY_RESTATEMENT.format(words=_TARGET_WORDS)
+    return fmt.user.format(text=body) + fmt.joiner + fmt.response_open + SUMMARY_PREFILL
 
 
 #: Stage directions -- "*She nods once.*" -- the clearest roleplay tell.

@@ -103,6 +103,14 @@ reloads the stored message at the end of a turn, so the streamed draft is replac
 where to stop ("end on {char}'s own words or actions") instead. Same lesson as the
 summariser rule that did nothing; small models follow examples, not prohibitions.
 
+**Chat-format fold prompts restate the task after the transcript and prefill "Memory
+log:".** Seen live on Stheno: three folds in a row rejected, so a long chat had no memory at
+all -- the guards worked, the prompt didn't. Five seeded folds per variant: plain prompt
+1/5 accepted (scene rewrites in quotes and first person), restated 3/5, restated + prefill
+3/5 with no scene rewrites left; the remaining rejects are `narrates_user`, which the next
+turn's retry absorbs. Alpaca's fold prompt is untouched -- it was measured working on the
+models it serves.
+
 **`narration_style` is appended like the impersonation guard, not folded into
 `DEFAULT_SYSTEM`.** A card's `system_prompt` replaces the default wholesale, so anything only
 in the default disappears for exactly the cards that bring their own. A one-line pointer is

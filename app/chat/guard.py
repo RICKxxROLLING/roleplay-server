@@ -10,8 +10,8 @@ loop cannot start if the first instance is never stored.
 
 Deliberately narrow, because a false positive deletes the character's prose:
 
-- Only narration is scanned. Quoted speech is never touched, and when a reply
-  marks narration with asterisks, unmarked text is treated as speech too.
+- Only narration is scanned. Quoted speech is never touched, and in a paragraph
+  that marks narration with asterisks, unmarked text is treated as speech too.
 - Only sentences whose *subject* is the user: the name (or "You") at the start
   of a sentence, followed by a verb-like lowercase word. "Riley's hands",
   "she looks at Riley" and "as you walk in" all survive.
@@ -49,14 +49,25 @@ def _subject_pattern(names: list[str]) -> re.Pattern:
 
 
 def _narration_spans(text: str) -> list[tuple[int, int]]:
-    """Character ranges that are narration rather than speech."""
-    if text.count("*") >= 2:
-        return [(m.start(1), m.end(1)) for m in re.finditer(r"\*([^*]+)\*", text)]
-    spans, pos = [], 0
-    for q in _QUOTE.finditer(text):
-        spans.append((pos, q.start()))
-        pos = q.end()
-    spans.append((pos, len(text)))
+    """Character ranges that are narration rather than speech.
+
+    Decided per paragraph, not per reply: models switch mid-reply, opening with
+    a starred paragraph and continuing in plain prose. Seen live -- with the
+    style picked once for the whole reply, `"...," Riley said` in the plain
+    paragraphs was read as speech and survived.
+    """
+    spans = []
+    for para in re.finditer(r"[^\n]+", text):
+        a, b = para.span()
+        line = text[a:b]
+        if line.count("*") >= 2:
+            spans += [(a + m.start(1), a + m.end(1)) for m in re.finditer(r"\*([^*]+)\*", line)]
+            continue
+        pos = a
+        for q in _QUOTE.finditer(text, a, b):
+            spans.append((pos, q.start()))
+            pos = q.end()
+        spans.append((pos, b))
     return spans
 
 
@@ -84,7 +95,6 @@ def strip_user_actions(text: str, user_name: str, char_name: str = "") -> tuple[
     names = sorted({name, name.split()[0], "You"}, key=len, reverse=True)
     subject = _subject_pattern(names)
     attribution = re.compile(_ATTRIBUTION.format(char=re.escape(char_name or "\0")), re.I)
-    starred = text.count("*") >= 2
     char_first = (char_name or "").strip().split(" ")[0]
 
     cuts: list[tuple[int, int]] = []
@@ -112,7 +122,7 @@ def strip_user_actions(text: str, user_name: str, char_name: str = "") -> tuple[
             continue
         # A span emptied entirely goes with its asterisks.
         kept = "".join(text[x:y] for x, y in _gaps(start, end, span_cuts))
-        if starred and not kept.strip():
+        if text[start - 1 : start] == "*" and text[end : end + 1] == "*" and not kept.strip():
             span_cuts = [(start - 1, end + 1 + _trailing_ws(text, end + 1))]
         cuts.extend(span_cuts)
 

@@ -96,3 +96,14 @@ def test_paragraphs_and_spacing_are_preserved():
 def test_clean_reply_is_returned_unchanged():
     text = "*Dina smiles.* \"Hey, Riley.\""
     assert strip_user_actions(text, "Riley", "Dina") == (text, 0)
+
+
+def test_plain_paragraphs_after_a_starred_one_are_still_scanned():
+    """Seen live: a starred opening paragraph, then plain prose."""
+    text = ('*Later that night, they sat by the fire.*\n\n'
+            '"I still can\'t believe you came back," Riley said, turning to look at her.\n\n'
+            '"It didn\'t seem like I had other options," Dina admitted.')
+    out = strip(text)
+    assert "can't believe" not in out
+    assert "other options" in out
+    assert out.startswith("*Later that night")

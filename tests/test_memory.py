@@ -296,8 +296,11 @@ def test_summary_prompt_follows_the_chat_format():
 
     p = build_summary_prompt("", [("user", "hi")], "Sera", "Riley", "llama3")
     assert p.startswith("<|start_header_id|>user<|end_header_id|>\n\nYou maintain")
-    assert p.endswith("<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n")
     assert "###" not in p
+    # The task is restated after the transcript, and the answer is opened as a
+    # log -- together they stop an RP tune rewriting the scene.
+    assert p.index("Riley: hi") < p.index("This is a record, not a scene")
+    assert p.endswith("<|start_header_id|>assistant<|end_header_id|>\n\nMemory log:\n\n")
 
 
 def test_clean_strips_chat_template_markers():
