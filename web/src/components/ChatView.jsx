@@ -75,6 +75,11 @@ export default function ChatView({
     abortRef.current = streamTurn(path, body, {
       onEvent: (evt) => {
         if (evt.type === "guard") setGuardRemoved(evt.removed);
+        // The server is regenerating; what streamed so far is discarded.
+        if (evt.type === "redo") {
+          acc = "";
+          setStreamText("");
+        }
       },
       onToken: (t) => {
         acc += t;

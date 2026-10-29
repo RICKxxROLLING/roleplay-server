@@ -16,7 +16,7 @@ from ..db.models import ChatSession, Message
 from ..llm import GenerationParams, get_client
 from ..memory import memory_manager, rag
 from ..prompt import build_prompt
-from .guard import strip_user_actions
+from .guard import slipped_into_first_person, strip_user_actions
 
 
 def _card_of(session: ChatSession) -> CharacterCard:
@@ -85,16 +85,30 @@ async def stream_reply(
 
     client = get_client()
 
-    collected: list[str] = []
-    async for piece in client.generate_stream(built.text, _params(built.stop, overrides)):
-        collected.append(piece)
-        yield {"type": "token", "text": piece}
+    # Two attempts at most: a slipped narrator gets one redo, and the second
+    # result is kept whatever it is -- a loop here could spin on a card that
+    # just reads as first person.
+    for attempt in range(2):
+        collected: list[str] = []
+        async for piece in client.generate_stream(built.text, _params(built.stop, overrides)):
+            collected.append(piece)
+            yield {"type": "token", "text": piece}
 
-    reply = "".join(collected).strip()
-    # Models sometimes echo the speaker label despite priming; strip it.
-    prefix = f"{card.name}:"
-    if reply.startswith(prefix):
-        reply = reply[len(prefix) :].strip()
+        reply = "".join(collected).strip()
+        # Models sometimes echo the speaker label despite priming; strip it.
+        prefix = f"{card.name}:"
+        if reply.startswith(prefix):
+            reply = reply[len(prefix) :].strip()
+
+        if (
+            attempt == 0
+            and settings.redo_first_person
+            and slipped_into_first_person(reply, card.first_mes)
+        ):
+            # Tells the UI to drop the draft it has streamed so far.
+            yield {"type": "redo", "reason": "first_person"}
+            continue
+        break
 
     # Before persisting: once one reply narrating the user is in history, the
     # model copies it -- see chat/guard.py. The UI reloads the stored message

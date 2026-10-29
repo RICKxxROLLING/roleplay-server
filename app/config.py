@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     # stored. On by default: prompting alone measured 4-9 such turns in 16 on
     # an 8B, and each one stored teaches the next. See chat/guard.py.
     guard_user_actions: bool = True
+    # Regenerate once when a reply's narration slips into first person on a
+    # card whose greeting is not. ~1 reply in 5 on Stheno, and a stored slip is
+    # copied by every reply after it. Costs one extra generation when it fires.
+    redo_first_person: bool = True
 
     # --- Context / prompt budgeting ---
     # MythoMax L2 13B is Llama-2 based: 4096 native context.

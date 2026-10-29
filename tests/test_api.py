@@ -303,3 +303,26 @@ def test_user_action_guard_can_be_turned_off(client, session, llm):
     assert not any(e["type"] == "guard" for e in events)
     last = client.get(f"/api/sessions/{session}").json()["messages"][-1]["content"]
     assert last.startswith("*You nod slowly.")
+
+
+def test_first_person_slip_is_regenerated_once(client, session, llm):
+    """Imported test card greets in third person; the first draft slips."""
+    llm.replies = ["*I nod, and my smile is real. I mean it.*", "*She nods once.*"]
+    events = sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": "hi"}))
+    assert {"type": "redo", "reason": "first_person"} in events
+    last = client.get(f"/api/sessions/{session}").json()["messages"][-1]["content"]
+    assert last == "*She nods once. reply 2.*"
+
+
+def test_redo_happens_at_most_once(client, session, llm):
+    llm.replies = ["*I nod. I smile. I mean it.*"] * 3
+    events = sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": "hi"}))
+    assert sum(e["type"] == "redo" for e in events) == 1
+    assert llm.reply_count == 2
+
+
+def test_redo_can_be_turned_off(client, session, llm):
+    client.patch("/api/settings", json={"redo_first_person": False})
+    llm.replies = ["*I nod. I smile. I mean it.*"]
+    events = sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": "hi"}))
+    assert not any(e["type"] == "redo" for e in events)

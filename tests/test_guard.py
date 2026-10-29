@@ -107,3 +107,26 @@ def test_plain_paragraphs_after_a_starred_one_are_still_scanned():
     assert "can't believe" not in out
     assert "other options" in out
     assert out.startswith("*Later that night")
+
+
+# --- first-person slips -----------------------------------------------------
+
+from app.chat.guard import first_person_narration, slipped_into_first_person  # noqa: E402
+
+THIRD = "*Dina stood on the porch, JJ bundled against her.* \"Hey.\""
+
+
+def test_first_person_counts_narration_not_speech():
+    assert first_person_narration('"I know. I really do. My fault," she says.') == 0
+    assert first_person_narration("I take the mug, and my hands warm. I sigh.") == 3
+
+
+def test_slip_detected_against_a_third_person_greeting():
+    reply = "I take the mug from Riley, letting the warmth seep into my palms. I smile."
+    assert slipped_into_first_person(reply, THIRD)
+    assert not slipped_into_first_person('*She smiles.* "I missed this, my friend. I did."', THIRD)
+
+
+def test_first_person_card_is_left_alone():
+    greeting = "I look up as you walk in. My coffee has gone cold; I don't care."
+    assert not slipped_into_first_person("I grin and wave you over to my table. I knew it.", greeting)

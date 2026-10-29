@@ -136,3 +136,30 @@ def strip_user_actions(text: str, user_name: str, char_name: str = "") -> tuple[
     cleaned = re.sub(r"[ \t]+\n", "\n", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
     return cleaned, removed
+
+
+#: First-person words in narration. A handful in a long reply can be a quirk
+#: ("my God" in a thought); this many means the narrator has become the character.
+# "I" only capitalised (a lowercase "i" is a typo, not a voice); the rest either
+# case, since "My" opens sentences.
+_FIRST_PERSON = re.compile(r"\b(?:I|(?i:me|my|mine|myself))\b")
+FIRST_PERSON_LIMIT = 3
+
+
+def first_person_narration(text: str) -> int:
+    """First-person words in the *narration* of a reply; speech never counts."""
+    return sum(len(_FIRST_PERSON.findall(text[a:b])) for a, b in _narration_spans(text))
+
+
+def slipped_into_first_person(reply: str, greeting: str) -> bool:
+    """Whether a reply narrates in first person when the card does not.
+
+    The card's own greeting is the reference: a card written in first person
+    ("I look up as you walk in") is left alone. Measured on Stheno with the
+    Dina card: about one reply in five slips, and every reply after a stored
+    slip followed it -- the narrator copies the transcript, as with narrating
+    the user. Regenerating the slipped reply once keeps the loop from starting.
+    """
+    if first_person_narration(greeting) >= FIRST_PERSON_LIMIT:
+        return False
+    return first_person_narration(reply) >= FIRST_PERSON_LIMIT

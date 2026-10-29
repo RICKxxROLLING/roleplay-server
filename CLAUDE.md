@@ -97,6 +97,13 @@ the loop. The guard is deliberately narrow (narration only, user as sentence sub
 quotes only when attached to a removed sentence); its tests are both directions. The UI
 reloads the stored message at the end of a turn, so the streamed draft is replaced.
 
+**A reply that slips into first-person narration is regenerated once (`redo_first_person`).**
+Same feedback loop as narrating the user: ~1 Stheno reply in 5 slips, and every reply after a
+stored slip followed it (13 and 16 of 16 turns in two runs). One redo before storing took two
+runs to 0 of 16, firing once in 32 turns. The card's greeting is the reference -- a card that
+greets in first person is never redone -- and the second attempt is kept whatever it is, so
+the loop cannot spin. The UI drops its streamed draft on the `redo` event.
+
 **Never name the behaviour you are forbidding.** A tail reminder that said "never write
 {user} nodding, smiling, laughing or answering" took a chat from 3 user-narrating turns to
 13 of 16, and lengthened replies -- naming the actions primed them. The reminder now says

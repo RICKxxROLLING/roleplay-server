@@ -108,6 +108,7 @@ class SettingsPatch(BaseModel):
     # Capped: it rides in every prompt, ahead of the history it would displace.
     narration_style: str | None = Field(None, max_length=2000)
     guard_user_actions: bool | None = None
+    redo_first_person: bool | None = None
 
     temperature: float | None = None
     top_p: float | None = None

@@ -123,6 +123,22 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
             </span>
           </label>
 
+          <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={s.redo_first_person}
+              onChange={(e) => update("redo_first_person", e.target.checked)}
+              className="accent-accent w-4 h-4 mt-0.5"
+            />
+            <span>
+              Redo replies that slip into first person
+              <span className="block text-xs text-slate-600">
+                When a third-person character starts narrating as "I", the reply is
+                written again once. Costs one extra generation when it happens.
+              </span>
+            </span>
+          </label>
+
           {SLIDERS.map(({ key, min, max, step, hint }) => (
             <div key={key}>
               <div className="flex justify-between text-sm mb-1">

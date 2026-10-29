@@ -119,6 +119,8 @@ class MockLLM(LLMClient):
         self.prompts: list[str] = []
         self.summary_calls: list[str] = []
         self.reply_count = 0
+        #: Per-call replies, consumed first; `reply` once empty.
+        self.replies: list[str] = []
 
     async def generate_stream(self, prompt, params):
         self.prompts.append(prompt)
@@ -131,7 +133,8 @@ class MockLLM(LLMClient):
             )
             return
         self.reply_count += 1
-        for piece in [f"{self.reply[:-1]} ", f"reply {self.reply_count}.*"]:
+        reply = self.replies.pop(0) if self.replies else self.reply
+        for piece in [f"{reply[:-1]} ", f"reply {self.reply_count}.*"]:
             yield piece
 
     async def list_models(self):
