@@ -8,7 +8,9 @@ on:
     # Both, so the pipeline works whether the repo ends up defaulting to `main`
     # or `master`. The `latest` tag still tracks whichever GitHub considers the
     # default branch, so only one of them can ever produce it.
-    branches: [main, master]
+    # `test` publishes the `:test` image the test instance runs
+    # (deploy/unraid/docker-compose.test.yml), via the branch tag below.
+    branches: [main, master, test]
     tags: ["v*"]
   workflow_dispatch:
 

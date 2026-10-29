@@ -338,6 +338,21 @@ There's a test asserting the file has no CRLF.
   rejects too — that's its entire reason to exist, since a threshold can't be chosen from
   data the floor already filtered out.
 
+## Testing on the live hardware
+
+There is a separate test instance (`deploy/unraid/docker-compose.test.yml`, project
+`roleplay-test`, port 8001, `:test` image from the `test` branch). **Run test chats there,
+never on production.** Production holds the owner's real conversations; the owner asked
+that test sessions neither read nor edit them, and the test stack enforces it by not
+mounting the production volume -- a test there pins that.
+
+- Ship changes to the test instance first: push to `test`, wait for the image, ask the
+  owner to **Update Stack** on `roleplay-test`, then test. `master` only after that.
+- Test data (characters, personas, chats) lives only in the test instance; seed it there
+  through the API.
+- Ollama on :11434 is shared and holds no chat data, so offline prompt experiments may
+  call it directly. Keep runs short: they queue in front of the owner's replies.
+
 ## Conventions
 
 - Comments explain **why**, not what. Assume the reader can read Python.

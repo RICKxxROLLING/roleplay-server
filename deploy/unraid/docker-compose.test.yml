@@ -1,0 +1,61 @@
+# Test instance — a second, isolated copy of the app on the same Unraid box.
+#
+# Add it as its own project in Compose Manager (name: roleplay-test), next to
+# the production `roleplay` project. What it shares and what it does not:
+#
+#   shares   the production Ollama, so tests run on the real GPU and models
+#   own      database, settings, characters and chats (its own appdata folder)
+#   never    the production volume -- it is not mounted, so nothing running
+#            here can read, list or edit a production conversation
+#
+# It runs the `:test` image, built from the repo's `test` branch, so changes
+# can be tried here before they reach `latest`. Update it with Compose
+# Manager's "Update Stack" on this project only.
+#
+# SECURITY: LAN only. Do not route it through the Cloudflare tunnel. It starts
+# with no password (auth is off until one is set), which is what lets automated
+# test sessions use it -- acceptable for a LAN-only copy holding test data,
+# never for anything reachable from outside.
+#
+# GPU: test generations share Ollama with production and queue behind it, so
+# a long test run makes production replies slower while it lasts.
+
+name: roleplay-test
+
+services:
+  app:
+    image: ${RP_TEST_IMAGE:-ghcr.io/rickxxrolling/roleplay-server:test}
+    container_name: roleplay-server-test
+    restart: unless-stopped
+    ports:
+      - "${RP_TEST_PORT:-8001}:8000"
+    environment:
+      PUID: ${PUID:-99}
+      PGID: ${PGID:-100}
+      TZ: ${TZ:-Etc/UTC}
+
+      RP_BACKEND: ollama
+      # A separate project cannot resolve the production network's `ollama`
+      # hostname, so this goes through the port Ollama publishes on the host.
+      # Required: http://<unraid-lan-ip>:11434
+      RP_LLM_BASE_URL: ${RP_TEST_OLLAMA_URL:?set RP_TEST_OLLAMA_URL to http://<unraid-ip>:11434}
+
+      # First-boot defaults for the current Stheno setup; the Settings panel
+      # overrides these once changed, exactly as in production.
+      RP_MODEL: ${RP_TEST_MODEL:-stheno-v3.2:8b}
+      RP_PROMPT_FORMAT: ${RP_TEST_PROMPT_FORMAT:-llama3}
+      RP_CONTEXT_TOKENS: "8192"
+      RP_MAX_NEW_TOKENS: "512"
+      RP_TEMPERATURE: "1.12"
+      RP_MIN_P: "0.075"
+      RP_TOP_K: "50"
+      RP_TOP_P: "1.0"
+      RP_KEEP_RECENT_MESSAGES: "16"
+      RP_RETRIEVAL_ENABLED: "true"
+
+      RP_DATABASE_URL: sqlite:////data/roleplay.db
+      RP_DATA_DIR: /data
+    volumes:
+      - ${APPDATA:-/mnt/user/appdata}/roleplay-server-test:/data
+    labels:
+      net.unraid.docker.webui: "http://[IP]:[PORT:8001]/"

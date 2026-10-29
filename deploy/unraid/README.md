@@ -166,6 +166,29 @@ never port-forward it. Set `OLLAMA_PORT=` (blank) in `.env` to keep it off the h
 
 ---
 
+## Test instance (optional)
+
+A second copy of the app for trying changes and running test chats on the real GPU, with
+its own database. It cannot see production chats: the production data folder is never
+mounted into it.
+
+1. In Compose Manager, **Add New Stack** named `roleplay-test`.
+2. Paste [`docker-compose.test.yml`](docker-compose.test.yml) as its compose file.
+3. In the stack's `.env`, set `RP_TEST_OLLAMA_URL=http://<unraid-ip>:11434`. It must be
+   the LAN address: a separate project cannot resolve the production stack's `ollama`
+   hostname.
+4. **Compose Up.** The app is on port **8001**.
+
+It runs the `:test` image, which GitHub builds from the repo's `test` branch. After a push
+there, use **Update Stack** on `roleplay-test` only; production keeps running `latest`.
+
+Keep it LAN-only and out of the Cloudflare tunnel. It starts without a password so that
+automated test sessions can drive it, which is only acceptable for a copy that holds no
+real chats. Test chats share Ollama with production, so a long test run slows production
+replies while it lasts.
+
+---
+
 ## Where your data lives
 
 | Path | Contents |

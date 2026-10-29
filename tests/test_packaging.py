@@ -221,3 +221,21 @@ def test_image_build_is_gated_on_checks():
     )
     assert "pytest" in run_steps
     assert "npm run lint" in run_steps
+
+
+# --- test instance ----------------------------------------------------------
+
+def test_test_instance_cannot_reach_production_data():
+    """The point of the test stack is that nothing in it can read a real chat.
+    That holds only while it never mounts the production appdata folder."""
+    test = load_yaml("deploy/unraid/docker-compose.test.yml")
+    prod = load_yaml("deploy/unraid/docker-compose.yml")
+    assert test["name"] != prod["name"], "must be its own Compose project"
+    app = test["services"]["app"]
+    prod_app = prod["services"]["app"]
+    # rsplit: the host side holds `${APPDATA:-...}`, which has a colon of its own.
+    prod_data = prod_app["volumes"][0].rsplit(":", 1)[0]
+    assert all(v.rsplit(":", 1)[0] != prod_data for v in app["volumes"])
+    assert app["container_name"] != prod_app["container_name"]
+    assert app["ports"] != prod_app["ports"]
+    assert app["image"].endswith(":test}"), "runs the :test image, not latest"
