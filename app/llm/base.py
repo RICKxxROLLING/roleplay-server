@@ -18,6 +18,7 @@ class GenerationParams:
     temperature: float = 0.9
     top_p: float = 0.9
     top_k: int = 40
+    min_p: float = 0.0
     repeat_penalty: float = 1.1
     #: How far back the repeat penalty looks. Ollama defaults this to 64 tokens,
     #: which is shorter than a single reply here -- so the penalty cannot see

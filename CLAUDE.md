@@ -16,7 +16,7 @@ happens on **Windows**.
 ## Commands
 
 ```powershell
-# Tests — 104 of them, ~8 seconds. Run these before and after any change.
+# Tests — ~200 of them, ~10 seconds. Run these before and after any change.
 python -m pytest
 python -m pytest tests/test_lorebook.py -v    # one file
 python -m pytest -k watermark                 # one concern
@@ -51,7 +51,8 @@ app/
     factory.py          explicit singletons + reset_client()/reset_embedder()
   cards/                V2 PNG import, normalized schema
   prompt/
-    builder.py          Alpaca assembly, slot ordering, token budgeting
+    builder.py          slot ordering, token budgeting, guard + style directives
+    formats.py          Alpaca / Llama 3 / ChatML wrappers (selected by prompt_format)
     tokens.py           chars/3.6 estimate — no tokenizer dependency
   memory/
     manager.py          watermark logic; composes summary + lorebook + retrieval
@@ -59,6 +60,7 @@ app/
     lorebook.py         keyword matching, budget eviction
     rag.py              message embedding, cosine search, budget eviction
   chat/orchestrator.py  per-turn flow, typed stream events
+  chat/guard.py         strips narration of the user's actions before a reply is stored
   db/                   SQLAlchemy models + additive migrations
   routes/               characters, personas, sessions, system
 web/src/components/     React UI
@@ -70,10 +72,42 @@ deploy/unraid/          compose, Docker templates, install guide
 
 Each of these was deliberate. Changing them will reintroduce a bug that was already fixed.
 
-**Raw completion endpoints, not `/v1/chat/completions`.** MythoMax L2 is a Llama-2 merge
-expecting Alpaca instruction format, not a chat template. We render the full prompt ourselves
+**Raw completion endpoints, not `/v1/chat/completions`.** We render the full prompt ourselves
 and send it raw (`raw: true` on Ollama). This is what makes SillyTavern cards behave as
-authored. Switching to chat-completions would silently degrade every card.
+authored. Switching to chat-completions would silently degrade every card. Raw also means
+Ollama's Modelfile template is never applied -- the format is ours to render.
+
+**The instruct format is an explicit setting, not detected.** `prompt_format` picks Alpaca,
+Llama 3 or ChatML in `prompt/formats.py`; the slot ordering is shared. Detection from
+Ollama's template was rejected because that template can be wrong: L3-8B-Stheno-v3.2, a
+Llama 3 tune, arrived from Hugging Face with a ChatML template. Measured on Stheno over
+3x16 turns, Alpaca vs Llama 3: replies hitting the length cap 18 vs 0, user-narrating turns
+10 vs 3, and Alpaca's narrator drifted into first person. Formats never write BOS -- Ollama
+adds one even with `raw: true` ("hello" costs 2 prompt tokens, "<|begin_of_text|>hello" 3).
+Alpaca output is byte-identical to before; tests pin that.
+
+**Sampler options are always sent, `min_p: 0` included.** An omitted option falls back to the
+Modelfile's value, so the UI would stop being the source of truth.
+
+**Narration of the user is stripped before storing (`chat/guard.py`), not just prompted
+against.** Same shape as the summary guards. On Stheno, two runs at identical settings
+narrated the user in 4 and 9 of 16 turns: the spread is feedback, not noise -- one
+"*Riley nods.*" in history and the model copies its own transcript. Stripping on write breaks
+the loop. The guard is deliberately narrow (narration only, user as sentence subject only,
+quotes only when attached to a removed sentence); its tests are both directions. The UI
+reloads the stored message at the end of a turn, so the streamed draft is replaced.
+
+**Never name the behaviour you are forbidding.** A tail reminder that said "never write
+{user} nodding, smiling, laughing or answering" took a chat from 3 user-narrating turns to
+13 of 16, and lengthened replies -- naming the actions primed them. The reminder now says
+where to stop ("end on {char}'s own words or actions") instead. Same lesson as the
+summariser rule that did nothing; small models follow examples, not prohibitions.
+
+**`narration_style` is appended like the impersonation guard, not folded into
+`DEFAULT_SYSTEM`.** A card's `system_prompt` replaces the default wholesale, so anything only
+in the default disappears for exactly the cards that bring their own. A one-line pointer is
+repeated in the tail for recency; the full text is not, so it doesn't crowd the card's own
+`post_history_instructions`.
 
 **Auth is middleware over `/api`, not a per-route dependency.** The guarantee wanted is
 "nothing under `/api` answers without a session", and that is only true if it cannot be
@@ -192,8 +226,9 @@ the part simply missing. Don't drop this option believing `repeat_penalty` alone
 **Stop sequences are newline-anchored (`\nRiley:`, not `Riley:`).** A bare name would
 truncate legitimate prose like `she turned to Riley: "..."`.
 
-**`post_history_instructions` is wrapped in `### Instruction:`.** A bare paragraph between
-two `### Response:` headers confuses Llama-2 instruct tunes.
+**`post_history_instructions` is its own block** -- `### Instruction:` in Alpaca, a late
+system turn in chat formats. A bare paragraph between two `### Response:` headers confuses
+Llama-2 instruct tunes.
 
 **Lorebook book-level settings are flat `lorebook_*` fields.** Nesting them in an object
 would break every card already stored in a user's database.
@@ -247,6 +282,13 @@ There's a test asserting the file has no CRLF.
   and the Models panel is the only place to fix a bad model name — so a hard failure there
   locked the user out of the very UI that repairs it. Failures now warn loudly and let the
   stack come up. Don't "tidy" this back into an `&&` chain.
+- **No persona means the user is "You"**, and `substitute()` turns `{{user}}'s` into "your"
+  for that case only -- cards are written for a name, and "the knock on You's door" was seen
+  live.
+- **A card's `system_prompt` can undo the third-person default.** The Dina card's "speak and
+  behave naturally rather than narrating {char}" replaces `DEFAULT_SYSTEM`, and on Stheno
+  the narrator drifted into first person mid-chat. `narration_style` can restore it
+  server-wide, but the card is the real fix.
 - **Env vars are first-run defaults only.** Once a setting is written from the UI it lives in
   the `app_settings` table and wins. Editing `.env` afterwards does nothing. Delete the row
   to revert.
@@ -396,6 +438,14 @@ One deployment, one configuration: Unraid + RTX 2080 (8GB), `HammerAI/smart-lemo
 - **MythoMax 13B has never actually run.** No longer the default, but it is still what the
   Alpaca prompt was designed against, and it remains the documented 12GB+ option. The only
   model this has been used with is the 7B, so prompt tuning reflects that one model.
+- **L3-8B-Stheno-v3.2 (Q4_K_M) was measured offline, not yet through a deployed build.** Three
+  cards x 16 scripted turns per configuration, rendered by this repo's builder and sent raw to
+  the user's Ollama (RTX 2080) -- no summary or retrieval in the loop. With `llama3` format,
+  temperature 1.12 / min_p 0.075 / top_k 50 / top_p 1, a narration style and the guard: no
+  replies hit the length cap, ~4-9 s per reply, stored replies narrating the user fell to
+  0-2 of 16 per chat. One card (Dina) still drifted into first person in 2 of 3 runs; that
+  traces to its own `system_prompt`, not the builder. The live app has not run these
+  changes yet.
 - **Only one card has been exercised**, and it turned out to be misconfigured (its `name`
   was the *user's* role — see Gotchas). Card compatibility across a library is untested.
 - **The Ollama `/api/embed` → `/api/embeddings` fallback** is still reasoned from API

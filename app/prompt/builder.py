@@ -1,4 +1,5 @@
-"""Prompt assembly for MythoMax L2 13B (Alpaca instruction format).
+"""Prompt assembly. Built for MythoMax L2 13B (Alpaca); the instruct format is
+now pluggable -- see formats.py -- while the slot ordering below is shared.
 
 Slot ordering follows the SillyTavern V2 contract, which is what makes community
 cards behave the way their authors intended:
@@ -28,6 +29,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..cards.models import CharacterCard
+from .formats import ALPACA, PromptFormat, get_format
 from .tokens import estimate_tokens
 
 DEFAULT_SYSTEM = (
@@ -53,7 +55,14 @@ IMPERSONATION_GUARD = (
 # Repeated immediately before the generation point. Small models weight recency
 # far more heavily than a directive sitting thousands of tokens up the prompt,
 # and impersonation is exactly the instruction they drop first.
-TAIL_REMINDER = "Continue as {{char}}. Do not write {{user}}'s dialogue or actions."
+TAIL_REMINDER = (
+    "Continue as {{char}}. End on {{char}}'s own words or actions, at a moment "
+    "{{user}} can respond to. Do not write {{user}}'s dialogue or actions."
+)
+
+# Short on purpose: the full narration style already sits in the head, and a
+# long block here would crowd the card's own post_history_instructions.
+STYLE_REMINDER = "Follow the narration style described above."
 
 INSTRUCTION = "### Instruction:"
 RESPONSE = "### Response:"
@@ -73,6 +82,11 @@ def substitute(text: str, char_name: str, user_name: str) -> str:
     """V2 cards use {{char}}/{{user}} (and legacy <BOT>/<USER>) placeholders."""
     if not text:
         return ""
+    if user_name == "You":
+        # The no-persona default. Cards are written for a name, so plain
+        # substitution produces "the knock on You's door" -- seen live.
+        for tag in ("{{user}}", "<USER>"):
+            text = text.replace(f"{tag}'s", "your").replace(f"{tag}’s", "your")
     for a, b in (
         ("{{char}}", char_name),
         ("{{user}}", user_name),
@@ -94,11 +108,14 @@ def _character_block(card: CharacterCard, char: str, user: str) -> str:
     return "\n\n".join(parts)
 
 
-def _format_turn(role: str, content: str, char: str, user: str) -> str:
-    """One exchange in Alpaca form."""
+def _format_turn(
+    role: str, content: str, char: str, user: str, fmt: PromptFormat = ALPACA
+) -> str:
+    """One message. Speaker names stay in the content in every format: the
+    newline-anchored user stop and the orchestrator's prefix strip rely on them."""
     if role == "user":
-        return f"{INSTRUCTION}\n{user}: {content}"
-    return f"{RESPONSE}\n{char}: {content}"
+        return fmt.user.format(text=f"{user}: {content}")
+    return fmt.assistant.format(text=f"{char}: {content}")
 
 
 def build_prompt(
@@ -113,16 +130,22 @@ def build_prompt(
     context_tokens: int = 4096,
     max_new_tokens: int = 400,
     reserve_tokens: int = 256,
+    prompt_format: str | PromptFormat = "alpaca",
+    narration_style: str = "",
 ) -> BuiltPrompt:
     """`history` is [(role, content), ...] oldest-first, excluding the pending reply."""
+    fmt = prompt_format if isinstance(prompt_format, PromptFormat) else get_format(prompt_format)
     char = card.name or "Character"
     budget = context_tokens - max_new_tokens - reserve_tokens
+    # Server-wide house style. Like the guard it is appended rather than folded
+    # into DEFAULT_SYSTEM, or every card with its own system_prompt would drop it.
+    style = substitute(narration_style.strip(), char, user_name)
 
     # --- Mandatory head ---
     # The guard is appended rather than baked into the default, so it survives a
     # card supplying its own system_prompt.
     system = substitute(card.system_prompt or DEFAULT_SYSTEM, char, user_name)
-    head_parts = [system, substitute(IMPERSONATION_GUARD, char, user_name)]
+    head_parts = [system, substitute(IMPERSONATION_GUARD, char, user_name), style]
 
     if user_persona:
         head_parts.append(f"{user_name}'s persona: {substitute(user_persona, char, user_name)}")
@@ -175,24 +198,26 @@ def build_prompt(
         used += estimate_tokens(retrieved_block)
 
     # --- Tail: post-history instructions sit closest to the generation point ---
-    # Wrapped as a proper Alpaca instruction block; a bare paragraph between two
+    # Wrapped as its own block; in Alpaca a bare paragraph between two
     # ### Response: headers confuses Llama-2 instruct tunes.
     # The card's own tail comes first; ours lands last, closest to generation.
     tail_parts = [
         substitute(card.post_history_instructions, char, user_name),
+        # Repeated here for the same recency reason as the reminder below.
+        STYLE_REMINDER if style else "",
         substitute(TAIL_REMINDER, char, user_name),
     ]
-    tail = f"{INSTRUCTION}\n" + "\n".join(p for p in tail_parts if p)
+    tail = fmt.tail.format(text="\n".join(p for p in tail_parts if p))
     used += estimate_tokens(tail)
 
-    priming = f"{RESPONSE}\n{char}:"
+    priming = f"{fmt.response_open}{char}:"
     used += estimate_tokens(priming)
 
     # --- History, newest-first until budget is spent ---
     kept: list[str] = []
     dropped = 0
     for role, content in reversed(history):
-        turn = _format_turn(role, substitute(content, char, user_name), char, user_name)
+        turn = _format_turn(role, substitute(content, char, user_name), char, user_name, fmt)
         cost = estimate_tokens(turn)
         if used + cost > budget:
             dropped += 1
@@ -201,13 +226,10 @@ def build_prompt(
         kept.append(turn)
     kept.reverse()
 
-    sections = [head]
-    if example:
-        sections.append(example)
-    if summary_block:
-        sections.append(summary_block)
-    if retrieved_block:
-        sections.append(retrieved_block)
+    # Everything above the history is one preamble: for Alpaca that renders
+    # exactly as before, and chat formats need it inside a single system turn.
+    preamble = "\n\n".join(b for b in (head, example, summary_block, retrieved_block) if b)
+    sections = [fmt.system.format(text=preamble)]
     sections.extend(kept)
     # Always present now -- the tail carries the impersonation reminder even when
     # the card has no post_history_instructions of its own.
@@ -215,11 +237,11 @@ def build_prompt(
     sections.append(priming)
 
     return BuiltPrompt(
-        text="\n\n".join(sections),
+        text=fmt.joiner.join(sections),
         # Stop before the model starts writing the user's side of the scene.
         # Note: only the newline-anchored user label -- a bare "Name:" would
         # truncate legitimate prose like: she turned to Riley: "..."
-        stop=[INSTRUCTION, f"\n{user_name}:", "</s>"],
+        stop=[fmt.stops[0], f"\n{user_name}:", *fmt.stops[1:]],
         used_tokens=used,
         dropped_messages=dropped,
         lore_entries=lore_count,

@@ -22,6 +22,18 @@ class Settings(BaseSettings):
     # Namespaced on purpose: bare names resolve to Ollama's official library,
     # where these community models do not exist.
     model: str = "HammerAI/smart-lemon-cookie"
+    # Instruct template the raw prompt is rendered in: "alpaca" | "llama3" |
+    # "chatml". Must match what the *model* was trained on -- a Llama 3 tune fed
+    # Alpaca still answers, but thinner, and drifts as the chat grows. Not
+    # inferred from Ollama's template, which can be wrong for imported GGUFs.
+    prompt_format: str = "alpaca"
+    # House style appended to every character's prompt, after the card's own
+    # system prompt. Blank adds nothing.
+    narration_style: str = ""
+    # Strip sentences narrating the user's own actions before a reply is
+    # stored. On by default: prompting alone measured 4-9 such turns in 16 on
+    # an 8B, and each one stored teaches the next. See chat/guard.py.
+    guard_user_actions: bool = True
 
     # --- Context / prompt budgeting ---
     # MythoMax L2 13B is Llama-2 based: 4096 native context.
@@ -33,6 +45,11 @@ class Settings(BaseSettings):
     temperature: float = 0.9
     top_p: float = 0.9
     top_k: int = 40
+    # Drops tokens below this fraction of the top token's probability. Unlike
+    # top_p it scales with the model's confidence, which is what lets a high
+    # temperature stay coherent; most modern RP tunes publish settings around
+    # it. 0 disables it, so existing installs sample exactly as before.
+    min_p: float = 0.0
     repeat_penalty: float = 1.1
     # How far back the repeat penalty looks, in tokens. Ollama's own default is
     # 64 -- shorter than one reply here (~300 tokens), so the penalty could not

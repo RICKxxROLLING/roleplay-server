@@ -16,6 +16,7 @@ from ..db.models import ChatSession, Message
 from ..llm import GenerationParams, get_client
 from ..memory import memory_manager, rag
 from ..prompt import build_prompt
+from .guard import strip_user_actions
 
 
 def _card_of(session: ChatSession) -> CharacterCard:
@@ -42,6 +43,8 @@ async def build_turn_prompt(
         context_tokens=(overrides or {}).get("context_tokens", settings.context_tokens),
         max_new_tokens=(overrides or {}).get("max_new_tokens", settings.max_new_tokens),
         reserve_tokens=settings.reserve_tokens,
+        prompt_format=settings.prompt_format,
+        narration_style=settings.narration_style,
     )
 
 
@@ -51,6 +54,7 @@ def _params(built_stop: list[str], overrides: dict | None) -> GenerationParams:
         temperature=o.get("temperature", settings.temperature),
         top_p=o.get("top_p", settings.top_p),
         top_k=o.get("top_k", settings.top_k),
+        min_p=o.get("min_p", settings.min_p),
         repeat_penalty=o.get("repeat_penalty", settings.repeat_penalty),
         repeat_last_n=o.get("repeat_last_n", settings.repeat_last_n),
         context_tokens=o.get("context_tokens", settings.context_tokens),
@@ -91,6 +95,15 @@ async def stream_reply(
     prefix = f"{card.name}:"
     if reply.startswith(prefix):
         reply = reply[len(prefix) :].strip()
+
+    # Before persisting: once one reply narrating the user is in history, the
+    # model copies it -- see chat/guard.py. The UI reloads the stored message
+    # when the turn ends, so the streamed draft is replaced by this one.
+    if settings.guard_user_actions:
+        user_name = session.persona.name if session.persona else "You"
+        reply, removed = strip_user_actions(reply, user_name, card.name)
+        if removed:
+            yield {"type": "guard", "removed": removed}
 
     if not reply:
         return

@@ -134,3 +134,83 @@ def test_token_estimate_is_conservative():
     """Better to under-fill context than blow past it."""
     text = "a" * 360
     assert estimate_tokens(text) >= 100
+
+
+# --- instruct formats -------------------------------------------------------
+
+def test_alpaca_is_the_default_and_unchanged_by_name():
+    hist = [("user", "hi"), ("assistant", "hello")]
+    assert build_prompt(card(), hist).text == build_prompt(card(), hist, prompt_format="alpaca").text
+
+
+def test_unknown_format_falls_back_to_alpaca():
+    """A bad stored value must not fail every turn."""
+    assert build_prompt(card(), [], prompt_format="nope").text == build_prompt(card(), []).text
+
+
+def test_llama3_wraps_every_block_in_its_template():
+    p = build_prompt(
+        card(post_history_instructions="Stay in character."),
+        [("user", "hi"), ("assistant", "hello")],
+        user_name="Riley",
+        summary="They met in the rain.",
+        prompt_format="llama3",
+    )
+    sys_open = "<|start_header_id|>system<|end_header_id|>\n\n"
+    # One preamble turn carrying the card and memory, not a block per section.
+    assert p.text.startswith(sys_open + "You are Seraphine")
+    assert p.text.index("Story so far") < p.text.index("<|eot_id|>")
+    assert "<|start_header_id|>user<|end_header_id|>\n\nRiley: hi<|eot_id|>" in p.text
+    assert "<|start_header_id|>assistant<|end_header_id|>\n\nSeraphine: hello<|eot_id|>" in p.text
+    # The tail is a late system turn, still closest to generation.
+    assert p.text.rindex(sys_open) > p.text.index("Seraphine: hello")
+    assert "Stay in character." in p.text[p.text.rindex(sys_open):]
+    assert p.text.endswith("<|start_header_id|>assistant<|end_header_id|>\n\nSeraphine:")
+    assert "###" not in p.text
+
+
+def test_llama3_writes_no_bos():
+    """Ollama adds BOS itself even with raw=true; writing one doubles it."""
+    assert "<|begin_of_text|>" not in build_prompt(card(), [], prompt_format="llama3").text
+
+
+def test_chat_formats_keep_the_newline_anchored_user_stop():
+    for fmt, eos in (("llama3", "<|eot_id|>"), ("chatml", "<|im_end|>")):
+        p = build_prompt(card(), [], user_name="Riley", prompt_format=fmt)
+        assert eos in p.stop
+        assert "\nRiley:" in p.stop
+        assert "Riley:" not in p.stop
+        assert INSTRUCTION not in p.stop
+
+
+def test_chatml_shape():
+    p = build_prompt(card(), [("user", "hi")], user_name="Riley", prompt_format="chatml")
+    assert p.text.startswith("<|im_start|>system\n")
+    assert "<|im_start|>user\nRiley: hi<|im_end|>\n" in p.text
+    assert p.text.endswith("<|im_start|>assistant\nSeraphine:")
+
+
+def test_narration_style_survives_a_card_system_prompt():
+    p = build_prompt(
+        card(system_prompt="Custom card prompt."),
+        [],
+        user_name="Riley",
+        narration_style="Describe {{char}}'s surroundings for {{user}}.",
+    )
+    assert "Custom card prompt." in p.text
+    assert "Describe Seraphine's surroundings for Riley." in p.text
+    # Reminded in the tail, closest to generation, without repeating it whole.
+    tail = p.text[p.text.rindex(INSTRUCTION):]
+    assert "narration style" in tail
+    assert "surroundings" not in tail
+
+
+def test_blank_narration_style_adds_nothing():
+    assert build_prompt(card(), [], narration_style="  ").text == build_prompt(card(), []).text
+
+
+def test_no_persona_possessive_reads_naturally():
+    assert substitute("The knock on {{user}}'s door", "Dina", "You") == "The knock on your door"
+    assert substitute("<USER>’s hand", "Dina", "You") == "your hand"
+    # Only the default: a real name keeps its possessive.
+    assert substitute("{{user}}'s door", "Dina", "Riley") == "Riley's door"

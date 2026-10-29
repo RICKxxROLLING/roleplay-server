@@ -15,9 +15,9 @@ import re
 from ..cards.models import CharacterCard
 from ..config import settings
 from ..llm import GenerationParams, get_client
+from ..prompt.formats import ALL_MARKERS, get_format
 
-SUMMARY_PROMPT = """### Instruction:
-You maintain the memory log for an ongoing roleplay between {user} and {char}.
+SUMMARY_PROMPT = """You maintain the memory log for an ongoing roleplay between {user} and {char}.
 
 Rewrite the memory log so it absorbs the new events below. Preserve, in priority order:
 1. Concrete facts: names, places, objects, numbers, titles.
@@ -35,10 +35,7 @@ EXISTING MEMORY LOG:
 {summary}
 
 NEW EVENTS:
-{transcript}
-
-### Response:
-"""
+{transcript}"""
 
 _TARGET_WORDS = "150-250"
 
@@ -54,15 +51,23 @@ def render_transcript(
 
 
 def build_summary_prompt(
-    existing: str, turns: list[tuple[str, str]], char_name: str, user_name: str
+    existing: str,
+    turns: list[tuple[str, str]],
+    char_name: str,
+    user_name: str,
+    prompt_format: str = "alpaca",
 ) -> str:
-    return SUMMARY_PROMPT.format(
+    # Wrapped in the chat model's own format: a roleplay tune handed the wrong
+    # template is even more inclined to answer "compress this" with more scene.
+    fmt = get_format(prompt_format)
+    body = SUMMARY_PROMPT.format(
         user=user_name,
         char=char_name,
         words=_TARGET_WORDS,
         summary=existing.strip() or "(nothing recorded yet)",
         transcript=render_transcript(turns, char_name, user_name),
     )
+    return fmt.user.format(text=body) + fmt.joiner + fmt.response_open
 
 
 #: Stage directions -- "*She nods once.*" -- the clearest roleplay tell.
@@ -74,7 +79,7 @@ _SPEAKER_LABEL = re.compile(r"^[A-Z][\w' .-]{1,40}:\s")
 def _clean(text: str) -> str:
     """Strip artefacts small models tack onto summaries."""
     out = text.strip()
-    for marker in ("### Instruction:", "### Response:", "EXISTING MEMORY LOG:", "NEW EVENTS:"):
+    for marker in (*ALL_MARKERS, "EXISTING MEMORY LOG:", "NEW EVENTS:"):
         idx = out.find(marker)
         if idx != -1:
             out = out[:idx]
@@ -194,7 +199,9 @@ async def summarize(
     if not turns:
         return existing
 
-    prompt = build_summary_prompt(existing, turns, card.name or "Character", user_name)
+    prompt = build_summary_prompt(
+        existing, turns, card.name or "Character", user_name, settings.prompt_format
+    )
     params = GenerationParams(
         temperature=settings.summary_temperature,
         top_p=0.9,
@@ -206,7 +213,7 @@ async def summarize(
         # left with bare dialogue to continue.
         context_tokens=settings.context_tokens,
         max_new_tokens=settings.summary_max_tokens,
-        stop=["### Instruction:", "</s>"],
+        stop=list(get_format(settings.prompt_format).stops),
     )
 
     raw = await get_client().generate(prompt, params)

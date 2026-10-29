@@ -15,6 +15,7 @@ export default function ChatView({
   const [streamText, setStreamText] = useState("");
   const [busy, setBusy] = useState(false);
   const [memoryState, setMemoryState] = useState(null);
+  const [guardRemoved, setGuardRemoved] = useState(0);
   const [error, setError] = useState(null);
   const [renaming, setRenaming] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
@@ -68,9 +69,13 @@ export default function ChatView({
     setBusy(true);
     setError(null);
     setStreamText("");
+    setGuardRemoved(0);
     let acc = "";
 
     abortRef.current = streamTurn(path, body, {
+      onEvent: (evt) => {
+        if (evt.type === "guard") setGuardRemoved(evt.removed);
+      },
       onToken: (t) => {
         acc += t;
         setStreamText(stripSpeakerPrefix(acc, charName));
@@ -263,6 +268,17 @@ export default function ChatView({
 
         {busy && !streamText && (
           <div className="text-xs text-slate-600 pl-12">{charName} is writing…</div>
+        )}
+
+        {guardRemoved > 0 && !busy && (
+          <div className="flex justify-center">
+            <span
+              className="text-[11px] px-3 py-1 rounded-full border border-ink-700 bg-ink-900 text-slate-500"
+              title="Settings → Keep the character from acting for you"
+            >
+              removed {guardRemoved} {guardRemoved === 1 ? "line" : "lines"} that acted for you
+            </span>
+          </div>
         )}
 
         {memoryState && (

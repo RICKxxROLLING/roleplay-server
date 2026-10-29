@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
-from typing import AsyncIterator
+from typing import AsyncIterator, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DbSession
 
 from .. import settings_store
@@ -104,10 +104,15 @@ class SettingsPatch(BaseModel):
     model: str | None = None
     backend: str | None = None
     llm_base_url: str | None = None
+    prompt_format: Literal["alpaca", "llama3", "chatml"] | None = None
+    # Capped: it rides in every prompt, ahead of the history it would displace.
+    narration_style: str | None = Field(None, max_length=2000)
+    guard_user_actions: bool | None = None
 
     temperature: float | None = None
     top_p: float | None = None
     top_k: int | None = None
+    min_p: float | None = None
     repeat_penalty: float | None = None
     repeat_last_n: int | None = None
     max_new_tokens: int | None = None

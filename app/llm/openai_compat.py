@@ -38,6 +38,7 @@ class OpenAICompatClient(LLMClient):
             "stop": params.stop or None,
             # Non-standard but honoured by llama.cpp / vLLM; ignored elsewhere.
             "top_k": params.top_k,
+            "min_p": params.min_p,
             "repetition_penalty": params.repeat_penalty,
             "repeat_last_n": params.repeat_last_n,
         }

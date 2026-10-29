@@ -1,13 +1,21 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { Textarea } from "./ui";
 
 const SLIDERS = [
   { key: "temperature", min: 0.1, max: 2, step: 0.05, hint: "Higher = more creative, less coherent" },
   { key: "top_p", min: 0.1, max: 1, step: 0.05, hint: "Nucleus sampling cutoff" },
   { key: "top_k", min: 0, max: 200, step: 1, hint: "0 disables top-k" },
+  { key: "min_p", min: 0, max: 0.3, step: 0.005, hint: "Drops unlikely words relative to the best one; keeps high temperatures coherent. 0 disables" },
   { key: "repeat_penalty", min: 1, max: 1.5, step: 0.01, hint: "Curbs looping; >1.2 can flatten voice" },
   { key: "repeat_last_n", min: 64, max: 2048, step: 64, hint: "How far back that penalty looks. 64 is shorter than one reply, which is what makes phrasing recycle across turns" },
   { key: "max_new_tokens", min: 64, max: 1024, step: 16, hint: "Reply length cap" },
+];
+
+const PROMPT_FORMATS = [
+  { value: "alpaca", label: "Alpaca (Mistral / Llama 2 merges)" },
+  { value: "llama3", label: "Llama 3 (Stheno, Lumimaid, L3 tunes)" },
+  { value: "chatml", label: "ChatML (Qwen, many Nemo tunes)" },
 ];
 
 export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }) {
@@ -57,6 +65,63 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
           <p className="text-xs text-slate-600 -mt-2">
             Changes save automatically and persist across restarts.
           </p>
+
+          <div>
+            <div className="flex justify-between items-center text-sm mb-1">
+              <label htmlFor="prompt-format">Prompt format</label>
+              <select
+                id="prompt-format"
+                value={s.prompt_format}
+                onChange={(e) => update("prompt_format", e.target.value)}
+                className="bg-ink-950 border border-ink-800 rounded-lg px-2 py-1 text-sm outline-none focus:border-accent/60"
+              >
+                {PROMPT_FORMATS.map((f) => (
+                  <option key={f.value} value={f.value}>{f.label}</option>
+                ))}
+              </select>
+            </div>
+            <p className="text-xs text-slate-600 mt-0.5">
+              Must match how the model was trained — check its model card. The wrong
+              one still answers, but thinner, and drifts as a chat gets long.
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="narration-style" className="text-sm block mb-1">
+              Narration style
+            </label>
+            {/* Saved on blur: a PATCH per keystroke would race itself. */}
+            <Textarea
+              id="narration-style"
+              rows={4}
+              maxLength={2000}
+              value={s.narration_style ?? ""}
+              onChange={(e) => setS((prev) => ({ ...prev, narration_style: e.target.value }))}
+              onBlur={(e) => update("narration_style", e.target.value)}
+              placeholder="e.g. Describe the setting, weather, sounds and background characters in every reply."
+            />
+            <p className="text-xs text-slate-600 mt-0.5">
+              Added to every character's prompt after its own instructions. Use
+              {" {{char}}"} and {"{{user}}"} for names. Leave blank to add nothing.
+            </p>
+          </div>
+
+          <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={s.guard_user_actions}
+              onChange={(e) => update("guard_user_actions", e.target.checked)}
+              className="accent-accent w-4 h-4 mt-0.5"
+            />
+            <span>
+              Keep the character from acting for you
+              <span className="block text-xs text-slate-600">
+                Removes lines where the reply narrates your actions or speaks for
+                you, before it is saved. One such line left in a chat teaches the
+                model to keep doing it.
+              </span>
+            </span>
+          </label>
 
           {SLIDERS.map(({ key, min, max, step, hint }) => (
             <div key={key}>

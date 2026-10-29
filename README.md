@@ -22,8 +22,12 @@ memory design; Phase 5 is polish and extra backends.
 - **Backend-agnostic inference** — Ollama or any OpenAI-compatible server (llama.cpp, vLLM,
   LM Studio, TGI). Swap via one env var.
 - **Token streaming** over SSE, with stop/abort.
-- **MythoMax-tuned Alpaca prompt builder** honoring V2 slot ordering, `{{char}}`/`{{user}}`
-  substitution, and token budgeting that trims oldest-first.
+- **Raw prompt builder in Alpaca, Llama 3 or ChatML format**, honoring V2 slot ordering,
+  `{{char}}`/`{{user}}` substitution, and token budgeting that trims oldest-first.
+- **Narration style** — one house-style directive (e.g. rich scene description) applied to
+  every character, editable in Settings.
+- **Impersonation guard** — lines where the reply acts or speaks for you are removed before
+  the reply is saved, so the habit can't snowball through chat history.
 - **Rolling summarization** — old turns fold into a running memory log so conversations stay
   coherent well past 4096 tokens. Inspectable and hand-editable.
 - **Keyword lorebook** — authored world facts that inject only when their keywords appear.
@@ -216,10 +220,22 @@ missing model.
 
 ## Why the prompt looks the way it does
 
-MythoMax L2 is a Llama-2 merge that expects **Alpaca** instruction formatting, not a chat
-template. So every adapter sends a fully-rendered raw prompt to the backend's *completion*
-endpoint rather than `/v1/chat/completions` — that's the only way to keep exact control over
-card fidelity. Ollama gets `raw: true` for the same reason.
+Every adapter sends a fully-rendered raw prompt to the backend's *completion* endpoint rather
+than `/v1/chat/completions` — that's the only way to keep exact control over card fidelity.
+Ollama gets `raw: true` for the same reason, which also means **Ollama's own template is
+never used**: the instruct format comes from **Settings → Prompt format**, and it must match
+the model.
+
+| Format | Models |
+|---|---|
+| Alpaca (default) | MythoMax L2, Smart-Lemon-Cookie and other Llama-2 / Mistral merges |
+| Llama 3 | L3-8B-Stheno, Lumimaid and other Llama 3 tunes |
+| ChatML | Qwen and many Mistral-Nemo tunes |
+
+The wrong format still produces replies, which is what makes it easy to miss. Measured on
+Stheno v3.2 (a Llama 3 tune) over three 16-turn chats, Alpaca against Llama 3: 18 of 48
+replies ran into the length cap instead of ending, the narrator slid into first person, and
+10 turns narrated the user, against 0, none and 3. Check the model card when you switch.
 
 Slot ordering follows the V2 contract, which is what makes community cards behave as authored:
 
@@ -438,7 +454,7 @@ app/
   llm/                  LLMClient interface + Ollama / OpenAI-compat adapters
     embeddings.py       Embedder interface + the same two backends
   cards/                V2 PNG import + normalized schema
-  prompt/               Alpaca builder + token estimation
+  prompt/               builder, instruct formats, token estimation
   memory/
     manager.py          watermark logic, fold triggering, lore assembly
     summarizer.py       fold prompt + LLM call

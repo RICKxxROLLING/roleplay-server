@@ -279,3 +279,30 @@ def test_a_stray_pronoun_does_not_reject_a_summary():
         "Elizabeth authenticated the manuscript and was vindicated at the hearing. "
         "She told the panel it was your signature that convinced her."
     )
+
+
+def test_summary_prompt_alpaca_shape_is_unchanged():
+    from app.memory.summarizer import build_summary_prompt
+
+    p = build_summary_prompt("", [("user", "hi")], "Sera", "Riley")
+    assert p.startswith("### Instruction:\nYou maintain the memory log")
+    assert p.endswith("NEW EVENTS:\nRiley: hi\n\n### Response:\n")
+
+
+def test_summary_prompt_follows_the_chat_format():
+    """A Llama 3 roleplay tune given Alpaca headers is even more likely to
+    answer a fold with more scene."""
+    from app.memory.summarizer import build_summary_prompt
+
+    p = build_summary_prompt("", [("user", "hi")], "Sera", "Riley", "llama3")
+    assert p.startswith("<|start_header_id|>user<|end_header_id|>\n\nYou maintain")
+    assert p.endswith("<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n")
+    assert "###" not in p
+
+
+def test_clean_strips_chat_template_markers():
+    from app.memory.summarizer import _clean
+
+    assert _clean("Sera and Riley met at the archive.<|eot_id|>junk") == (
+        "Sera and Riley met at the archive."
+    )

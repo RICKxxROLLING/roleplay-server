@@ -30,6 +30,9 @@ class OllamaClient(LLMClient):
                 "temperature": params.temperature,
                 "top_p": params.top_p,
                 "top_k": params.top_k,
+                # Always sent, 0 included: an omitted option falls back to the
+                # Modelfile's, so the UI would not be the source of truth.
+                "min_p": params.min_p,
                 "repeat_penalty": params.repeat_penalty,
                 "repeat_last_n": params.repeat_last_n,
                 # Without this Ollama uses its own default window and truncates

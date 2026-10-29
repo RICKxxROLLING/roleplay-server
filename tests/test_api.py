@@ -272,3 +272,34 @@ def test_context_window_reaches_the_backend(monkeypatch):
 
     asyncio.run(run())
     assert sent["options"]["num_ctx"] == 8192
+
+
+def test_prompt_format_is_validated(client):
+    assert client.patch("/api/settings", json={"prompt_format": "llama3"}).status_code == 200
+    assert client.get("/api/settings").json()["prompt_format"] == "llama3"
+    assert client.patch("/api/settings", json={"prompt_format": "vicuna"}).status_code == 422
+
+
+def test_min_p_reaches_the_backend(client, session):
+    from app.chat import orchestrator
+
+    client.patch("/api/settings", json={"min_p": 0.075})
+    assert orchestrator._params([], None).min_p == 0.075
+
+
+def test_user_actions_stripped_before_persisting(client, session, llm):
+    """What is stored is what the model reads back next turn."""
+    llm.reply = "*You nod slowly. She smiles.*"
+    events = sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": "hi"}))
+    assert {"type": "guard", "removed": 1} in events
+    last = client.get(f"/api/sessions/{session}").json()["messages"][-1]["content"]
+    assert last == "*She smiles. reply 1.*"
+
+
+def test_user_action_guard_can_be_turned_off(client, session, llm):
+    client.patch("/api/settings", json={"guard_user_actions": False})
+    llm.reply = "*You nod slowly. She smiles.*"
+    events = sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": "hi"}))
+    assert not any(e["type"] == "guard" for e in events)
+    last = client.get(f"/api/sessions/{session}").json()["messages"][-1]["content"]
+    assert last.startswith("*You nod slowly.")
