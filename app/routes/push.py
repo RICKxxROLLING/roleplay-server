@@ -81,7 +81,10 @@ async def test(db: DbSession = Depends(get_db)) -> dict:
     if not db.query(PushSubscription).count():
         return {"sent": 0}
     push.notify(db, "Roleplay", "Notifications are working on this device.")
-    return {"sent": await push.ping_all(db)}
+    # Per device, with the relay's own words when it refuses: "Apple: 403
+    # BadJwtToken" is a diagnosis, "nothing arrived" is not.
+    report = await push.ping_report(db)
+    return {"sent": sum(r["ok"] for r in report), "devices": report}
 
 
 @router.post("/pending")

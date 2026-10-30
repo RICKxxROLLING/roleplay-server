@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     # House style appended to every character's prompt, after the card's own
     # system prompt. Blank adds nothing.
     narration_style: str = ""
+    # Push relays (app/push.py) require a contact in every signed wake-up, for
+    # whoever runs the server; it is never mailed by this project. Apple refuses
+    # reserved non-existent domains -- "mailto:owner@roleplay.invalid" was answered
+    # 403 BadJwtToken, live -- so the default is example.com, which it accepts.
+    # Set a real address or https URL here if you'd rather be reachable.
+    push_contact: str = "mailto:owner@example.com"
     # Strip sentences narrating the user's own actions before a reply is
     # stored. On by default: prompting alone measured 4-9 such turns in 16 on
     # an 8B, and each one stored teaches the next. See chat/guard.py.

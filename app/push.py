@@ -25,6 +25,7 @@ import time
 
 from sqlalchemy.orm import Session as DbSession
 
+from .config import settings
 from .db.models import AppSetting, Notification, PushSubscription
 
 # --- P-256 (secp256r1) ---------------------------------------------------------
@@ -125,8 +126,6 @@ def raw_public(pub: tuple[int, int]) -> bytes:
 # --- VAPID keys and JWT ----------------------------------------------------------
 
 VAPID_KEY = "push_vapid_private"
-#: Shown to the relays as who to contact about abuse; never used to send mail.
-VAPID_SUBJECT = "mailto:owner@roleplay.invalid"
 
 
 def vapid_private(db: DbSession) -> int:
@@ -149,7 +148,7 @@ def vapid_header(db: DbSession, endpoint: str, now: float | None = None) -> str:
 
     parts = urlsplit(endpoint)
     claims = {"aud": f"{parts.scheme}://{parts.netloc}",
-              "exp": int((now or time.time()) + 12 * 3600), "sub": VAPID_SUBJECT}
+              "exp": int((now or time.time()) + 12 * 3600), "sub": settings.push_contact}
     head = _b64url(json.dumps({"typ": "JWT", "alg": "ES256"}, separators=(",", ":")).encode())
     body = _b64url(json.dumps(claims, separators=(",", ":")).encode())
     priv = vapid_private(db)
@@ -202,26 +201,37 @@ def take_pending(db: DbSession) -> list[Notification]:
     return fresh[-PENDING_MAX:]
 
 
-async def ping(db: DbSession, sub: PushSubscription) -> bool:
-    """One empty push. Returns False -- and forgets the device -- when the relay
-    says the subscription is gone (404/410: uninstalled, or permission revoked)."""
+async def ping(db: DbSession, sub: PushSubscription) -> tuple[bool, str]:
+    """One empty push: (accepted, the relay's reason when not). A 404/410 --
+    uninstalled, or permission revoked -- also forgets the device."""
     headers = {"TTL": "86400", "Urgency": "normal", "Content-Length": "0",
                "Authorization": vapid_header(db, sub.endpoint)}
     async with _http() as c:
         res = await c.post(sub.endpoint, headers=headers, content=b"")
+    if res.status_code < 400:
+        return True, ""
+    reason = f"{res.status_code} {(getattr(res, 'text', '') or '').strip()[:200]}".strip()
     if res.status_code in (404, 410):
         db.delete(sub)
         db.commit()
-        return False
-    return res.status_code < 400
+        reason += " (device forgotten; turn notifications on again there)"
+    return False, reason
+
+
+async def ping_report(db: DbSession) -> list[dict]:
+    """Wake every subscribed device and say how each relay answered. Best-effort:
+    a relay outage never raises."""
+    out = []
+    for sub in db.query(PushSubscription).all():
+        label, relay = sub.label or "Unnamed device", sub.endpoint.split("/")[2]
+        try:
+            ok, reason = await ping(db, sub)
+        except Exception as exc:
+            ok, reason = False, f"{type(exc).__name__}: {exc}"
+        out.append({"device": label, "relay": relay, "ok": ok, "reason": reason})
+    return out
 
 
 async def ping_all(db: DbSession) -> int:
-    """Wake every subscribed device. Best-effort: a relay outage never raises."""
-    sent = 0
-    for sub in db.query(PushSubscription).all():
-        try:
-            sent += await ping(db, sub)
-        except Exception:
-            pass
-    return sent
+    """Wake every subscribed device; how many relays accepted."""
+    return sum(r["ok"] for r in await ping_report(db))

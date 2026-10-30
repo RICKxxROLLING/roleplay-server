@@ -317,7 +317,10 @@ pushes need no RFC 8291 payload encryption, which keeps this dependency-free; th
 the relays require is ES256, implemented in integer arithmetic with RFC 6979 nonces and
 pinned to that RFC's P-256 test vectors. Subscriptions are accepted only on the vendors'
 relay hosts -- an endpoint is a URL the server POSTs to, so anything else would make it a
-request forwarder. A 404/410 from the relay forgets the device. Browsers require a visible
+request forwarder. A 404/410 from the relay forgets the device. The JWT `sub` contact (`push_contact`) must be
+a real-looking domain: Apple answered `mailto:owner@roleplay.invalid` with 403 BadJwtToken
+live, while example.com and https contacts passed -- probed against all three relays with a
+throwaway key. Send a test reports each relay's refusal reason in Settings. Browsers require a visible
 notification per push, so if the fetch fails the worker shows a generic one with no content.
 The worker never caches `/api`: a lost phone holds no chat. Service workers need HTTPS, so
 on plain LAN HTTP the app is a web page as before. `push.notify()` + `push.ping_all()` is the

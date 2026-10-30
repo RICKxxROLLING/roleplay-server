@@ -15,8 +15,9 @@ FCM = "https://fcm.googleapis.com/fcm/send/abc123"
 
 
 class FakeRelay:
-    def __init__(self, status=201):
+    def __init__(self, status=201, text=""):
         self.status = status
+        self.text = text
         self.calls: list[dict] = []
 
     def __call__(self):
@@ -34,6 +35,7 @@ class FakeRelay:
 
                 class Res:
                     status_code = relay.status
+                    text = relay.text
                 return Res()
 
         return Client()
@@ -119,7 +121,7 @@ def test_push_routes_are_behind_the_password(client):
 
 def test_a_ping_is_empty_and_signed(client, relay):
     client.post("/api/push/subscribe", json={"endpoint": FCM})
-    assert client.post("/api/push/test").json() == {"sent": 1}
+    assert client.post("/api/push/test").json()["sent"] == 1
     call = relay.calls[0]
     assert call["url"] == FCM and call["content"] == b""
     assert call["headers"]["Authorization"].startswith("vapid t=")
@@ -148,7 +150,7 @@ def test_notify_carries_the_chat_to_open(client, session):
 def test_a_gone_subscription_is_forgotten(client, relay):
     client.post("/api/push/subscribe", json={"endpoint": FCM})
     relay.status = 410
-    assert client.post("/api/push/test").json() == {"sent": 0}
+    assert client.post("/api/push/test").json()["sent"] == 0
     assert client.get("/api/push/devices").json() == []
 
 
@@ -159,7 +161,8 @@ def test_a_relay_failure_never_raises(client, monkeypatch):
         raise OSError("relay unreachable")
 
     monkeypatch.setattr(push, "_http", broken)
-    assert client.post("/api/push/test").json() == {"sent": 0}
+    r = client.post("/api/push/test").json()
+    assert r["sent"] == 0 and "relay unreachable" in r["devices"][0]["reason"]
 
 
 # --- serving ---------------------------------------------------------------------
@@ -209,3 +212,27 @@ def test_a_wake_shows_at_most_five_newest(client):
             push.notify(db, "Dina", f"message {i}")
     got = client.post("/api/push/pending").json()["notifications"]
     assert [n["body"] for n in got] == [f"message {i}" for i in range(3, 8)]
+
+
+def test_a_refusal_reports_the_relays_reason(client, relay):
+    client.post("/api/push/subscribe", json={"endpoint": "https://web.push.apple.com/QGx", "label": "iPhone"})
+    relay.status, relay.text = 403, '{"reason":"BadJwtToken"}'
+    r = client.post("/api/push/test").json()
+    assert r["sent"] == 0
+    assert r["devices"] == [{"device": "iPhone", "relay": "web.push.apple.com", "ok": False,
+                             "reason": '403 {"reason":"BadJwtToken"}'}]
+    assert client.get("/api/push/devices").json()  # a refusal is not a removal
+
+
+def test_the_contact_is_one_apple_accepts(client):
+    """Apple answered 403 BadJwtToken to `mailto:owner@roleplay.invalid`, live;
+    example.com and https contacts passed. Reserved non-existent TLDs must not return."""
+    from app.config import settings
+    from app.db import SessionLocal
+
+    with SessionLocal() as db:
+        token = push.vapid_header(db, "https://web.push.apple.com/x").split("t=")[1].split(",")[0]
+    sub = json.loads(_unb64(token.split(".")[1]))["sub"]
+    assert sub == settings.push_contact
+    assert sub.startswith(("mailto:", "https://"))
+    assert not sub.rstrip("/").endswith((".invalid", ".test", ".localhost", ".local"))

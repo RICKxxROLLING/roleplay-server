@@ -626,7 +626,11 @@ function NotificationsSection() {
             <>
               <button className={button} disabled={busy} onClick={() => run(async () => {
                 const r = await api.pushTest();
-                setNote(r.sent ? "Sent -- it should arrive in a few seconds." : "No device accepted it.");
+                const refused = (r.devices || []).filter((d) => !d.ok);
+                setNote(
+                  (r.sent ? `Sent to ${r.sent} -- it should arrive in a few seconds.` : "Nothing was sent.") +
+                  refused.map((d) => ` ${d.device} (${d.relay}) refused: ${d.reason}`).join("")
+                );
               })}>
                 Send a test
               </button>
