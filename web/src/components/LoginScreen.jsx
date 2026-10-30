@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api";
 
 /**
@@ -10,20 +10,29 @@ import { api } from "../api";
  */
 export default function LoginScreen({ onSignedIn }) {
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  // Whether two-factor is on. Public in /auth/status: the screen must know to
+  // ask, and knowing it is on tells a guesser nothing useful.
+  const [totp, setTotp] = useState(false);
+
+  useEffect(() => {
+    api.authStatus().then((s) => setTotp(!!s.totp)).catch(() => {});
+  }, []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
   async function submit(e) {
     e?.preventDefault();
-    if (!password || busy) return;
+    if (!password || busy || (totp && !code.trim())) return;
     setBusy(true);
     setError(null);
     try {
-      await api.login(password);
+      await api.login(password, code.trim());
       onSignedIn?.();
     } catch (err) {
       setError(err.message || "Incorrect password.");
       setPassword("");
+      setCode("");
     } finally {
       setBusy(false);
     }
@@ -50,11 +59,25 @@ export default function LoginScreen({ onSignedIn }) {
           className="w-full bg-ink-950 border border-ink-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent/60 placeholder:text-slate-600"
         />
 
+        {totp && (
+          <input
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="Code from your authenticator app"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            className="w-full bg-ink-950 border border-ink-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent/60 placeholder:text-slate-600 tracking-widest"
+          />
+        )}
+        {totp && (
+          <p className="text-[11px] text-slate-600 -mt-2">Lost your phone? A recovery code works here too.</p>
+        )}
+
         {error && <p className="text-xs text-rose-400">{error}</p>}
 
         <button
           type="submit"
-          disabled={busy || !password}
+          disabled={busy || !password || (totp && !code.trim())}
           className="w-full text-sm py-2 rounded-lg bg-accent/25 border border-accent/40 hover:bg-accent/35 disabled:opacity-40"
         >
           {busy ? "Signing in…" : "Sign in"}

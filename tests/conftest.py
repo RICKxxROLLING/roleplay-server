@@ -195,6 +195,11 @@ def _reset_state():
 
     tokens.reset()
 
+    # Login throttling is in memory; one test's failures must not lock the next.
+    from app.routes import auth as auth_routes
+
+    auth_routes._reset_failures()
+
     fresh = Settings()
     for key, value in fresh.model_dump().items():
         setattr(settings, key, value)

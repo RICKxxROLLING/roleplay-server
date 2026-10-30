@@ -94,6 +94,10 @@ def clear_password(db: DbSession) -> None:
     row = db.get(AppSetting, PASSWORD_KEY)
     if row is not None:
         db.delete(row)
+    # A second factor without a first one means nothing; the server is open.
+    totp = db.get(AppSetting, "auth_totp")
+    if totp is not None:
+        db.delete(totp)
     db.query(AuthToken).delete()
     db.commit()
 
@@ -155,3 +159,135 @@ def purge_expired(db: DbSession) -> int:
     if rows:
         db.commit()
     return len(rows)
+
+
+def revoke_all_except(db: DbSession, keep: str | None) -> None:
+    """Sign out every other device, e.g. when two-factor is turned on."""
+    keep_hash = _fingerprint(keep) if keep else None
+    db.query(AuthToken).filter(AuthToken.token_hash != keep_hash).delete()
+    db.commit()
+
+
+# --- two-factor (TOTP, RFC 6238) ---------------------------------------------
+# Standard-library only, like the password hashing: HMAC-SHA1, 30-second steps,
+# six digits -- what every authenticator app (Google, Aegis, 1Password, Authy)
+# speaks by default. Stored as one AppSetting row:
+#   {"secret": base32, "enabled": bool, "last_step": int, "recovery": [sha256...]}
+# `enabled` stays false between setup and the first correct code, so a setup
+# abandoned half way never locks the owner out.
+
+TOTP_KEY = "auth_totp"
+TOTP_STEP = 30
+TOTP_DIGITS = 6
+#: Steps either side of now that still count. One covers a phone clock ~30 s off.
+TOTP_WINDOW = 1
+RECOVERY_CODES = 8
+
+
+def _totp_row(db: DbSession) -> dict:
+    row = db.get(AppSetting, TOTP_KEY)
+    return dict(row.value) if row and isinstance(row.value, dict) else {}
+
+
+def _save_totp(db: DbSession, value: dict | None) -> None:
+    row = db.get(AppSetting, TOTP_KEY)
+    if value is None:
+        if row is not None:
+            db.delete(row)
+    elif row is None:
+        db.add(AppSetting(key=TOTP_KEY, value=value))
+    else:
+        row.value = value
+    db.commit()
+
+
+def totp_enabled(db: DbSession) -> bool:
+    return bool(_totp_row(db).get("enabled"))
+
+
+def totp_code(secret: str, step: int) -> str:
+    import base64
+    import struct
+
+    key = base64.b32decode(secret.upper() + "=" * (-len(secret) % 8))
+    digest = hmac.new(key, struct.pack(">Q", step), hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    value = struct.unpack(">I", digest[offset:offset + 4])[0] & 0x7FFFFFFF
+    return str(value % 10**TOTP_DIGITS).zfill(TOTP_DIGITS)
+
+
+def _step(at: float | None = None) -> int:
+    import time
+
+    return int((time.time() if at is None else at) // TOTP_STEP)
+
+
+def begin_totp(db: DbSession, account: str = "owner") -> tuple[str, str]:
+    """A fresh secret, not yet enforced. Returns (secret, otpauth URI)."""
+    import base64
+    from urllib.parse import quote
+
+    secret = base64.b32encode(os.urandom(20)).decode().rstrip("=")
+    _save_totp(db, {"secret": secret, "enabled": False, "last_step": 0, "recovery": []})
+    uri = (f"otpauth://totp/Roleplay:{quote(account)}?secret={secret}"
+           f"&issuer=Roleplay&digits={TOTP_DIGITS}&period={TOTP_STEP}")
+    return secret, uri
+
+
+def _normalise(code: str) -> str:
+    return "".join(ch for ch in (code or "") if ch.isalnum()).lower()
+
+
+def _check_code(state: dict, code: str, at: float | None = None) -> int | None:
+    """The step a code matches, or None. Rejects a step already used, so a code
+    seen over someone's shoulder can't be replayed inside its 30 seconds."""
+    code = _normalise(code)
+    if not state.get("secret") or len(code) != TOTP_DIGITS or not code.isdigit():
+        return None
+    now = _step(at)
+    for step in range(now - TOTP_WINDOW, now + TOTP_WINDOW + 1):
+        if step > state.get("last_step", 0) and hmac.compare_digest(
+            totp_code(state["secret"], step), code
+        ):
+            return step
+    return None
+
+
+def enable_totp(db: DbSession, code: str, at: float | None = None) -> list[str] | None:
+    """Turn two-factor on once the app shows a correct code. Returns the
+    recovery codes -- shown once, stored only as hashes -- or None."""
+    state = _totp_row(db)
+    step = _check_code(state, code, at)
+    if step is None:
+        return None
+    codes = [f"{secrets.token_hex(2)}-{secrets.token_hex(2)}" for _ in range(RECOVERY_CODES)]
+    state.update(enabled=True, last_step=step,
+                 recovery=[_fingerprint(_normalise(c)) for c in codes])
+    _save_totp(db, state)
+    return codes
+
+
+def verify_second_factor(db: DbSession, code: str, at: float | None = None) -> bool:
+    """A current authenticator code, or an unused recovery code (spent on use)."""
+    state = _totp_row(db)
+    if not state.get("enabled"):
+        return True
+    step = _check_code(state, code, at)
+    if step is not None:
+        state["last_step"] = step
+        _save_totp(db, state)
+        return True
+    fp = _fingerprint(_normalise(code))
+    if fp in state.get("recovery", []):
+        state["recovery"] = [r for r in state["recovery"] if r != fp]
+        _save_totp(db, state)
+        return True
+    return False
+
+
+def recovery_left(db: DbSession) -> int:
+    return len(_totp_row(db).get("recovery", []))
+
+
+def disable_totp(db: DbSession) -> None:
+    _save_totp(db, None)

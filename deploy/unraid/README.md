@@ -189,6 +189,45 @@ replies while it lasts.
 
 ---
 
+## Reaching it from the internet (Cloudflare Tunnel)
+
+A public hostname means anyone can reach the sign-in page. Put three locks on it, in this
+order; each one stands on its own if another fails.
+
+1. **A password** — Settings → Password. Without one the server is open to anyone.
+2. **Two-factor sign-in** — Settings → Two-factor sign-in → Set up. Add the key to an
+   authenticator app (Aegis, Google Authenticator, 1Password…), confirm with a code, and
+   save the eight recovery codes somewhere off the server: each one signs in once without
+   your phone. Turning it on signs out every other device.
+3. **Cloudflare Access in front of the tunnel**, so a stranger never reaches the server at
+   all — Cloudflare asks who they are first. In the Cloudflare dashboard, under Zero Trust:
+   - **Access → Applications → Add an application → Self-hosted.**
+   - Application domain: the hostname your tunnel publishes this server on.
+   - Add a policy: action **Allow**, include **Emails** → your own address. Nothing else.
+   - Login method: the default **one-time PIN** works (Cloudflare emails you a code); a
+     Google or GitHub login is fine too.
+   - Session duration: a week or a month, so you aren't asked on every visit.
+   - Save, then open the hostname in a private window: Cloudflare's own login should appear
+     *before* this app's.
+
+   The app makes no calls to Cloudflare and needs no configuration for this — Access
+   simply never forwards a request it hasn't authorised. Keep the app's own password and
+   two-factor on regardless: they still protect the server from your LAN and if an Access
+   policy is ever loosened by mistake.
+
+What the server does on its side:
+
+- **Logins are throttled per visitor.** Five wrong attempts lock that visitor out for a
+  minute, then two, four… up to an hour. Thirty failures from the internet within fifteen
+  minutes pause internet logins for fifteen minutes, but **never logins from your own
+  network**, so a stranger hammering the page cannot lock you out at home. Behind the
+  tunnel, the visitor is read from Cloudflare's `CF-Connecting-IP` header.
+- **The session cookie is `Secure` over HTTPS.** Through Cloudflare the browser is on HTTPS
+  even though the tunnel talks plain HTTP to the container; the forwarded headers say so,
+  and the cookie is then never sent unencrypted. Plain-HTTP LAN access keeps working.
+- **Never route the test instance through the tunnel** (see above): it starts without a
+  password.
+
 ## Where your data lives
 
 | Path | Contents |

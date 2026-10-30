@@ -289,6 +289,30 @@ to load from somewhere, and the bundle holds no chat data.
 chats, so `is_enabled()` is simply "has a hash been stored". The settings panel warns in amber
 while it is unset; that nag is the other half of the trade.
 
+**Login throttling is per visitor, with a remote-only ceiling (`routes/auth.py`).** The old
+single global counter became a lockout weapon once the server was public through
+Cloudflare: eight bad guesses every five minutes kept the owner out indefinitely. Now each
+visitor (`CF-Connecting-IP`, else the peer) locks alone, 1 min doubling to 1 h; 30 failures
+from remote clients in 15 min pause remote logins only. Direct LAN peers are never under the
+ceiling, so the owner can always sign in at home. A spoofed header only buys a fresh
+per-visitor counter, which the ceiling still catches. In memory on purpose.
+
+**Two-factor is TOTP in the standard library, confirmed before it is enforced.** HMAC-SHA1,
+30 s, 6 digits (pinned to the RFC 6238 vectors), +/-1 step, and a used step is rejected so a
+shoulder-surfed code can't be replayed. Setup stores the secret with `enabled: false` until
+a correct code arrives, so an abandoned setup never locks anyone out; then eight recovery
+codes, shown once, stored as hashes, spent on use. Setup and disable need the password, so a
+stolen session cannot swap or remove the factor; enabling signs out every other device.
+Login checks both and answers one generic error, so the password can't be confirmed
+without the code. No QR code: that needs an encoder this project would have to add -- the
+key is shown grouped, plus an `otpauth://` link that opens the app on a phone.
+
+**Cloudflare Access is configured in Cloudflare, not verified here.** Checking the Access
+JWT would mean fetching Cloudflare's signing keys at runtime -- a cloud call this project
+never makes. Access blocks unauthorised requests before they reach the tunnel; the app's own
+password and two-factor stay on underneath (deploy/unraid/README.md has the steps). The
+session cookie turns `Secure` when the forwarded headers say the browser is on HTTPS.
+
 **Sessions are opaque random tokens stored hashed, not signed cookies.** A signed cookie needs
 a server secret that survives restarts — another thing to generate, persist and rotate. A
 random token is its own secret, revocable by deleting a row, and storing only its SHA-256

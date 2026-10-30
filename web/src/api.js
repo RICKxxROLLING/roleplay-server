@@ -27,8 +27,14 @@ export const api = {
   models: () => j("/models"),
 
   authStatus: () => j("/auth/status"),
-  login: (password) =>
-    j("/auth/login", { method: "POST", body: JSON.stringify({ password }) }),
+  login: (password, code = "") =>
+    j("/auth/login", { method: "POST", body: JSON.stringify({ password, code }) }),
+  totpSetup: (current_password) =>
+    j("/auth/totp/setup", { method: "POST", body: JSON.stringify({ current_password }) }),
+  totpEnable: (code) =>
+    j("/auth/totp/enable", { method: "POST", body: JSON.stringify({ code }) }),
+  totpDisable: (current_password, code) =>
+    j("/auth/totp/disable", { method: "POST", body: JSON.stringify({ current_password, code }) }),
   logout: () => j("/auth/logout", { method: "POST" }),
   setPassword: (password, current_password) =>
     j("/auth/password", {

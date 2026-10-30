@@ -334,6 +334,7 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
           <TestModelSection />
 
           <PasswordSection />
+          <TwoFactorSection />
 
           {sessionId && (
             <div className="pt-2 border-t border-ink-800">
@@ -517,6 +518,146 @@ function PasswordSection() {
       <p className="text-[11px] text-slate-600 leading-relaxed">
         One password for the whole server — there are no accounts. Changing or
         removing it signs out every device.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Two-factor sign-in (app/auth.py, TOTP). Set up in two steps -- add the key
+ * to an authenticator app, then confirm with a code -- so a half-done setup
+ * never locks anyone out. Recovery codes are shown exactly once.
+ */
+function TwoFactorSection() {
+  const [status, setStatus] = useState(null);
+  const [pw, setPw] = useState("");
+  const [code, setCode] = useState("");
+  const [setup, setSetup] = useState(null); // {secret, uri} while confirming
+  const [recovery, setRecovery] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(null);
+
+  const load = () => api.authStatus().then(setStatus).catch(() => {});
+  useEffect(() => {
+    load();
+  }, []);
+
+  if (!status?.enabled) return null;
+
+  async function run(fn) {
+    setBusy(true);
+    setNote(null);
+    try {
+      await fn();
+    } catch (e) {
+      setNote(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const input =
+    "w-full bg-ink-950 border border-ink-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-accent/60 placeholder:text-slate-600";
+  const button =
+    "text-sm px-3 py-1.5 rounded-lg border border-ink-700 hover:bg-ink-850 disabled:opacity-40";
+  const primary =
+    "text-sm px-3 py-1.5 rounded-lg bg-accent/25 border border-accent/40 hover:bg-accent/35 disabled:opacity-40";
+  const grouped = (s) => s.match(/.{1,4}/g).join(" ");
+
+  return (
+    <div className="pt-3 border-t border-ink-800 space-y-3">
+      <div className="text-sm">
+        Two-factor sign-in
+        <span className="text-xs text-slate-600 ml-2">
+          {status.totp ? `on · ${status.recovery_left ?? 0} recovery codes left` : "off"}
+        </span>
+      </div>
+
+      {!status.totp && !setup && !recovery && (
+        <div className="text-xs text-amber-400/90 bg-amber-950/30 border border-amber-900/40 rounded-lg px-3 py-2">
+          This server is reachable from the internet; with only a password, one leaked
+          password is every chat. Two-factor adds a code from your phone.
+        </div>
+      )}
+
+      {recovery ? (
+        <div className="space-y-2">
+          <p className="text-xs text-slate-400">
+            Two-factor is on. Save these recovery codes somewhere safe -- each signs in once
+            without your phone, and they won't be shown again.
+          </p>
+          <pre className="text-sm bg-ink-950 border border-ink-800 rounded-lg px-3 py-2 grid grid-cols-2 gap-1">
+            {recovery.map((c) => <span key={c}>{c}</span>)}
+          </pre>
+          <button className={primary} onClick={() => { setRecovery(null); load(); }}>
+            I've saved them
+          </button>
+        </div>
+      ) : setup ? (
+        <div className="space-y-2">
+          <p className="text-xs text-slate-400">
+            Add this key to an authenticator app (Aegis, Google Authenticator, 1Password…), then
+            enter the code it shows.
+          </p>
+          <div className="text-sm font-mono bg-ink-950 border border-ink-800 rounded-lg px-3 py-2 select-all break-all">
+            {grouped(setup.secret)}
+          </div>
+          <a href={setup.uri} className="text-xs text-accent hover:underline">
+            On this phone? Open it in the authenticator app
+          </a>
+          <input className={input} value={code} onChange={(e) => setCode(e.target.value)}
+                 placeholder="6-digit code" inputMode="numeric" autoComplete="one-time-code" />
+          <div className="flex items-center gap-2">
+            <button className={primary} disabled={busy || code.trim().length < 6}
+                    onClick={() => run(async () => {
+                      const r = await api.totpEnable(code.trim());
+                      setSetup(null);
+                      setCode("");
+                      setRecovery(r.recovery_codes);
+                    })}>
+              Turn on
+            </button>
+            <button className={button} onClick={() => setSetup(null)}>Cancel</button>
+            {note && <span className="text-xs text-slate-500">{note}</span>}
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <input type="password" className={input} value={pw} onChange={(e) => setPw(e.target.value)}
+                 placeholder="Current password" autoComplete="current-password" />
+          {status.totp && (
+            <input className={input} value={code} onChange={(e) => setCode(e.target.value)}
+                   placeholder="Code or recovery code" autoComplete="one-time-code" />
+          )}
+          <div className="flex items-center gap-2">
+            {status.totp ? (
+              <button className={button} disabled={busy || !pw || !code.trim()}
+                      onClick={() => run(async () => {
+                        await api.totpDisable(pw, code.trim());
+                        setPw("");
+                        setCode("");
+                        await load();
+                        setNote("Two-factor is off.");
+                      })}>
+                Turn off
+              </button>
+            ) : (
+              <button className={primary} disabled={busy || !pw}
+                      onClick={() => run(async () => {
+                        setSetup(await api.totpSetup(pw));
+                        setPw("");
+                      })}>
+                Set up
+              </button>
+            )}
+            {note && <span className="text-xs text-slate-500">{note}</span>}
+          </div>
+        </div>
+      )}
+
+      <p className="text-[11px] text-slate-600 leading-relaxed">
+        Turning it on signs out every other device. Logins are also throttled per visitor, and a
+        lockout from the internet never blocks signing in from your own network.
       </p>
     </div>
   );
