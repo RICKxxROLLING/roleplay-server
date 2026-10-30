@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import AsyncIterator
+from typing import AsyncIterator, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -59,6 +59,7 @@ def _serialise(m: Message, s: ChatSession | None = None) -> dict:
         "created_at": m.created_at.isoformat() if m.created_at else None,
         "pinned": bool(m.pinned),
         "initiated": bool(m.initiated),
+        "texted": bool(m.texted),
         "swipes": len(m.alternatives) if m.alternatives else 1,
         "swipe_index": m.alt_index if m.alternatives else 0,
     }
@@ -223,7 +224,9 @@ def send_message(
     if body.speaker_id is not None and not group.by_id(s, body.speaker_id):
         raise HTTPException(400, "That character is not in this chat")
 
-    db.add(Message(session_id=s.id, role="user", content=body.content.strip()))
+    # Marked like the replies, so a thread renders as one phone conversation.
+    db.add(Message(session_id=s.id, role="user", content=body.content.strip(),
+                   texted=s.mode == "texting"))
     db.commit()
     return _stream_response(session_id, body.overrides(), speaker_id=body.speaker_id)
 
@@ -336,6 +339,8 @@ class SessionPatch(BaseModel):
     clear_persona: bool = False
     #: Let the character write first (chat/autonomy.py).
     autonomous: bool | None = None
+    #: "story" or "texting" (chat/texting.py).
+    mode: Literal["story", "texting"] | None = None
 
 
 @router.patch("/{session_id}")
@@ -362,6 +367,8 @@ def update_session(
     if body.autonomous is not None:
         s.autonomous = body.autonomous
         s.next_check_at = None
+    if body.mode is not None:
+        s.mode = body.mode
 
     db.commit()
     db.refresh(s)
@@ -372,6 +379,7 @@ def _autonomy_status(s: ChatSession) -> dict:
     from ..chat import autonomy
 
     return {
+        "mode": s.mode or "story",
         "autonomous": bool(s.autonomous),
         "unanswered": autonomy.unanswered(s),
         "suspended": autonomy.suspended(s),

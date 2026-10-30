@@ -170,6 +170,22 @@ export default function Message({
               </button>
             </div>
           </div>
+        ) : msg.texted ? (
+          // Texting mode: one phone bubble per line, the way a thread looks.
+          <div className={`flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
+            {msg.content.split("\n").filter((l) => l.trim()).map((line, i, all) => (
+              <div
+                key={i}
+                className={`max-w-full text-left px-3.5 py-2 text-[15px] leading-snug break-words ${
+                  isUser
+                    ? "bg-accent/80 text-ink-950 rounded-2xl rounded-br-md"
+                    : "bg-ink-800 text-slate-100 rounded-2xl rounded-bl-md"
+                } ${streaming && i === all.length - 1 ? "caret" : ""}`}
+              >
+                {line}
+              </div>
+            ))}
+          </div>
         ) : (
           <div
             className={`inline-block text-left rounded-2xl px-4 py-2.5 whitespace-pre-wrap leading-relaxed ${

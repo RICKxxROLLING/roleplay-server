@@ -68,6 +68,7 @@ app/
   chat/guard.py         strips narration of the user's actions before a reply is stored
   chat/group.py         group chats: cast, speaker choice, per-speaker history roles
   chat/autonomy.py      characters writing first: rules, would-they pass, scheduler
+  chat/texting.py       texting mode: the chat as a text thread, switching in and out
   db/                   SQLAlchemy models + additive migrations
   routes/               characters, personas, sessions, system, worlds
 web/src/components/     React UI
@@ -327,6 +328,22 @@ long scene-setting that hit the cap, and these worlds have no phones (Garrick wr
 parchment); "brief, the world's own medium, straight to the point" gave two short in-voice
 texts. Ordinary replies also get "It is now ...; N hours have passed" after an hour's silence,
 so a character doesn't greet a midnight return with "good morning".
+
+**Texting mode replaces the prose directives instead of adding to them (`chat/texting.py`).**
+Per chat, "story" or "texting". In texting the system line and the tail ask for the words
+the character types; the card's `system_prompt`, the narration style and the scene-shaped
+tail reminder are left out, because a prompt asking for prose *and* texts gets prose with a
+text buried in it. Measured on Stheno, Dina and Garrick, 32 samples (first text after a
+switch, and mid-thread; with and without example dialogue): 0 asterisk actions, 0 quotes,
+0 lines written as the user, replies 90-160 chars -- examples on or off made no difference,
+so they stay for the voice. `clean_texts` handles the leftovers seen there: the speaker's
+own label on later lines, "(No further messages)", stray actions, and a line in the user's
+name (ends the reply). Two prose rules are off while texting on purpose: the first-person
+redo ("I'm on my way" is how texts read) and the narration guard (it would cut "Riley you
+there?"). The first reply after a switch gets one tail line -- "have gone their separate
+ways... texting" or "together in person again" -- worked out from whether the last reply
+was `texted`. The scene tracker pauses while texting so the story's scene is intact when
+they meet again. Replies cap at 200 tokens; the UI draws each line as a phone bubble.
 
 **Push notifications are an empty ping (`app/push.py`, `web/public/sw.js`).** A sleeping phone
 can only be woken through its vendor's relay (Apple, Google, Mozilla), so the owner chose:

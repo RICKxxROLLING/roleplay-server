@@ -18,7 +18,7 @@ from ..llm import GenerationParams, get_client
 from ..memory import memory_manager, rag
 from ..memory.scene import blank as blank_scene, update_scene
 from ..prompt import build_prompt, tokens
-from . import autonomy, group
+from . import autonomy, group, texting
 from .guard import (
     first_person_narration,
     infer_pronoun,
@@ -88,6 +88,8 @@ async def build_turn_prompt(
         others=_others(session, speaker),
         initiative=initiative,
         time_note="" if initiative or exclude_ids else autonomy.time_line(session),
+        texting=session.mode == "texting",
+        mode_note=texting.mode_note(session, exclude_ids),
     )
 
 
@@ -126,9 +128,13 @@ def _gutted(raw: str, kept: str) -> bool:
 
 
 def _guarded(reply: str, session: ChatSession, card: CharacterCard) -> tuple[str, int]:
+    user_name = session.persona.name if session.persona else "You"
+    if session.mode == "texting":
+        # Texts get their own tidy-up; the narration guard would misread them
+        # ("Riley you there?"). See chat/texting.py.
+        return texting.clean_texts(reply, card.name, user_name), 0
     if not settings.guard_user_actions:
         return reply, 0
-    user_name = session.persona.name if session.persona else "You"
     char_pronoun = _pronoun_of(card)
     reply, removed = strip_user_actions(
         reply, user_name, card.name,
@@ -156,6 +162,7 @@ def _persist(
     db: DbSession, session: ChatSession, reply: str, swipe_of: Message | None,
     speaker: Character | None = None, initiated: bool = False,
 ) -> bool:
+    texted = session.mode == "texting"
     """Save `reply` as a new message or as another swipe. False if empty."""
     if not reply:
         return False
@@ -163,7 +170,8 @@ def _persist(
         add_swipe(swipe_of, reply)
     else:
         db.add(Message(session_id=session.id, role="assistant", content=reply,
-                       speaker_id=speaker.id if speaker else None, initiated=initiated))
+                       speaker_id=speaker.id if speaker else None, initiated=initiated,
+                       texted=texted))
     db.commit()
     return True
 
@@ -201,6 +209,9 @@ async def stream_reply(
     swipe is always re-rolled by the character who wrote it.
     """
     user_text = next((m.content for m in reversed(session.messages) if m.role == "user"), "")
+    is_texting = session.mode == "texting"
+    if is_texting and "max_new_tokens" not in (overrides or {}):
+        overrides = {**(overrides or {}), "max_new_tokens": texting.MAX_NEW_TOKENS}
     if swipe_of is not None:
         speaker = group.by_id(session, group.speaker_id(session, swipe_of)) or session.character
     elif speaker is None:
@@ -268,6 +279,7 @@ async def stream_reply(
             if (
                 attempt == 0
                 and settings.redo_first_person
+                and not is_texting  # "I'm on my way" is how a text reads
                 and not drifted
                 and slipped_into_first_person(raw, card.first_mes)
             ):
@@ -280,7 +292,7 @@ async def stream_reply(
             ):
                 # Both attempts slipped: keep whichever slipped less.
                 raw, reply, removed = first_try
-            elif attempt == 0 and removed and _gutted(raw, reply):
+            elif attempt == 0 and ((removed and _gutted(raw, reply)) or (is_texting and not reply)):
                 redo = "guard"
             if redo:
                 # Tells the UI to drop the draft it has streamed so far.
@@ -312,7 +324,9 @@ async def stream_reply(
         return
 
     # --- Scene state: cheap, best-effort, and never allowed to break the turn ---
-    if settings.scene_enabled:
+    # Paused while texting: a text thread says little about where anyone is, and
+    # the story's scene should be there when they meet again.
+    if settings.scene_enabled and not is_texting:
         try:
             base = session.scene_prev if swipe_of is not None else session.scene
             if base is None:

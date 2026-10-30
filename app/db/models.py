@@ -131,6 +131,8 @@ class ChatSession(Base):
     # Characters writing first (chat/autonomy.py): off until the owner turns it on
     # per chat. `next_check_at` spaces out re-checks after a "no".
     autonomous: Mapped[bool] = mapped_column(default=False)
+    # "story" or "texting" (chat/texting.py): the same chat as prose, or as a text thread.
+    mode: Mapped[str] = mapped_column(String(20), default="story")
     next_check_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
 
@@ -185,6 +187,8 @@ class Message(Base):
     speaker: Mapped[Character | None] = relationship()
     # Written unprompted (chat/autonomy.py); three unanswered suspend the chat.
     initiated: Mapped[bool] = mapped_column(default=False)
+    # Written in texting mode: shown as phone bubbles, and how a switch back is noticed.
+    texted: Mapped[bool] = mapped_column(default=False)
 
     session: Mapped[ChatSession] = relationship(back_populates="messages")
     embedding: Mapped["MessageEmbedding | None"] = relationship(

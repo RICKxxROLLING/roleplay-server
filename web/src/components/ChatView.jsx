@@ -42,6 +42,15 @@ export default function ChatView({
     }
   }
 
+  async function setMode(mode) {
+    try {
+      await api.updateSession(sessionId, { mode });
+      await reload();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   async function setAutonomous(on) {
     try {
       await api.updateSession(sessionId, { autonomous: on });
@@ -182,7 +191,7 @@ export default function ChatView({
     // Optimistic echo so the user's turn appears instantly.
     setSession((s) => ({
       ...s,
-      messages: [...s.messages, { id: `tmp-${Date.now()}`, role: "user", content }],
+      messages: [...s.messages, { id: `tmp-${Date.now()}`, role: "user", content, texted: s.mode === "texting" }],
     }));
     runStream(`/sessions/${sessionId}/messages`, {
       content,
@@ -285,6 +294,24 @@ export default function ChatView({
               ))}
             </select>
             <span className="text-slate-700">·</span>
+            {/* Story or texting (app/chat/texting.py): the same chat, as prose or as a
+                text thread. The character is told about the switch on the next reply. */}
+            <span className="inline-flex rounded-md border border-ink-700 overflow-hidden" role="group">
+              {["story", "texting"].map((m) => (
+                <button
+                  key={m}
+                  onClick={() => (session?.mode || "story") !== m && setMode(m)}
+                  disabled={busy}
+                  className={`px-1.5 ${
+                    (session?.mode || "story") === m ? "bg-ink-700 text-slate-200" : "hover:text-slate-300"
+                  }`}
+                  title={m === "texting" ? "Text each other, like on your phones" : "Scenes in prose"}
+                >
+                  {m}
+                </button>
+              ))}
+            </span>
+            <span className="text-slate-700">·</span>
             <label
               className="flex items-center gap-1 cursor-pointer hover:text-slate-300"
               title={
@@ -366,7 +393,7 @@ export default function ChatView({
 
         {streamText && (
           <Message
-            msg={{ role: "assistant", content: streamText }}
+            msg={{ role: "assistant", content: streamText, texted: session?.mode === "texting" }}
             charName={writerName}
             charId={writerId}
             userName={userName}
@@ -375,7 +402,9 @@ export default function ChatView({
         )}
 
         {busy && !streamText && (
-          <div className="text-xs text-slate-600 pl-12">{writerName} is writing…</div>
+          <div className="text-xs text-slate-600 pl-12">
+            {writerName} is {session?.mode === "texting" ? "typing" : "writing"}…
+          </div>
         )}
 
         {session?.suspended && (
@@ -456,7 +485,11 @@ export default function ChatView({
               }
             }}
             rows={2}
-            placeholder="Write your turn…  (Enter to send, Shift+Enter for a new line)"
+            placeholder={
+              session?.mode === "texting"
+                ? `Text ${charName || "them"}…`
+                : "Write your turn…  (Enter to send, Shift+Enter for a new line)"
+            }
             className="flex-1 resize-none bg-ink-900 border border-ink-700 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/60 placeholder:text-slate-600"
           />
           {!isGroup && !castOpen && characters.length > 1 && (

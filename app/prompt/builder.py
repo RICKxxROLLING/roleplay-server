@@ -64,6 +64,20 @@ TAIL_REMINDER = (
 # long block here would crowd the card's own post_history_instructions.
 STYLE_REMINDER = "Follow the narration style described above."
 
+# Texting mode (chat/texting.py): the chat reimagined as a phone conversation.
+# Replaces the prose directives rather than adding to them -- a card's
+# system_prompt and the narration style both ask for prose, and a prompt asking
+# for both gets prose with a text message buried in it.
+TEXTING_SYSTEM = (
+    "{{char}} and {{user}} are texting each other on their phones. You are {{char}}. "
+    "Write only the texts {{char}} sends: the words they type, the way {{char}} really "
+    "texts -- short and casual, in their own voice, with their own humor and habits."
+)
+TEXTING_TAIL = (
+    "Reply as {{char}} with their next text to {{user}}: just the words they type, short "
+    "and casual. One to three short messages, each on its own line."
+)
+
 INSTRUCTION = "### Instruction:"
 RESPONSE = "### Response:"
 
@@ -159,6 +173,9 @@ def build_prompt(
     others: list[tuple[str, str]] | None = None,
     time_note: str = "",
     initiative: str = "",
+    texting: bool = False,
+    mode_note: str = "",
+    texting_examples: bool = True,
 ) -> BuiltPrompt:
     """`history` is [(role, content), ...] oldest-first, excluding the pending reply.
 
@@ -170,12 +187,14 @@ def build_prompt(
     budget = context_tokens - max_new_tokens - reserve_tokens
     # Server-wide house style. Like the guard it is appended rather than folded
     # into DEFAULT_SYSTEM, or every card with its own system_prompt would drop it.
-    style = substitute(narration_style.strip(), char, user_name)
+    style = "" if texting else substitute(narration_style.strip(), char, user_name)
 
     # --- Mandatory head ---
     # The guard is appended rather than baked into the default, so it survives a
     # card supplying its own system_prompt.
-    system = substitute(card.system_prompt or DEFAULT_SYSTEM, char, user_name)
+    system = substitute(
+        TEXTING_SYSTEM if texting else (card.system_prompt or DEFAULT_SYSTEM), char, user_name
+    )
     head_parts = [system, substitute(IMPERSONATION_GUARD, char, user_name), style]
 
     if user_persona:
@@ -214,7 +233,7 @@ def build_prompt(
 
     # --- Optional: example dialogue (first to go under pressure) ---
     example = ""
-    if card.mes_example:
+    if card.mes_example and (texting_examples or not texting):
         candidate = substitute(card.mes_example, char, user_name).replace("<START>", "").strip()
         # Kept while a third of the budget is left for history. It used to go
         # at half, which a full persona plus lore crosses on an 8K window --
@@ -271,7 +290,9 @@ def build_prompt(
         # After a long silence, the hour and the gap (chat/autonomy.py) -- or,
         # for a message nobody asked for, why the character is writing at all.
         substitute(initiative or time_note, char, user_name),
-        substitute(TAIL_REMINDER, char, user_name),
+        # The first reply after a switch between story and texting: where they are now.
+        substitute(mode_note, char, user_name),
+        substitute(TEXTING_TAIL if texting else TAIL_REMINDER, char, user_name),
     ]
     tail = fmt.tail.format(text="\n".join(p for p in tail_parts if p))
     used += estimate_tokens(tail)
