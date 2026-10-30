@@ -56,6 +56,10 @@ class LLMClient(ABC):
     #: Whether this backend can download models on demand.
     supports_pull: bool = False
 
+    #: Token count of the last prompt, if the backend reports one. Budgeting
+    #: learns each model's chars/token ratio from it (prompt/tokens.py).
+    last_prompt_tokens: int | None = None
+
     async def pull_model(self, name: str) -> AsyncIterator[dict]:
         """Download a model, yielding progress dicts.
 

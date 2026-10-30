@@ -16,7 +16,7 @@ from ..config import settings
 from ..db.models import ChatSession, Message
 from ..llm import GenerationParams, get_client
 from ..memory import memory_manager, rag
-from ..prompt import build_prompt
+from ..prompt import build_prompt, tokens
 from .guard import first_person_narration, slipped_into_first_person, strip_user_actions
 
 
@@ -171,9 +171,11 @@ async def stream_reply(
         # just reads as first person.
         for attempt in range(2):
             collected = []
+            client.last_prompt_tokens = None
             async for piece in client.generate_stream(built.text, _params(built.stop, overrides)):
                 collected.append(piece)
                 yield {"type": "token", "text": piece}
+            tokens.observe(settings.model, len(built.text), client.last_prompt_tokens)
 
             raw = _without_label("".join(collected), card)
             # Before persisting: once one reply narrating the user is in

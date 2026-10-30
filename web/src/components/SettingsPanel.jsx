@@ -332,7 +332,10 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
               {prompt && (
                 <div className="mt-3">
                   <div className="text-xs text-slate-500 mb-1">
-                    ~{prompt.estimated_tokens} tokens · {prompt.dropped_messages} messages
+                    ~{prompt.estimated_tokens} tokens
+                    {prompt.chars_per_token &&
+                      ` (${prompt.chars_per_token} chars/token, ${prompt.chars_per_token_measured ? "measured" : "default until the first reply"})`}
+                    {" · "}{prompt.dropped_messages} messages
                     trimmed · {prompt.lore_entries ?? 0} lore entries
                     {prompt.lore_dropped > 0 &&
                       ` (${prompt.lore_dropped} over budget)`}

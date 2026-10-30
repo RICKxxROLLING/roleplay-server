@@ -138,6 +138,9 @@ class MockLLM(LLMClient):
             )
             return
         self.reply_count += 1
+        # Report a prompt count the way Ollama does, when a test asks for one.
+        ratio = getattr(self, "prompt_tokens_ratio", None)
+        self.last_prompt_tokens = int(len(prompt) / ratio) if ratio else None
         reply = self.replies.pop(0) if self.replies else self.reply
         for piece in [f"{reply[:-1]} ", f"reply {self.reply_count}.*"]:
             yield piece
@@ -161,6 +164,10 @@ def _reset_state():
 
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
+
+    from app.prompt import tokens
+
+    tokens.reset()
 
     fresh = Settings()
     for key, value in fresh.model_dump().items():

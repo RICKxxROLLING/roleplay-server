@@ -13,7 +13,7 @@ from ..chat import build_turn_prompt, stream_reply
 from ..config import settings
 from ..db import Character, ChatSession, Message, Persona, SessionLocal, get_db
 from ..memory import memory_manager, rag
-from ..prompt import estimate_tokens, substitute
+from ..prompt import estimate_tokens, substitute, tokens
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -225,6 +225,8 @@ async def inspect_prompt(session_id: int, db: DbSession = Depends(get_db)) -> di
         "prompt": built.text,
         "stop": built.stop,
         "estimated_tokens": built.used_tokens,
+        "chars_per_token": round(tokens.chars_per_token()[0], 2),
+        "chars_per_token_measured": tokens.chars_per_token()[1],
         "dropped_messages": built.dropped_messages,
         "lore_entries": built.lore_entries,
         "lore_fired": ctx.lore_fired,

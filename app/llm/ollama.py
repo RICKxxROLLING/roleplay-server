@@ -59,6 +59,9 @@ class OllamaClient(LLMClient):
                 if piece:
                     yield piece
                 if chunk.get("done"):
+                    # The whole prompt, cached tokens included; budgeting
+                    # learns its chars/token ratio from this (prompt/tokens.py).
+                    self.last_prompt_tokens = chunk.get("prompt_eval_count")
                     break
 
     async def list_models(self) -> list[str]:

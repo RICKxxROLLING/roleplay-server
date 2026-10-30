@@ -222,3 +222,31 @@ def test_example_dialogue_survives_a_heavy_card_on_a_wide_window():
     p = build_prompt(card(mes_example="{{char}}: Hello."), [], user_persona=persona,
                      context_tokens=8192, max_new_tokens=512, reserve_tokens=256)
     assert "Example dialogue:" in p.text
+
+
+# --- calibrated token estimate -----------------------------------------------
+
+def test_estimate_starts_cautious_and_learns_the_real_ratio():
+    from app.prompt import tokens
+
+    text = "x" * 4850
+    assert estimate_tokens(text) == int(4850 / 3.6) + 1  # unmeasured: the cautious default
+    tokens.observe("test-model", chars=24250, tokens=5000)  # 4.85 chars/token, Llama 3's
+    ratio, measured = tokens.chars_per_token("test-model")
+    assert measured and abs(ratio - 4.85 * tokens.SAFETY) < 1e-6
+
+
+def test_one_odd_measurement_cannot_skew_budgeting():
+    from app.prompt import tokens
+
+    tokens.observe("test-model", chars=100000, tokens=1000)  # 100 chars/token: nonsense
+    assert tokens.chars_per_token("test-model")[0] <= 6.0 * tokens.SAFETY
+    tokens.observe("m2", chars=1000, tokens=50)  # too short to learn from
+    assert tokens.chars_per_token("m2") == (tokens.CHARS_PER_TOKEN, False)
+
+
+def test_ratios_are_per_model():
+    from app.prompt import tokens
+
+    tokens.observe("llama-ish", chars=4850 * 10, tokens=10000 // 1)
+    assert tokens.chars_per_token("other")[1] is False

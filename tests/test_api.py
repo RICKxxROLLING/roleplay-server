@@ -401,3 +401,14 @@ def test_when_both_attempts_slip_the_milder_one_is_kept(client, session, llm):
     sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": "hi"}))
     last = client.get(f"/api/sessions/{session}").json()["messages"][-1]["content"]
     assert last.startswith("*I nod. My smile. She waits.")
+
+
+def test_a_reply_teaches_the_budget_the_model_s_ratio(client, session, llm):
+    """The backend's prompt count after a turn replaces the cautious default."""
+    llm.prompt_tokens_ratio = 4.85
+    # Long enough to learn from: short prompts are ignored (tokens._MIN_TOKENS).
+    client.post(f"/api/sessions/{session}/messages",
+                json={"content": "We walked the archive stacks for an hour. " * 40})
+    p = client.get(f"/api/sessions/{session}/prompt").json()
+    assert p["chars_per_token_measured"] is True
+    assert p["chars_per_token"] == round(4.85 * 0.95, 2)

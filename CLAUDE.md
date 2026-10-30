@@ -55,7 +55,7 @@ app/
   prompt/
     builder.py          slot ordering, token budgeting, guard + style directives
     formats.py          Alpaca / Llama 3 / ChatML wrappers (selected by prompt_format)
-    tokens.py           chars/3.6 estimate — no tokenizer dependency
+    tokens.py           chars/token estimate, learned per model from Ollama's prompt counts
   memory/
     manager.py          watermark logic; composes summary + lorebook + retrieval
     summarizer.py       fold prompt + LLM call
@@ -139,6 +139,15 @@ and both guards read `content` and never learn swipes exist; embeddings re-index
 content hash. Regenerate no longer deletes first (a failed generation used to lose the
 reply): it builds the prompt with that reply excluded, then appends. Only the latest reply
 can be swiped -- once answered, swapping it would contradict the turns built on it.
+
+**Token budgeting learns each model's chars/token instead of using a tokenizer.** The fixed
+3.6 was 35% high for Llama 3 -- eight live prompts measured 4.83-4.86 (5.1 when short), so a
+prompt counted at ~7,300 was really ~5,400 and ~1,900 tokens of history went unused every
+turn. Ollama's `prompt_eval_count` is the whole prompt, cache included (same prompt twice:
+5,280 both times), so after each reply `tokens.observe` folds it into a per-model running
+ratio, used at 95% with the 256-token reserve on top. Clamped to 2.5-6; prompts under 200
+tokens are ignored; in memory only, so the first turn after a restart budgets at 3.6 again.
+Shipping a vocab per model was rejected as a dependency this project avoids.
 
 **Sampler options are always sent, `min_p: 0` included.** An omitted option falls back to the
 Modelfile's value, so the UI would stop being the source of truth.
@@ -479,7 +488,6 @@ complete. Candidates, roughly by value:
   is keyword-based and imported cards depend on that behaviour. `rag.py` already has the
   embedding plumbing; the work is a second candidate source in `lorebook.select` and a
   policy for combining the two signals.
-- **Real tokenizer** in `prompt/tokens.py` if budgeting ever needs to be exact.
 
 Whatever comes next, keep using mock LLM/embedder doubles so the suite stays fast and offline.
 
