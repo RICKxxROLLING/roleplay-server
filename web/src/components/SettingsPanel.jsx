@@ -175,6 +175,8 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
               </span>
             </label>
 
+            <AutonomySettings s={s} update={update} />
+
             <label className="flex items-center gap-2.5 text-sm cursor-pointer">
               <input
                 type="checkbox"
@@ -519,6 +521,52 @@ function PasswordSection() {
       <p className="text-[11px] text-slate-600 leading-relaxed">
         One password for the whole server — there are no accounts. Changing or
         removing it signs out every device.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Characters writing first (app/chat/autonomy.py). Each chat opts in from its
+ * header; these are the rules every such chat follows. Saved on blur, like
+ * the narration style, so typing a time doesn't send half of one.
+ */
+function AutonomySettings({ s, update }) {
+  const [draft, setDraft] = useState({});
+  const val = (k) => (draft[k] !== undefined ? draft[k] : s[k]);
+  const field = (k, props) => ({
+    value: val(k) ?? "",
+    onChange: (e) => setDraft({ ...draft, [k]: e.target.value }),
+    onBlur: () => {
+      const v = props?.number ? Number(val(k)) : val(k);
+      if (v !== s[k] && v !== "" && !Number.isNaN(v)) update(k, v);
+      setDraft({ ...draft, [k]: undefined });
+    },
+    className: "bg-ink-950 border border-ink-800 rounded px-1.5 py-0.5 text-sm outline-none focus:border-accent/60 " + (props?.w || "w-16"),
+  });
+
+  return (
+    <div className="space-y-1.5">
+      <div className="text-sm">
+        Characters writing first
+        <span className="text-xs text-slate-600 ml-2">turn on per chat, from its header</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-slate-400">
+        <span>
+          quiet from <input {...field("autonomy_quiet_start")} /> to <input {...field("autonomy_quiet_end")} />
+        </span>
+        <span>
+          at least <input type="number" min={15} {...field("autonomy_min_gap_minutes", { number: true })} /> min
+          between messages
+        </span>
+        <span>
+          at most <input type="number" min={1} {...field("autonomy_max_per_day", { number: true, w: "w-12" })} /> a day
+        </span>
+      </div>
+      <p className="text-[11px] text-slate-600 leading-relaxed">
+        The gap doubles for each message you haven't answered, and after{" "}
+        {s.autonomy_max_unanswered} unanswered they wait for you. Times are in {s.timezone || "the server's zone"}
+        , taken from this browser. Each message arrives as a notification on devices where they're on.
       </p>
     </div>
   );

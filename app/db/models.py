@@ -128,6 +128,10 @@ class ChatSession(Base):
     # Watermark. Messages with id <= this are folded into `summary` and are no
     # longer sent verbatim. 0 means nothing has been summarised yet.
     summarized_upto_id: Mapped[int] = mapped_column(default=0)
+    # Characters writing first (chat/autonomy.py): off until the owner turns it on
+    # per chat. `next_check_at` spaces out re-checks after a "no".
+    autonomous: Mapped[bool] = mapped_column(default=False)
+    next_check_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
 
     character: Mapped[Character] = relationship(back_populates="sessions")
@@ -179,6 +183,8 @@ class Message(Base):
     # so every message from before group chats reads correctly.
     speaker_id: Mapped[int | None] = mapped_column(ForeignKey("characters.id"), nullable=True)
     speaker: Mapped[Character | None] = relationship()
+    # Written unprompted (chat/autonomy.py); three unanswered suspend the chat.
+    initiated: Mapped[bool] = mapped_column(default=False)
 
     session: Mapped[ChatSession] = relationship(back_populates="messages")
     embedding: Mapped["MessageEmbedding | None"] = relationship(

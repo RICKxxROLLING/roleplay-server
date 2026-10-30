@@ -76,6 +76,13 @@ export default function App() {
     if (!authed) return;
     refresh();
     refreshHealth();
+    // Quiet hours and "it is now..." (characters writing first) run on the
+    // owner's clock. The browser knows it; keep the server in step, which also
+    // follows a move or a trip.
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    api.settings()
+      .then((s) => zone && s.timezone !== zone && api.patchSettings({ timezone: zone }))
+      .catch(() => {});
   }, [authed, refresh, refreshHealth]);
 
   async function removeSession(id) {

@@ -12,6 +12,9 @@ dependencies = [
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "python-multipart>=0.0.9",
+    # Time-zone data for quiet hours, in case the image has no system zoneinfo.
+    # Data only; nothing in it touches the network.
+    "tzdata>=2024.1",
 ]
 
 [project.optional-dependencies]

@@ -26,6 +26,8 @@ os.environ["RP_MAX_NEW_TOKENS"] = "400"
 # the ~40 the production default (1800) would need.
 os.environ["RP_SUMMARY_TRIGGER_TOKENS"] = "300"
 os.environ["RP_KEEP_RECENT_MESSAGES"] = "4"
+# The writing-first loop would fire real checks on a timer; tests call it directly.
+os.environ["RP_AUTONOMY_SCHEDULER"] = "false"
 # Some CI images export a SOCKS proxy that httpx can't construct a client for.
 for var in ("ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy"):
     os.environ.pop(var, None)
@@ -211,13 +213,14 @@ def _reset_state():
 def llm(monkeypatch):
     """Install the mock across every module that resolves a client."""
     import app.cards.creator as creator
+    import app.chat.autonomy as autonomy
     import app.chat.orchestrator as orch
     import app.memory.scene as scene
     import app.memory.summarizer as summarizer
     import app.routes.system as system
 
     mock = MockLLM()
-    for module in (creator, orch, scene, summarizer, system):
+    for module in (autonomy, creator, orch, scene, summarizer, system):
         monkeypatch.setattr(module, "get_client", lambda: mock)
     return mock
 

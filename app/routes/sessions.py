@@ -58,6 +58,7 @@ def _serialise(m: Message, s: ChatSession | None = None) -> dict:
         "content": m.content,
         "created_at": m.created_at.isoformat() if m.created_at else None,
         "pinned": bool(m.pinned),
+        "initiated": bool(m.initiated),
         "swipes": len(m.alternatives) if m.alternatives else 1,
         "swipe_index": m.alt_index if m.alternatives else 0,
     }
@@ -169,6 +170,7 @@ def get_session(session_id: int, db: DbSession = Depends(get_db)) -> dict:
         "summary": s.summary,
         "scene": s.scene,
         "cast": _cast(s),
+        **_autonomy_status(s),
         "messages": [_serialise(m, s) for m in s.messages],
     }
 
@@ -332,6 +334,8 @@ class SessionPatch(BaseModel):
     # persona_id=None is ambiguous (unset vs. "play as nobody"), so clearing is
     # an explicit flag rather than a magic value.
     clear_persona: bool = False
+    #: Let the character write first (chat/autonomy.py).
+    autonomous: bool | None = None
 
 
 @router.patch("/{session_id}")
@@ -355,9 +359,44 @@ def update_session(
             raise HTTPException(404, "Persona not found")
         s.persona_id = body.persona_id
 
+    if body.autonomous is not None:
+        s.autonomous = body.autonomous
+        s.next_check_at = None
+
     db.commit()
     db.refresh(s)
-    return {"id": s.id, "title": s.title, "persona_id": s.persona_id}
+    return {"id": s.id, "title": s.title, "persona_id": s.persona_id, **_autonomy_status(s)}
+
+
+def _autonomy_status(s: ChatSession) -> dict:
+    from ..chat import autonomy
+
+    return {
+        "autonomous": bool(s.autonomous),
+        "unanswered": autonomy.unanswered(s),
+        "suspended": autonomy.suspended(s),
+        "max_unanswered": settings.autonomy_max_unanswered,
+        # Why the next check would not write, if it wouldn't -- for the chat header.
+        "waiting_because": autonomy.eligible(s) if s.autonomous else None,
+    }
+
+
+class WriteFirstIn(BaseModel):
+    #: Skip the timing rules and the "would they?" pass -- the "Message me now" button.
+    force: bool = False
+
+
+@router.post("/{session_id}/write-first")
+async def write_first(session_id: int, body: WriteFirstIn, db: DbSession = Depends(get_db)) -> dict:
+    """Run one writing-first check of this chat now, as the scheduler would."""
+    from ..chat import autonomy
+
+    s = db.get(ChatSession, session_id)
+    if not s:
+        raise HTTPException(404, "Session not found")
+    if not s.messages:
+        raise HTTPException(400, "Say something first")
+    return await autonomy.check(db, s, force=body.force)
 
 
 class MessagePatch(BaseModel):

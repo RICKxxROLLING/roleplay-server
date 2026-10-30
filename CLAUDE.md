@@ -67,6 +67,7 @@ app/
   chat/orchestrator.py  per-turn flow, typed stream events
   chat/guard.py         strips narration of the user's actions before a reply is stored
   chat/group.py         group chats: cast, speaker choice, per-speaker history roles
+  chat/autonomy.py      characters writing first: rules, would-they pass, scheduler
   db/                   SQLAlchemy models + additive migrations
   routes/               characters, personas, sessions, system, worlds
 web/src/components/     React UI
@@ -308,6 +309,24 @@ stolen session cannot swap or remove the factor; enabling signs out every other 
 Login checks both and answers one generic error, so the password can't be confirmed
 without the code. No QR code: that needs an encoder this project would have to add -- the
 key is shown grouped, plus an `otpauth://` link that opens the app on a phone.
+
+**Characters write first through three filters, cheapest first (`chat/autonomy.py`).** Per
+chat, off by default. Rules with no model: quiet hours in the owner's zone (the browser sends
+its IANA name; `tzdata` is a dependency because Windows and slim images may lack zoneinfo --
+without it the zone silently fell back to the machine clock in tests), a minimum gap that
+doubles per unanswered message, a daily cap, nothing generating (`ACTIVE`), and three
+unanswered suspend the chat. Then a short "would they reach out now, and why?" pass, then the
+normal `stream_reply` with an `initiative` tail line -- so guard, redos, memory and scene all
+apply -- saved `initiated` and pushed. Measured on Stheno with three live test chats: the
+would-they pass said yes 6/24 after 3 h and 6/24 after 26 h, every reason grounded in the
+transcript (a promised hunting trip, job hunting, snack plans); with re-checks 30-80% of the
+gap after a "no", a character writes within a few hours of being allowed to. A "the longer
+the silence, the more natural" sentence was considered for the long-gap case and not needed.
+The first message wording ("like one sent from a phone") produced letters with sign-offs and
+long scene-setting that hit the cap, and these worlds have no phones (Garrick wrote a note on
+parchment); "brief, the world's own medium, straight to the point" gave two short in-voice
+texts. Ordinary replies also get "It is now ...; N hours have passed" after an hour's silence,
+so a character doesn't greet a midnight return with "good morning".
 
 **Push notifications are an empty ping (`app/push.py`, `web/public/sw.js`).** A sleeping phone
 can only be woken through its vendor's relay (Apple, Google, Mozilla), so the owner chose:

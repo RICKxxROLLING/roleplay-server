@@ -28,7 +28,17 @@ async def lifespan(app: FastAPI):
         settings_store.load_into_settings(db)
     finally:
         db.close()
+    # Characters writing first. Each chat opts in separately; this only runs the checks.
+    scheduler = None
+    if settings.autonomy_scheduler:
+        import asyncio
+
+        from .chat import autonomy
+
+        scheduler = asyncio.create_task(autonomy.run_forever())
     yield
+    if scheduler is not None:
+        scheduler.cancel()
     await get_client().close()
 
 

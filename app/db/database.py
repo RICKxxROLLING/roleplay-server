@@ -36,6 +36,9 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     ("sessions", "scene_prev", "JSON"),
     ("characters", "world_id", "INTEGER REFERENCES worlds(id)"),
     ("messages", "speaker_id", "INTEGER REFERENCES characters(id)"),
+    ("messages", "initiated", "BOOLEAN NOT NULL DEFAULT 0"),
+    ("sessions", "autonomous", "BOOLEAN NOT NULL DEFAULT 0"),
+    ("sessions", "next_check_at", "DATETIME"),
 ]
 
 

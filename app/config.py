@@ -36,6 +36,20 @@ class Settings(BaseSettings):
     # 403 BadJwtToken, live -- so the default is example.com, which it accepts.
     # Set a real address or https URL here if you'd rather be reachable.
     push_contact: str = "mailto:owner@example.com"
+
+    # --- Characters writing first (chat/autonomy.py) ---
+    # IANA zone for quiet hours and "it is now..."; the UI fills it from the browser.
+    timezone: str = ""
+    autonomy_quiet_start: str = "22:30"
+    autonomy_quiet_end: str = "08:00"
+    # Doubles with each unanswered message: 2 h, then 4 h, then 8 h.
+    autonomy_min_gap_minutes: int = 120
+    # The plan's rule: after this many unanswered, the chat waits for the user.
+    autonomy_max_unanswered: int = 3
+    autonomy_max_per_day: int = 4
+    autonomy_check_minutes: int = 15
+    # The background loop. Tests turn it off; the per-chat switch is the real control.
+    autonomy_scheduler: bool = True
     # Strip sentences narrating the user's own actions before a reply is
     # stored. On by default: prompting alone measured 4-9 such turns in 16 on
     # an 8B, and each one stored teaches the next. See chat/guard.py.

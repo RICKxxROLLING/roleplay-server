@@ -18,7 +18,7 @@ from ..llm import GenerationParams, get_client
 from ..memory import memory_manager, rag
 from ..memory.scene import blank as blank_scene, update_scene
 from ..prompt import build_prompt, tokens
-from . import group
+from . import autonomy, group
 from .guard import (
     first_person_narration,
     infer_pronoun,
@@ -55,8 +55,10 @@ async def build_turn_prompt(
     db: DbSession | None = None,
     exclude_ids: set[int] | None = None,
     speaker: Character | None = None,
+    initiative: str = "",
 ):
-    """`speaker` writes the reply; None is the session's own character."""
+    """`speaker` writes the reply; None is the session's own character.
+    `initiative` makes it a message the character starts (chat/autonomy.py)."""
     speaker = speaker or session.character
     card = _card_of(speaker)
     ctx = await memory_manager.build_context(
@@ -84,6 +86,8 @@ async def build_turn_prompt(
         scene=(session.scene_prev if exclude_ids else session.scene)
         if settings.scene_enabled else None,
         others=_others(session, speaker),
+        initiative=initiative,
+        time_note="" if initiative or exclude_ids else autonomy.time_line(session),
     )
 
 
@@ -150,7 +154,7 @@ def _pronoun_of(card: CharacterCard) -> str | None:
 
 def _persist(
     db: DbSession, session: ChatSession, reply: str, swipe_of: Message | None,
-    speaker: Character | None = None,
+    speaker: Character | None = None, initiated: bool = False,
 ) -> bool:
     """Save `reply` as a new message or as another swipe. False if empty."""
     if not reply:
@@ -159,7 +163,7 @@ def _persist(
         add_swipe(swipe_of, reply)
     else:
         db.add(Message(session_id=session.id, role="assistant", content=reply,
-                       speaker_id=speaker.id if speaker else None))
+                       speaker_id=speaker.id if speaker else None, initiated=initiated))
     db.commit()
     return True
 
@@ -184,6 +188,7 @@ async def stream_reply(
     overrides: dict | None = None,
     swipe_of: Message | None = None,
     speaker: Character | None = None,
+    initiative: str = "",
 ) -> AsyncIterator[dict]:
     """Stream the character's next reply, persist it, then update memory.
 
@@ -205,7 +210,7 @@ async def stream_reply(
 
     card, ctx, built = await build_turn_prompt(
         session, overrides, db=db, exclude_ids={swipe_of.id} if swipe_of else None,
-        speaker=speaker,
+        speaker=speaker, initiative=initiative,
     )
     if ctx.retrieval_error:
         yield {
@@ -241,6 +246,8 @@ async def stream_reply(
     first_try: tuple[str, str, int] | None = None
 
     collected: list[str] = []
+    # The writing-first scheduler waits while anything is generating.
+    autonomy.ACTIVE += 1
     try:
         # Two attempts at most, shared by both redo reasons, and the second
         # result is kept whatever it is -- a loop here could spin on a card that
@@ -286,8 +293,10 @@ async def stream_reply(
         # written so it can be edited, continued or swiped rather than lost.
         # No awaits from here: a closing generator may not suspend again.
         partial, _removed = _guarded(_without_label("".join(collected), card), session, card)
-        _persist(db, session, partial, swipe_of, speaker)
+        _persist(db, session, partial, swipe_of, speaker, bool(initiative))
         raise
+    finally:
+        autonomy.ACTIVE -= 1
 
     # The UI reloads the stored message when the turn ends, so the streamed
     # draft is replaced by the guarded one.
@@ -299,7 +308,7 @@ async def stream_reply(
         yield {"type": "error", "message": "The reply only narrated your own actions, so "
                "nothing was kept. Try Regenerate."}
 
-    if not _persist(db, session, reply, swipe_of, speaker):
+    if not _persist(db, session, reply, swipe_of, speaker, bool(initiative)):
         return
 
     # --- Scene state: cheap, best-effort, and never allowed to break the turn ---

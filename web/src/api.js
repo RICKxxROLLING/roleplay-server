@@ -86,6 +86,8 @@ export const api = {
     j(`/sessions/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteSession: (id) => j(`/sessions/${id}`, { method: "DELETE" }),
   inspectPrompt: (id) => j(`/sessions/${id}/prompt`),
+  writeFirst: (id, force = false) =>
+    j(`/sessions/${id}/write-first`, { method: "POST", body: JSON.stringify({ force }) }),
   pushKey: () => j("/push/key"),
   pushSubscribe: (endpoint, label) =>
     j("/push/subscribe", { method: "POST", body: JSON.stringify({ endpoint, label }) }),

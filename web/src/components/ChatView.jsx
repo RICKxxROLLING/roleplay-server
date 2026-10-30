@@ -42,6 +42,33 @@ export default function ChatView({
     }
   }
 
+  async function setAutonomous(on) {
+    try {
+      await api.updateSession(sessionId, { autonomous: on });
+      await reload();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  // "Message me now": one message, skipping the timing rules and the
+  // would-they pass. Streams nothing -- the reply arrives on reload.
+  const [nudging, setNudging] = useState(false);
+  async function messageMeNow() {
+    setNudging(true);
+    setError(null);
+    try {
+      const r = await api.writeFirst(sessionId, true);
+      if (!r.sent) setError(`Nothing was sent: ${r.why}`);
+      await reload();
+      onDirty?.();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setNudging(false);
+    }
+  }
+
   async function swapPersona(value) {
     try {
       await api.updateSession(
@@ -257,6 +284,35 @@ export default function ChatView({
                 </option>
               ))}
             </select>
+            <span className="text-slate-700">·</span>
+            <label
+              className="flex items-center gap-1 cursor-pointer hover:text-slate-300"
+              title={
+                session?.autonomous
+                  ? session.waiting_because
+                    ? `On. Not writing yet: ${session.waiting_because}.`
+                    : "On. May write at the next check."
+                  : `Let ${charName || "the character"} send messages on their own, with a notification`
+              }
+            >
+              <input
+                type="checkbox"
+                checked={!!session?.autonomous}
+                onChange={(e) => setAutonomous(e.target.checked)}
+                className="accent-accent w-3 h-3"
+              />
+              writes first
+            </label>
+            {session?.autonomous && (
+              <button
+                onClick={messageMeNow}
+                disabled={busy || nudging}
+                className="hover:text-slate-300 disabled:opacity-40"
+                title="Have them write to you now, skipping the waiting"
+              >
+                {nudging ? "writing…" : "· message me now"}
+              </button>
+            )}
           </div>
         </div>
         <div className="ml-auto flex items-center gap-1.5 sm:gap-2 shrink-0">
@@ -320,6 +376,17 @@ export default function ChatView({
 
         {busy && !streamText && (
           <div className="text-xs text-slate-600 pl-12">{writerName} is writing…</div>
+        )}
+
+        {session?.suspended && (
+          <div className="flex justify-center">
+            <span
+              className="text-[11px] px-3 py-1 rounded-full border border-ink-700 bg-ink-900 text-slate-500"
+              title="Settings → Characters writing first"
+            >
+              {charName} sent {session.unanswered} messages without a reply and is waiting for you
+            </span>
+          </div>
         )}
 
         {guardRemoved > 0 && !busy && (

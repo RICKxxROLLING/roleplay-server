@@ -127,6 +127,15 @@ class SettingsPatch(BaseModel):
     facts_enabled: bool | None = None
     scene_enabled: bool | None = None
 
+    # Characters writing first. Times are "HH:MM" in the owner's zone.
+    timezone: str | None = Field(None, max_length=64)
+    autonomy_quiet_start: str | None = Field(None, pattern=r"^\d{1,2}:\d{2}$")
+    autonomy_quiet_end: str | None = Field(None, pattern=r"^\d{1,2}:\d{2}$")
+    autonomy_min_gap_minutes: int | None = Field(None, ge=15, le=7 * 24 * 60)
+    autonomy_max_unanswered: int | None = Field(None, ge=1, le=10)
+    autonomy_max_per_day: int | None = Field(None, ge=1, le=24)
+    autonomy_check_minutes: int | None = Field(None, ge=5, le=240)
+
     retrieval_enabled: bool | None = None
     embedding_model: str | None = None
     embedding_base_url: str | None = None

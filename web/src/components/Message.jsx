@@ -104,6 +104,14 @@ export default function Message({
       <div className={`max-w-[85%] sm:max-w-[72%] min-w-0 ${isUser ? "text-right" : ""}`}>
         <div className="text-xs text-slate-500 mb-1 flex items-center gap-2">
           <span className={isUser ? "ml-auto" : ""}>{name}</span>
+          {msg.initiated && (
+            <span
+              className="text-[10px] px-1.5 rounded-full bg-ink-800 border border-ink-700 text-slate-400"
+              title="Sent on their own, without a message from you"
+            >
+              wrote first
+            </span>
+          )}
           {msg.pinned && (
             <span
               className="text-[10px] px-1.5 rounded-full bg-accent/15 border border-accent/30 text-accent/90"

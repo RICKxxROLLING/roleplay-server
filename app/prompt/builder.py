@@ -157,6 +157,8 @@ def build_prompt(
     narration_style: str = "",
     scene: dict | None = None,
     others: list[tuple[str, str]] | None = None,
+    time_note: str = "",
+    initiative: str = "",
 ) -> BuiltPrompt:
     """`history` is [(role, content), ...] oldest-first, excluding the pending reply.
 
@@ -266,6 +268,9 @@ def build_prompt(
         _scene_line(scene),
         # Repeated here for the same recency reason as the reminder below.
         STYLE_REMINDER if style else "",
+        # After a long silence, the hour and the gap (chat/autonomy.py) -- or,
+        # for a message nobody asked for, why the character is writing at all.
+        substitute(initiative or time_note, char, user_name),
         substitute(TAIL_REMINDER, char, user_name),
     ]
     tail = fmt.tail.format(text="\n".join(p for p in tail_parts if p))
