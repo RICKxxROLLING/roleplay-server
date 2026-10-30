@@ -117,7 +117,17 @@ loop again. The others get a one-line "Also in this scene" plus a short blurb, a
 `\nName:` stop each, and the guard runs for each of their names too. Who answers: the
 user's pick, else the one character the message names, else whoever waited longest. A swipe
 is re-rolled by whoever wrote it. Folds, facts, pins and recall label each line by speaker.
-Not measured live yet.
+Measured offline on Stheno (Dina card, 6 seeds each, raw replies scored for narrating or
+voicing the user or slipping into first person): one-on-one baseline 4/6, group answering
+the user 3/6, group speaking straight after another character 3/6 -- the group layout adds
+nothing over the solo rate the guard and redo already handle. Alternatives were no better:
+the other's line as a system turn 3/6 and 6/6, a "Tommy has just spoken" tail cue 2/6 and
+5/6, merged into the user's turn 4/6 and 4/6, and on the assistant side the speaker simply
+carried on as Tommy. Live on the test box, 9 turns of Dina + Tommy: every speaker pick right
+(named, rotation, pick, respond, swipe), two first-person redos, guard trims on five
+replies, no stored line narrating the other character. Known limits: one line of the user's
+speech survived as an unattributed quote in its own paragraph (the guard's existing gap),
+and the scene's "present" can drop a member the exchange doesn't mention.
 
 **Scene state is updated after every reply and read back in the tail.** A short extra
 generation (`memory/scene.py`, ~0.6 s on the 2080) fills four fields, prefilled with
