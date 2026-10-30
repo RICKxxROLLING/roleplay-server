@@ -28,6 +28,8 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     # (table, column, DDL type + default)
     ("sessions", "summarized_upto_id", "INTEGER NOT NULL DEFAULT 0"),
+    ("messages", "alternatives", "JSON"),
+    ("messages", "alt_index", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 

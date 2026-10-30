@@ -75,14 +75,18 @@ class MemoryManager:
         session: ChatSession,
         card: CharacterCard,
         db: DbSession | None = None,
+        exclude_ids: set[int] | None = None,
     ) -> MemoryContext:
         """Compose the three memory sources into one context.
+
+        `exclude_ids` leaves messages out of the history -- a swipe regenerates
+        the last reply, so the reply being replaced must not be in its prompt.
 
         Async because retrieval has to embed the query, which is a network call.
         `db` is optional so callers that only want summary + lorebook (and have
         no session handy) can skip retrieval entirely.
         """
-        msgs = self.pending(session)
+        msgs = [m for m in self.pending(session) if m.id not in (exclude_ids or ())]
         history = [(m.role, m.content) for m in msgs]
 
         # Lorebook scans recent turns only, so it runs on pending history.

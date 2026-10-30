@@ -246,10 +246,12 @@ export default function ChatView({
       </header>
 
       <div className="flex-1 overflow-y-auto scroll-thin px-5 py-6 space-y-5">
-        {session?.messages?.map((m) => (
+        {session?.messages?.map((m, i) => (
           <Message
             key={m.id}
             msg={m}
+            swipeable={!busy && i === session.messages.length - 1 && typeof m.id === "number"}
+            onRegenerate={regenerate}
             charName={charName}
             charId={session.character_id}
             userName={userName}

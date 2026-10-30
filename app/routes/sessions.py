@@ -48,6 +48,8 @@ def _serialise(m: Message) -> dict:
         "role": m.role,
         "content": m.content,
         "created_at": m.created_at.isoformat() if m.created_at else None,
+        "swipes": len(m.alternatives) if m.alternatives else 1,
+        "swipe_index": m.alt_index if m.alternatives else 0,
     }
 
 
@@ -119,7 +121,9 @@ def get_session(session_id: int, db: DbSession = Depends(get_db)) -> dict:
     }
 
 
-def _stream_response(session_id: int, overrides: dict) -> StreamingResponse:
+def _stream_response(
+    session_id: int, overrides: dict, swipe_of_id: int | None = None
+) -> StreamingResponse:
     """Open a *fresh* DB session inside the generator.
 
     The request-scoped session from Depends() is closed as soon as the handler
@@ -133,8 +137,9 @@ def _stream_response(session_id: int, overrides: dict) -> StreamingResponse:
             if not s:
                 yield _sse({"type": "error", "message": "Session not found"})
                 return
+            swipe_of = db.get(Message, swipe_of_id) if swipe_of_id else None
             # The orchestrator already emits typed events; pass them straight through.
-            async for event in stream_reply(db, s, overrides):
+            async for event in stream_reply(db, s, overrides, swipe_of=swipe_of):
                 yield _sse(event)
             yield _sse({"type": "done"})
         except Exception as exc:  # surface backend failures to the UI
@@ -166,14 +171,44 @@ def send_message(
 
 @router.post("/{session_id}/regenerate")
 def regenerate(session_id: int, db: DbSession = Depends(get_db)) -> StreamingResponse:
-    """Simple regenerate: drop the trailing assistant turn and re-roll it."""
+    """Re-roll the last reply as a new swipe; earlier versions are kept.
+
+    The reply is not deleted first, so a failed or empty generation leaves it
+    exactly as it was.
+    """
     s = db.get(ChatSession, session_id)
     if not s:
         raise HTTPException(404, "Session not found")
-    if s.messages and s.messages[-1].role == "assistant":
-        db.delete(s.messages[-1])
-        db.commit()
-    return _stream_response(session_id, {})
+    last = s.messages[-1] if s.messages else None
+    # The greeting is a reply too, and swiping it is how a chat re-rolls its
+    # opening -- but only while it is the whole chat.
+    swipe = last.id if last is not None and last.role == "assistant" else None
+    return _stream_response(session_id, {}, swipe_of_id=swipe)
+
+
+class SwipeIn(BaseModel):
+    index: int
+
+
+@router.post("/{session_id}/messages/{message_id}/swipe")
+def select_swipe(
+    session_id: int, message_id: int, body: SwipeIn, db: DbSession = Depends(get_db)
+) -> dict:
+    """Show another version of the last reply."""
+    s = db.get(ChatSession, session_id)
+    m = db.get(Message, message_id)
+    if not s or not m or m.session_id != session_id:
+        raise HTTPException(404, "Message not found")
+    # Only the latest reply: once answered, the reply has shaped the turns after
+    # it, and swapping it underneath them would make the history incoherent.
+    if s.messages[-1].id != m.id or not m.alternatives:
+        raise HTTPException(400, "Only the latest reply can be swiped")
+    if not 0 <= body.index < len(m.alternatives):
+        raise HTTPException(400, "No such swipe")
+    m.alt_index = body.index
+    m.content = m.alternatives[body.index]
+    db.commit()
+    return _serialise(m)
 
 
 @router.get("/{session_id}/prompt")
@@ -262,6 +297,12 @@ def edit_message(
 
     s = db.get(ChatSession, session_id)
     m.content = content
+    if m.alternatives:
+        # The edit belongs to the swipe on screen; without this, flipping away
+        # and back would bring the unedited text back.
+        alts = list(m.alternatives)
+        alts[m.alt_index] = content
+        m.alternatives = alts
     db.commit()
 
     # Below the watermark the original text is already baked into the summary,

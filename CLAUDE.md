@@ -95,6 +95,13 @@ restores the new model's saved profile, else a name-matched preset, else keeps t
 values and the Models panel says so. Keys sent in the same patch beat the profile. Presets
 set only what is known about a model; the Stheno one is the measured setup.
 
+**Swipes live on the last reply's row, not as sibling messages.** `alternatives` holds every
+version and `content` is always the selected one, so prompt building, summaries, retrieval
+and both guards read `content` and never learn swipes exist; embeddings re-index on their
+content hash. Regenerate no longer deletes first (a failed generation used to lose the
+reply): it builds the prompt with that reply excluded, then appends. Only the latest reply
+can be swiped -- once answered, swapping it would contradict the turns built on it.
+
 **Sampler options are always sent, `min_p: 0` included.** An omitted option falls back to the
 Modelfile's value, so the UI would stop being the source of truth.
 
@@ -410,8 +417,8 @@ complete. Candidates, roughly by value:
 - **Cancel generation server-side.** Stop currently aborts the client only; the backend
   finishes and persists the turn. Needs a per-session cancellation handle the route can
   signal.
-- **Branching / swipes.** Regenerate is destructive today. Alternate timelines mean a parent
-  pointer on `Message` and a UI for walking siblings — the schema change is the real work.
+- **Branching.** Swipes cover the last reply (below); full alternate timelines -- going back
+  to an old turn and forking -- still mean a parent pointer on `Message` and a tree UI.
 - **Session export/import** as a JSON bundle, so a chat can move between installs.
 - **Semantic lorebook matching.** Embedding `character_book` entries would catch paraphrases
   keywords miss. It must be *additive* to keyword matching, not a replacement — the V2 spec

@@ -117,6 +117,11 @@ class Message(Base):
     role: Mapped[str] = mapped_column(String(20))  # "user" | "assistant"
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+    # Swipes. Every version a regenerate produced, oldest first; `content` is
+    # always the selected one, so prompt building, summaries, retrieval and the
+    # guards never need to know swipes exist. None until the first regenerate.
+    alternatives: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    alt_index: Mapped[int] = mapped_column(default=0)
 
     session: Mapped[ChatSession] = relationship(back_populates="messages")
     embedding: Mapped["MessageEmbedding | None"] = relationship(

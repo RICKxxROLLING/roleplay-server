@@ -78,6 +78,11 @@ export const api = {
     }),
   deleteMessage: (sid, mid) =>
     j(`/sessions/${sid}/messages/${mid}`, { method: "DELETE" }),
+  swipe: (sid, mid, index) =>
+    j(`/sessions/${sid}/messages/${mid}/swipe`, {
+      method: "POST",
+      body: JSON.stringify({ index }),
+    }),
 
   memory: (id) => j(`/sessions/${id}/memory`),
   saveMemory: (id, summary) =>

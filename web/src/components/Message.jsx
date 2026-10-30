@@ -27,6 +27,9 @@ export default function Message({
   streaming,
   sessionId,
   onChanged,
+  // Only the latest reply gets swipe controls; the server enforces the same.
+  swipeable,
+  onRegenerate,
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(msg.content);
@@ -44,6 +47,15 @@ export default function Message({
       const r = await api.editMessage(sessionId, msg.id, draft);
       setEditing(false);
       setNote(r.note || null);
+      onChanged?.();
+    } catch (e) {
+      setNote(e.message);
+    }
+  }
+
+  async function swipeTo(index) {
+    try {
+      await api.swipe(sessionId, msg.id, index);
       onChanged?.();
     } catch (e) {
       setNote(e.message);
@@ -135,6 +147,35 @@ export default function Message({
             } ${streaming ? "caret" : ""}`}
           >
             <RichText text={msg.content} />
+          </div>
+        )}
+
+        {swipeable && !isUser && !editing && (
+          <div className="flex items-center gap-1 mt-1 text-xs text-slate-500">
+            <button
+              onClick={() => swipeTo(msg.swipe_index - 1)}
+              disabled={!msg.swipes || msg.swipe_index === 0}
+              className="px-1.5 hover:text-slate-300 disabled:opacity-30"
+              aria-label="Previous version"
+            >
+              ‹
+            </button>
+            <span className="tabular-nums">
+              {(msg.swipe_index ?? 0) + 1}/{msg.swipes ?? 1}
+            </span>
+            {/* Past the newest version, the arrow writes another one. */}
+            <button
+              onClick={() =>
+                msg.swipe_index < (msg.swipes ?? 1) - 1
+                  ? swipeTo(msg.swipe_index + 1)
+                  : onRegenerate?.()
+              }
+              className="px-1.5 hover:text-slate-300"
+              aria-label="Next version"
+              title={msg.swipe_index < (msg.swipes ?? 1) - 1 ? "Next version" : "Write another version"}
+            >
+              ›
+            </button>
           </div>
         )}
 

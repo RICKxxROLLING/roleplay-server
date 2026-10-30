@@ -27,9 +27,10 @@ async def build_turn_prompt(
     session: ChatSession,
     overrides: dict | None = None,
     db: DbSession | None = None,
+    exclude_ids: set[int] | None = None,
 ):
     card = _card_of(session)
-    ctx = await memory_manager.build_context(session, card, db=db)
+    ctx = await memory_manager.build_context(session, card, db=db, exclude_ids=exclude_ids)
     persona = session.persona
     return card, ctx, build_prompt(
         card=card,
@@ -63,13 +64,35 @@ def _params(built_stop: list[str], overrides: dict | None) -> GenerationParams:
     )
 
 
+#: Oldest swipes beyond this are dropped; each is a full reply held in the row.
+MAX_SWIPES = 20
+
+
+def add_swipe(message: Message, reply: str) -> None:
+    """Append `reply` as the newest swipe and select it."""
+    alts = list(message.alternatives or [message.content])
+    alts.append(reply)
+    alts = alts[-MAX_SWIPES:]
+    message.alternatives = alts
+    message.alt_index = len(alts) - 1
+    message.content = reply
+
+
 async def stream_reply(
     db: DbSession,
     session: ChatSession,
     overrides: dict | None = None,
+    swipe_of: Message | None = None,
 ) -> AsyncIterator[dict]:
-    """Stream the character's next reply, persist it, then update memory."""
-    card, ctx, built = await build_turn_prompt(session, overrides, db=db)
+    """Stream the character's next reply, persist it, then update memory.
+
+    With `swipe_of` (the session's last reply) the new text is added to that
+    message as another swipe instead of becoming a new message, and the reply
+    being replaced is left out of the prompt.
+    """
+    card, ctx, built = await build_turn_prompt(
+        session, overrides, db=db, exclude_ids={swipe_of.id} if swipe_of else None
+    )
     if ctx.retrieval_error:
         yield {
             "type": "memory",
@@ -122,7 +145,10 @@ async def stream_reply(
     if not reply:
         return
 
-    db.add(Message(session_id=session.id, role="assistant", content=reply))
+    if swipe_of is not None:
+        add_swipe(swipe_of, reply)
+    else:
+        db.add(Message(session_id=session.id, role="assistant", content=reply))
     db.commit()
     db.refresh(session)
 
