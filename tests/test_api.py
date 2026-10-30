@@ -326,3 +326,34 @@ def test_redo_can_be_turned_off(client, session, llm):
     llm.replies = ["*I nod. I smile. I mean it.*"]
     events = sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": "hi"}))
     assert not any(e["type"] == "redo" for e in events)
+
+
+def test_stop_keeps_the_partial_reply(client, session, llm):
+    """Stop closes the stream mid-reply; what was written survives it."""
+    import asyncio
+
+    from app.chat.orchestrator import stream_reply
+    from app.db import database
+    from app.db.models import ChatSession, Message
+
+    llm.reply = "*She nods once, slowly.*"
+    client.post(f"/api/sessions/{session}/messages", json={"content": "hi"})
+    # Re-roll it as a fresh turn, stopped after the first token.
+    db = database.SessionLocal()
+    try:
+        s = db.get(ChatSession, session)
+
+        async def stop_after_first_token():
+            gen = stream_reply(db, s, swipe_of=s.messages[-1])
+            async for event in gen:
+                if event["type"] == "token":
+                    break
+            await gen.aclose()  # what a client disconnect does to the stream
+
+        asyncio.run(stop_after_first_token())
+        db.expire_all()
+        last = db.get(ChatSession, session).messages[-1]
+        assert last.content == "*She nods once, slowly."
+        assert len(last.alternatives) == 2  # kept as a swipe, nothing lost
+    finally:
+        db.close()

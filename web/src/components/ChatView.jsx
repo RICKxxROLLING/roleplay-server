@@ -143,9 +143,12 @@ export default function ChatView({
     abortRef.current?.();
     abortRef.current = null;
     setBusy(false);
-    setStreamText("");
-    // The server finished its turn regardless; resync to pick up what persisted.
-    api.session(sessionId).then(setSession).catch(() => {});
+    // The server keeps what was written before Stop; give it a moment to
+    // save before resyncing, so the partial reply doesn't flicker away.
+    setTimeout(() => {
+      setStreamText("");
+      api.session(sessionId).then(setSession).catch(() => {});
+    }, 600);
   }
 
   if (!sessionId)

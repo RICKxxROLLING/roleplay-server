@@ -95,6 +95,14 @@ restores the new model's saved profile, else a name-matched preset, else keeps t
 values and the Models panel says so. Keys sent in the same patch beat the profile. Presets
 set only what is known about a model; the Stheno one is the measured setup.
 
+**Stop keeps the partial reply.** A client disconnect already ends generation on the GPU:
+Starlette cancels the streaming generator, which closes the httpx stream to Ollama, which
+stops. Measured on the live box -- a probe call answered 0.1 s after Stop. (An older note
+here said the backend ran on; it doesn't.) What was missing is the text: cancellation used
+to skip persistence, leaving a user message with no reply. The orchestrator now catches
+`CancelledError`/`GeneratorExit`, guards and saves the partial (as a swipe when re-rolling),
+then re-raises. No awaits in that handler -- a closing async generator may not suspend.
+
 **Swipes live on the last reply's row, not as sibling messages.** `alternatives` holds every
 version and `content` is always the selected one, so prompt building, summaries, retrieval
 and both guards read `content` and never learn swipes exist; embeddings re-index on their
@@ -414,9 +422,6 @@ overlap. Don't loosen it to make one of them pass.
 No single big rock left; the hybrid memory design of `docs/architecture.md` §5 Route C is
 complete. Candidates, roughly by value:
 
-- **Cancel generation server-side.** Stop currently aborts the client only; the backend
-  finishes and persists the turn. Needs a per-session cancellation handle the route can
-  signal.
 - **Branching.** Swipes cover the last reply (below); full alternate timelines -- going back
   to an old turn and forking -- still mean a parent pointer on `Message` and a tree UI.
 - **Session export/import** as a JSON bundle, so a chat can move between installs.

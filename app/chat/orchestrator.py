@@ -6,6 +6,7 @@ a few seconds and would otherwise look like a hung stream.
 """
 from __future__ import annotations
 
+import asyncio
 from typing import AsyncIterator
 
 from sqlalchemy.orm import Session as DbSession
@@ -64,6 +65,34 @@ def _params(built_stop: list[str], overrides: dict | None) -> GenerationParams:
     )
 
 
+def _without_label(text: str, card: CharacterCard) -> str:
+    """Models sometimes echo the speaker label despite priming; strip it."""
+    reply = text.strip()
+    prefix = f"{card.name}:"
+    return reply[len(prefix) :].strip() if reply.startswith(prefix) else reply
+
+
+def _guarded(reply: str, session: ChatSession, card: CharacterCard) -> tuple[str, int]:
+    if not settings.guard_user_actions:
+        return reply, 0
+    user_name = session.persona.name if session.persona else "You"
+    return strip_user_actions(reply, user_name, card.name)
+
+
+def _persist(
+    db: DbSession, session: ChatSession, reply: str, swipe_of: Message | None
+) -> bool:
+    """Save `reply` as a new message or as another swipe. False if empty."""
+    if not reply:
+        return False
+    if swipe_of is not None:
+        add_swipe(swipe_of, reply)
+    else:
+        db.add(Message(session_id=session.id, role="assistant", content=reply))
+    db.commit()
+    return True
+
+
 #: Oldest swipes beyond this are dropped; each is a full reply held in the row.
 MAX_SWIPES = 20
 
@@ -108,48 +137,45 @@ async def stream_reply(
 
     client = get_client()
 
-    # Two attempts at most: a slipped narrator gets one redo, and the second
-    # result is kept whatever it is -- a loop here could spin on a card that
-    # just reads as first person.
-    for attempt in range(2):
-        collected: list[str] = []
-        async for piece in client.generate_stream(built.text, _params(built.stop, overrides)):
-            collected.append(piece)
-            yield {"type": "token", "text": piece}
+    collected: list[str] = []
+    try:
+        # Two attempts at most: a slipped narrator gets one redo, and the second
+        # result is kept whatever it is -- a loop here could spin on a card that
+        # just reads as first person.
+        for attempt in range(2):
+            collected = []
+            async for piece in client.generate_stream(built.text, _params(built.stop, overrides)):
+                collected.append(piece)
+                yield {"type": "token", "text": piece}
 
-        reply = "".join(collected).strip()
-        # Models sometimes echo the speaker label despite priming; strip it.
-        prefix = f"{card.name}:"
-        if reply.startswith(prefix):
-            reply = reply[len(prefix) :].strip()
-
-        if (
-            attempt == 0
-            and settings.redo_first_person
-            and slipped_into_first_person(reply, card.first_mes)
-        ):
-            # Tells the UI to drop the draft it has streamed so far.
-            yield {"type": "redo", "reason": "first_person"}
-            continue
-        break
+            reply = _without_label("".join(collected), card)
+            if (
+                attempt == 0
+                and settings.redo_first_person
+                and slipped_into_first_person(reply, card.first_mes)
+            ):
+                # Tells the UI to drop the draft it has streamed so far.
+                yield {"type": "redo", "reason": "first_person"}
+                continue
+            break
+    except (asyncio.CancelledError, GeneratorExit):
+        # Stop. The disconnect has already ended generation on the GPU (the
+        # stream to the backend closes with this generator); keep what was
+        # written so it can be edited, continued or swiped rather than lost.
+        # No awaits from here: a closing generator may not suspend again.
+        partial, _removed = _guarded(_without_label("".join(collected), card), session, card)
+        _persist(db, session, partial, swipe_of)
+        raise
 
     # Before persisting: once one reply narrating the user is in history, the
     # model copies it -- see chat/guard.py. The UI reloads the stored message
     # when the turn ends, so the streamed draft is replaced by this one.
-    if settings.guard_user_actions:
-        user_name = session.persona.name if session.persona else "You"
-        reply, removed = strip_user_actions(reply, user_name, card.name)
-        if removed:
-            yield {"type": "guard", "removed": removed}
+    reply, removed = _guarded(reply, session, card)
+    if removed:
+        yield {"type": "guard", "removed": removed}
 
-    if not reply:
+    if not _persist(db, session, reply, swipe_of):
         return
-
-    if swipe_of is not None:
-        add_swipe(swipe_of, reply)
-    else:
-        db.add(Message(session_id=session.id, role="assistant", content=reply))
-    db.commit()
     db.refresh(session)
 
     # --- Phase 4: embed both sides of the turn ---
