@@ -122,9 +122,16 @@ class MockLLM(LLMClient):
         self.reply_count = 0
         #: Per-call replies, consumed first; `reply` once empty.
         self.replies: list[str] = []
+        self.scene_calls: list[str] = []
+        # What a scene update returns, after the prefilled "Location:".
+        self.scene_reply = " the flooded archive\nTime: midnight\nWeather: indoors\nPresent: Seraphine, You"
 
     async def generate_stream(self, prompt, params):
         self.prompts.append(prompt)
+        if "track the scene" in prompt.lower():
+            self.scene_calls.append(prompt)
+            yield self.scene_reply
+            return
         if "fact sheet" in prompt.lower():
             self.fact_calls.append(prompt)
             yield f"Riley found the ledger.\n- Seraphine keeps the archive key {len(self.fact_calls)}."
@@ -180,11 +187,12 @@ def _reset_state():
 def llm(monkeypatch):
     """Install the mock across every module that resolves a client."""
     import app.chat.orchestrator as orch
+    import app.memory.scene as scene
     import app.memory.summarizer as summarizer
     import app.routes.system as system
 
     mock = MockLLM()
-    for module in (orch, summarizer, system):
+    for module in (orch, scene, summarizer, system):
         monkeypatch.setattr(module, "get_client", lambda: mock)
     return mock
 

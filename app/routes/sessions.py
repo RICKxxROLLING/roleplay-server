@@ -118,6 +118,7 @@ def get_session(session_id: int, db: DbSession = Depends(get_db)) -> dict:
         "character_name": s.character.name if s.character else None,
         "persona_id": s.persona_id,
         "summary": s.summary,
+        "scene": s.scene,
         "messages": [_serialise(m) for m in s.messages],
     }
 
@@ -486,3 +487,27 @@ def delete_session(session_id: int, db: DbSession = Depends(get_db)) -> dict:
     db.delete(s)
     db.commit()
     return {"ok": True}
+
+
+class ScenePatch(BaseModel):
+    location: str | None = None
+    time: str | None = None
+    weather: str | None = None
+    present: str | None = None
+
+
+@router.patch("/{session_id}/scene")
+def patch_scene(session_id: int, body: ScenePatch, db: DbSession = Depends(get_db)) -> dict:
+    """Correct the scene by hand; the next update starts from the correction."""
+    from ..memory.scene import blank
+
+    s = db.get(ChatSession, session_id)
+    if not s:
+        raise HTTPException(404, "Session not found")
+    user = s.persona.name if s.persona else "You"
+    scene = dict(s.scene or blank(s.character.name if s.character else "Character", user))
+    for key, value in body.model_dump(exclude_none=True).items():
+        scene[key] = value.strip()[:80] or "unknown"
+    s.scene = scene
+    db.commit()
+    return {"scene": s.scene}

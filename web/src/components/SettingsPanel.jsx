@@ -161,6 +161,20 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
           ))}
 
           <div className="pt-3 border-t border-ink-800 space-y-4">
+            {/* Independent of summarization, so it sits outside that block. */}
+            <label className="flex items-center gap-2.5 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={s.scene_enabled}
+                onChange={(e) => update("scene_enabled", e.target.checked)}
+                className="accent-accent w-4 h-4"
+              />
+              Track the scene
+              <span className="text-xs text-slate-600">
+                where, when, weather and who is present · under a second per reply
+              </span>
+            </label>
+
             <label className="flex items-center gap-2.5 text-sm cursor-pointer">
               <input
                 type="checkbox"

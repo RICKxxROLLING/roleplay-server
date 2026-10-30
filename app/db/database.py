@@ -32,6 +32,8 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     ("messages", "alt_index", "INTEGER NOT NULL DEFAULT 0"),
     ("messages", "pinned", "BOOLEAN NOT NULL DEFAULT 0"),
     ("sessions", "facts", "TEXT NOT NULL DEFAULT ''"),
+    ("sessions", "scene", "JSON"),
+    ("sessions", "scene_prev", "JSON"),
 ]
 
 

@@ -108,6 +108,15 @@ def _character_block(card: CharacterCard, char: str, user: str) -> str:
     return "\n\n".join(parts)
 
 
+def _scene_line(scene: dict | None) -> str:
+    """One line, skipping fields nobody has filled in yet."""
+    if not scene:
+        return ""
+    parts = [f"{k.capitalize()}: {v}" for k, v in scene.items()
+             if not k.startswith("_") and v and v != "unknown"]
+    return f"Current scene -- {'; '.join(parts)}." if parts else ""
+
+
 def _format_turn(
     role: str, content: str, char: str, user: str, fmt: PromptFormat = ALPACA
 ) -> str:
@@ -134,6 +143,7 @@ def build_prompt(
     reserve_tokens: int = 256,
     prompt_format: str | PromptFormat = "alpaca",
     narration_style: str = "",
+    scene: dict | None = None,
 ) -> BuiltPrompt:
     """`history` is [(role, content), ...] oldest-first, excluding the pending reply."""
     fmt = prompt_format if isinstance(prompt_format, PromptFormat) else get_format(prompt_format)
@@ -223,6 +233,9 @@ def build_prompt(
     # The card's own tail comes first; ours lands last, closest to generation.
     tail_parts = [
         substitute(card.post_history_instructions, char, user_name),
+        # Where the story *is* right now belongs closest to generation: it is
+        # the thing a small model most often loses (scene.py).
+        _scene_line(scene),
         # Repeated here for the same recency reason as the reminder below.
         STYLE_REMINDER if style else "",
         substitute(TAIL_REMINDER, char, user_name),

@@ -78,6 +78,8 @@ export const api = {
     }),
   deleteMessage: (sid, mid) =>
     j(`/sessions/${sid}/messages/${mid}`, { method: "DELETE" }),
+  patchScene: (sid, scene) =>
+    j(`/sessions/${sid}/scene`, { method: "PATCH", body: JSON.stringify(scene) }),
   setPinned: (sid, mid, pinned) =>
     j(`/sessions/${sid}/messages/${mid}`, {
       method: "PATCH",

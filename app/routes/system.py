@@ -125,6 +125,7 @@ class SettingsPatch(BaseModel):
     summary_max_tokens: int | None = None
     summary_temperature: float | None = None
     facts_enabled: bool | None = None
+    scene_enabled: bool | None = None
 
     retrieval_enabled: bool | None = None
     embedding_model: str | None = None

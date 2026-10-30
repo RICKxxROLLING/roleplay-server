@@ -60,6 +60,7 @@ app/
     manager.py          watermark logic; composes summary + lorebook + retrieval
     summarizer.py       fold prompt + LLM call
     lorebook.py         keyword matching, budget eviction
+    scene.py            location / time / weather / present, updated after each reply
     rag.py              message embedding, cosine search, budget eviction
   chat/orchestrator.py  per-turn flow, typed stream events
   chat/guard.py         strips narration of the user's actions before a reply is stored
@@ -95,6 +96,16 @@ profile first (before the patch applies, so a combined patch can't leak into it)
 restores the new model's saved profile, else a name-matched preset, else keeps the current
 values and the Models panel says so. Keys sent in the same patch beat the profile. Presets
 set only what is known about a model; the Stheno one is the measured setup.
+
+**Scene state is updated after every reply and read back in the tail.** A short extra
+generation (`memory/scene.py`, ~0.6 s on the 2080) fills four fields, prefilled with
+"Location:"; a reply that isn't all four short, quote-free fields keeps the old scene. It goes
+in the tail because where the story *is* is what small models lose first. A swipe starts from
+`scene_prev`, the scene before the reply it replaces. Prototyped on a 14-turn live transcript:
+"change a field only when the exchange changes it" made the model stick (it stayed "inside the
+stable, late morning" through a snowy patrol and "back home that evening"); asking where the
+exchange *ends*, naming moves and time skips, followed every change. Example weather phrases
+in the prompt were parroted and drifted, so weather is mostly indoors/outdoors -- editable.
 
 **Facts are a second pass of the fold, in lockstep with it.** `session.facts` is a bullet
 list rewritten (not appended) on each *successful* fold, from the same turns, so a rejected

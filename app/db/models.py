@@ -97,6 +97,11 @@ class ChatSession(Base):
     summary: Mapped[str] = mapped_column(Text, default="")
     # Bullet list beside the prose summary, rewritten on each fold (summarizer.py).
     facts: Mapped[str] = mapped_column(Text, default="")
+    # Scene state (memory/scene.py): location, time, weather, present. The
+    # previous one is kept so a swipe re-rolls from the scene before the reply
+    # it replaces, not after.
+    scene: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    scene_prev: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # Watermark. Messages with id <= this are folded into `summary` and are no
     # longer sent verbatim. 0 means nothing has been summarised yet.
     summarized_upto_id: Mapped[int] = mapped_column(default=0)

@@ -16,6 +16,7 @@ from ..config import settings
 from ..db.models import ChatSession, Message
 from ..llm import GenerationParams, get_client
 from ..memory import memory_manager, rag
+from ..memory.scene import update_scene
 from ..prompt import build_prompt, tokens
 from .guard import first_person_narration, slipped_into_first_person, strip_user_actions
 
@@ -49,6 +50,9 @@ async def build_turn_prompt(
         reserve_tokens=settings.reserve_tokens,
         prompt_format=settings.prompt_format,
         narration_style=settings.narration_style,
+        # A swipe replaces the last reply, so it starts from the scene before it.
+        scene=(session.scene_prev if exclude_ids else session.scene)
+        if settings.scene_enabled else None,
     )
 
 
@@ -225,6 +229,23 @@ async def stream_reply(
 
     if not _persist(db, session, reply, swipe_of):
         return
+
+    # --- Scene state: cheap, best-effort, and never allowed to break the turn ---
+    if settings.scene_enabled:
+        try:
+            base = session.scene_prev if swipe_of is not None else session.scene
+            user_text = next((m.content for m in reversed(session.messages)
+                              if m.role == "user"), "")
+            new_scene = await update_scene(
+                base, user_text, reply, card,
+                session.persona.name if session.persona else "You",
+            )
+            session.scene_prev = base
+            session.scene = new_scene
+            db.commit()
+            yield {"type": "scene", "scene": new_scene}
+        except Exception:
+            pass
     db.refresh(session)
 
     # --- Phase 4: embed both sides of the turn ---

@@ -75,6 +75,7 @@ export default function ChatView({
     abortRef.current = streamTurn(path, body, {
       onEvent: (evt) => {
         if (evt.type === "guard") setGuardRemoved(evt.removed);
+        if (evt.type === "scene") setSession((s) => (s ? { ...s, scene: evt.scene } : s));
         // The server is regenerating; what streamed so far is discarded.
         if (evt.type === "redo") {
           acc = "";
@@ -248,6 +249,14 @@ export default function ChatView({
         </div>
       </header>
 
+      {session?.scene && (
+        <SceneBar
+          scene={session.scene}
+          sessionId={sessionId}
+          onSaved={(scene) => setSession((s) => ({ ...s, scene }))}
+        />
+      )}
+
       <div className="flex-1 overflow-y-auto scroll-thin px-5 py-6 space-y-5">
         {session?.messages?.map((m, i) => (
           <Message
@@ -355,6 +364,73 @@ export default function ChatView({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+const SCENE_FIELDS = [
+  ["location", "Where"],
+  ["time", "When"],
+  ["weather", "Weather"],
+  ["present", "Present"],
+];
+
+/**
+ * Where the story is right now. Updated after every reply and fed back to the
+ * model before the next one; editable because an 8B sometimes misreads a scene
+ * change, and the next update starts from whatever is saved here.
+ */
+function SceneBar({ scene, sessionId, onSaved }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(scene);
+
+  useEffect(() => {
+    if (!editing) setDraft(scene);
+  }, [scene, editing]);
+
+  async function save() {
+    try {
+      const r = await api.patchScene(sessionId, draft);
+      onSaved?.(r.scene);
+      setEditing(false);
+    } catch {
+      /* keep the editor open so nothing typed is lost */
+    }
+  }
+
+  return (
+    <div className="px-5 py-1.5 border-b border-ink-800 bg-ink-900/60 text-[11px] text-slate-500 flex flex-wrap items-center gap-x-4 gap-y-1">
+      {SCENE_FIELDS.map(([key, label]) =>
+        editing ? (
+          <label key={key} className="flex items-center gap-1">
+            {label}
+            <input
+              value={draft[key] ?? ""}
+              onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
+              maxLength={80}
+              className="bg-ink-950 border border-ink-800 rounded px-1.5 py-0.5 text-slate-300 outline-none focus:border-accent/60 w-36"
+            />
+          </label>
+        ) : (
+          <span key={key}>
+            {label} <span className="text-slate-300">{scene[key] || "unknown"}</span>
+          </span>
+        )
+      )}
+      {editing ? (
+        <span className="flex gap-2 ml-auto">
+          <button onClick={save} className="text-accent hover:underline">save</button>
+          <button onClick={() => setEditing(false)} className="hover:text-slate-300">cancel</button>
+        </span>
+      ) : (
+        <button
+          onClick={() => setEditing(true)}
+          className="ml-auto hover:text-slate-300"
+          title="Correct the scene; the next update starts from what you save"
+        >
+          edit
+        </button>
+      )}
     </div>
   );
 }

@@ -41,6 +41,7 @@ PERSISTABLE: dict[str, type] = {
     "summary_max_tokens": int,
     "summary_temperature": float,
     "facts_enabled": bool,
+    "scene_enabled": bool,
     "retrieval_enabled": bool,
     "embedding_model": str,
     "embedding_base_url": str,
