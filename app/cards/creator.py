@@ -110,6 +110,10 @@ def parse_draft(raw: str) -> Draft:
     ex = draft.fields.get("mes_example", "").replace("<END>", "").strip()
     if ex:
         draft.fields["mes_example"] = ex
+    # Seen live: "<START>\n{{user}}:\n{{char}}:" -- the template, no lines.
+    if len(re.sub(r"<START>|\{\{(?:user|char)\}\}:", "", ex).strip()) < 40:
+        draft.fields.pop("mes_example", None)
+        ex = ""
     if ex and "<START>" not in ex:
         draft.fields["mes_example"] = "<START>\n" + ex
     for f, minimum in (("description", 200), ("first_mes", 80)):

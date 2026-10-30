@@ -75,7 +75,8 @@ def test_a_short_or_runaway_section_is_dropped_alone():
 
 def test_example_dialogue_written_straight_after_the_greeting_is_split_off():
     d = parse_draft(" Kira\nFirst message: *Kira sets down her cloth.* \"Rough day?\" " + "y" * 80
-                    + "\n\n<START>\n{{user}}: Heavy losses.\n{{char}}: \"Relentless?\"")
+                    + "\n\n<START>\n{{user}}: Heavy losses.\n"
+                    "{{char}}: \"Relentless?\" *Kira rises to examine the wound more closely.*")
     assert "<START>" not in d.fields["first_mes"]
     assert d.fields["mes_example"].startswith("<START>\n{{user}}: Heavy losses.")
 
@@ -93,15 +94,21 @@ def test_labels_in_bold_or_any_case_are_read():
 
 def test_missing_example_dialogue_is_continued_not_redrafted(client, llm):
     no_examples = llm.draft_reply.split("Example dialogue:")[0]
-    llm.draft_replies = [no_examples, '{{user}}: Hi.\n{{char}}: "Hm." *He keeps writing.*']
+    llm.draft_replies = [no_examples, '{{user}}: Hi, I came about the debt.\n'
+                                      '{{char}}: "Hm. Sit." *He keeps writing in the ledger.*']
     d, _ = draft(client, brief="A tavern keeper")
     assert len(llm.draft_calls) == 2
     assert llm.draft_calls[1].endswith("Example dialogue: <START>\n")
     assert llm.draft_calls[1].startswith(llm.draft_calls[0])  # the same answer, continued
-    assert d["fields"]["mes_example"].startswith("<START>\n{{user}}: Hi.")
+    assert d["fields"]["mes_example"].startswith("<START>\n{{user}}: Hi, I came about the debt.")
     assert d["missing"] == []
 
 
 def test_a_complete_draft_takes_one_call(client, llm):
     draft(client, brief="A tavern keeper")
     assert len(llm.draft_calls) == 1
+
+
+def test_an_empty_example_template_counts_as_missing():
+    d = parse_draft(" Laura\nFirst message: " + "w" * 90 + "\nExample dialogue: <START>\n{{user}}:\n{{char}}:")
+    assert "mes_example" not in d.fields and "Example dialogue" in d.missing
