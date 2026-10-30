@@ -104,7 +104,11 @@ in the tail because where the story *is* is what small models lose first. A swip
 `scene_prev`, the scene before the reply it replaces. Prototyped on a 14-turn live transcript:
 "change a field only when the exchange changes it" made the model stick (it stayed "inside the
 stable, late morning" through a snowy patrol and "back home that evening"); asking where the
-exchange *ends*, naming moves and time skips, followed every change. Example weather phrases
+exchange *ends*, naming moves and time skips, followed every change. Then, verified live, the
+model anchored on the old scene when it came first: "back home that evening" stayed "outside
+the stable gate, afternoon" in 6/6 samples, and a reply's *suggestion* was recorded as done.
+The exchange now comes first and the old scene last, "for reference only": 3/3 correct, and
+both test transcripts replayed cleanly. Example weather phrases
 in the prompt were parroted and drifted, so weather is mostly indoors/outdoors -- editable.
 
 **Facts are a second pass of the fold, in lockstep with it.** `session.facts` is a bullet

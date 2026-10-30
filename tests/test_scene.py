@@ -44,8 +44,9 @@ def test_a_misfire_keeps_the_old_scene(client, session, llm):
 def test_a_swipe_starts_from_the_scene_before_the_reply_it_replaces(client, session, llm):
     chat(client, session)  # scene moves from blank to the archive
     sse_events(client.post(f"/api/sessions/{session}/regenerate"))
-    assert "Location: unknown" in llm.scene_calls[-1]
-    assert "the flooded archive" not in llm.scene_calls[-1].split("LATEST EXCHANGE")[0]
+    previous = llm.scene_calls[-1].split("PREVIOUS SCENE")[1]
+    assert "Location: unknown" in previous
+    assert "the flooded archive" not in previous
 
 
 def test_the_scene_is_editable(client, session, llm):

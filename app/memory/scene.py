@@ -29,18 +29,25 @@ from ..prompt.formats import ALL_MARKERS, get_format
 
 FIELDS = ("location", "time", "weather", "present")
 
+# The exchange comes first and the old scene last, as reference. With the old
+# scene first, verified live, the model anchored on it: "*Back home that
+# evening I'm fixing the radio*" stayed "outside the stable gate, afternoon"
+# in 6 of 6 samples, and a reply's *suggestion* ("want to build a snowman?")
+# was recorded as done. Reordered: 3 of 3 said home, evening, and a replay of
+# both test transcripts followed every move.
 SCENE_PROMPT = """You track the scene of an ongoing roleplay between {user} and {char}.
-
-SCENE BEFORE THIS EXCHANGE:
-{scene}
 
 LATEST EXCHANGE:
 {user}: {user_text}
 {char}: {reply}
 
-Where and when does this exchange END? Read both lines. If anyone moved somewhere, if time \
-passed ("later", "the next morning", "that evening"), or if someone arrived or left, the \
-scene has changed: update it. Keep a field the same only if nothing in the exchange touches it.
+PREVIOUS SCENE, for reference only:
+{scene}
+
+Where and when does the latest exchange END? Read {user}'s line first: it often moves the \
+story ("later", "the next morning", "back home that evening") and sets the place and time. \
+{char}'s reply continues from there. Count only what actually happens -- not what someone \
+suggests or plans. Use the previous scene only for anything the exchange does not mention.
 
 Reply with exactly four short lines:
 Location: the place at the end of the exchange
