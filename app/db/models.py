@@ -16,6 +16,20 @@ def _now() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc)
 
 
+class ModelProfile(Base):
+    """The settings a model was last used with -- see app/profiles.py.
+
+    A new table, so `create_all` adds it to existing databases; no entry in the
+    additive column migration is needed.
+    """
+
+    __tablename__ = "model_profiles"
+
+    model: Mapped[str] = mapped_column(String(300), primary_key=True)
+    values: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+
+
 class Character(Base):
     __tablename__ = "characters"
 

@@ -63,7 +63,9 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
             </button>
           </div>
           <p className="text-xs text-slate-600 -mt-2">
-            Changes save automatically and persist across restarts.
+            Changes save automatically and persist across restarts. The prompt
+            format, context and samplers are saved per model and come back when
+            you switch to it.
           </p>
 
           <div>

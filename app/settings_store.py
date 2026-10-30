@@ -15,6 +15,7 @@ from typing import Any
 from sqlalchemy.orm import Session as DbSession
 
 from .config import settings
+from . import profiles
 from .db.models import AppSetting
 
 PERSISTABLE: dict[str, type] = {
@@ -72,24 +73,52 @@ def load_into_settings(db: DbSession) -> int:
     return applied
 
 
-def save(db: DbSession, patch: dict[str, Any]) -> set[str]:
-    """Persist and apply a partial settings update. Returns the keys changed."""
+def _put(db: DbSession, key: str, value: Any) -> bool:
+    coerced = PERSISTABLE[key](value)
+    if getattr(settings, key) == coerced:
+        return False
+    setattr(settings, key, coerced)
+    row = db.get(AppSetting, key)
+    if row is None:
+        db.add(AppSetting(key=key, value=coerced))
+    else:
+        row.value = coerced
+    return True
+
+
+def save(
+    db: DbSession, patch: dict[str, Any], report: dict[str, Any] | None = None
+) -> set[str]:
+    """Persist and apply a partial settings update. Returns the keys changed.
+
+    A model switch also swaps in the new model's profile (profiles.py): its
+    saved settings, else a built-in preset. Keys sent in the same patch win
+    over the profile. `report`, when given, receives what was applied.
+    """
     changed: set[str] = set()
+    switching = patch.get("model") not in (None, settings.model)
+    if switching:
+        # Before anything changes: a patch carrying a new model *and* a new
+        # temperature must not save that temperature into the old profile.
+        profiles.remember(db, settings.model)
 
     for key, value in patch.items():
         if key not in PERSISTABLE or value is None:
             continue
-        coerced = PERSISTABLE[key](value)
-        if getattr(settings, key) == coerced:
-            continue
+        if _put(db, key, value):
+            changed.add(key)
 
-        setattr(settings, key, coerced)
-        row = db.get(AppSetting, key)
-        if row is None:
-            db.add(AppSetting(key=key, value=coerced))
-        else:
-            row.value = coerced
-        changed.add(key)
+    if "model" in changed:
+        values, source, label = profiles.recall(db, settings.model)
+        for key, value in values.items():
+            if key not in patch and _put(db, key, value):
+                changed.add(key)
+        if report is not None:
+            report.update(model=settings.model, source=source, label=label,
+                          applied=sorted(values))
+
+    if changed & set(profiles.PROFILE_KEYS) or "model" in changed:
+        profiles.remember(db, settings.model)
 
     if changed:
         db.commit()

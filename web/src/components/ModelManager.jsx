@@ -17,6 +17,16 @@ function mb(bytes) {
   return `${(bytes / 1e9).toFixed(1)} GB`;
 }
 
+/** Settings follow the model; say which ones came with it. */
+function profileNote(name, profile) {
+  const fmt = { alpaca: "Alpaca", llama3: "Llama 3", chatml: "ChatML" };
+  if (profile?.source === "saved")
+    return `Now using ${name}, with the settings you last used for it.`;
+  if (profile?.source === "preset")
+    return `Now using ${name}. Applied recommended settings: ${profile.label}.`;
+  return `Now using ${name}. No saved or recommended settings for it, so your current ones were kept: check the prompt format in Settings matches its model card.`;
+}
+
 export default function ModelManager({ open, onClose, onChanged }) {
   const [data, setData] = useState(null);
   const [pullName, setPullName] = useState("");
@@ -39,10 +49,10 @@ export default function ModelManager({ open, onClose, onChanged }) {
 
   async function activate(name) {
     try {
-      await api.patchSettings({ model: name });
+      const r = await api.patchSettings({ model: name });
       await load();
       onChanged?.();
-      setNote(`Now using ${name}.`);
+      setNote(profileNote(name, r.profile));
     } catch (e) {
       setNote(e.message);
     }

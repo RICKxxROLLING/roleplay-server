@@ -42,6 +42,7 @@ anything GPU-related.
 ```
 app/
   config.py             pydantic-settings; env vars are FIRST-RUN DEFAULTS ONLY
+  profiles.py           per-model format + samplers: saved profiles, built-in presets
   settings_store.py     DB-backed runtime settings; overrides env at startup
   llm/
     base.py             LLMClient interface — the only thing above this layer
@@ -85,6 +86,14 @@ Llama 3 tune, arrived from Hugging Face with a ChatML template. Measured on Sthe
 10 vs 3, and Alpaca's narrator drifted into first person. Formats never write BOS -- Ollama
 adds one even with `raw: true` ("hello" costs 2 prompt tokens, "<|begin_of_text|>hello" 3).
 Alpaca output is byte-identical to before; tests pin that.
+
+**Format and samplers are saved per model (`app/profiles.py`, table `model_profiles`).**
+Switching models used to keep the previous model's format and samplers, which is how
+Stheno ran on Alpaca without anything looking broken. A switch now saves the old model's
+profile first (before the patch applies, so a combined patch can't leak into it), then
+restores the new model's saved profile, else a name-matched preset, else keeps the current
+values and the Models panel says so. Keys sent in the same patch beat the profile. Presets
+set only what is known about a model; the Stheno one is the measured setup.
 
 **Sampler options are always sent, `min_p: 0` included.** An omitted option falls back to the
 Modelfile's value, so the UI would stop being the source of truth.

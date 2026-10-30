@@ -150,7 +150,8 @@ async def patch_settings(
     body: SettingsPatch, db: DbSession = Depends(get_db)
 ) -> dict:
     """Saved to the database, so changes survive a restart."""
-    changed = settings_store.save(db, body.model_dump(exclude_none=True))
+    report: dict = {}
+    changed = settings_store.save(db, body.model_dump(exclude_none=True), report)
 
     # The client captures backend/url/model at construction, so it must be
     # rebuilt when any of those change or a model switch would be a no-op.
@@ -159,4 +160,9 @@ async def patch_settings(
     if changed & settings_store.EMBEDDER_KEYS:
         await reset_embedder()
 
-    return {**_settings_payload(), "changed": sorted(changed)}
+    return {
+        **_settings_payload(),
+        "changed": sorted(changed),
+        # Present only on a model switch: which profile came with the model.
+        **({"profile": report} if report else {}),
+    }
