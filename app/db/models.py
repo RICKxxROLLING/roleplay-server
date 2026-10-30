@@ -95,6 +95,8 @@ class ChatSession(Base):
     )
     # Phase 2: the rolling summary of everything below the watermark.
     summary: Mapped[str] = mapped_column(Text, default="")
+    # Bullet list beside the prose summary, rewritten on each fold (summarizer.py).
+    facts: Mapped[str] = mapped_column(Text, default="")
     # Watermark. Messages with id <= this are folded into `summary` and are no
     # longer sent verbatim. 0 means nothing has been summarised yet.
     summarized_upto_id: Mapped[int] = mapped_column(default=0)

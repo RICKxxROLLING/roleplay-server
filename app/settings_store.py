@@ -40,6 +40,7 @@ PERSISTABLE: dict[str, type] = {
     "keep_recent_messages": int,
     "summary_max_tokens": int,
     "summary_temperature": float,
+    "facts_enabled": bool,
     "retrieval_enabled": bool,
     "embedding_model": str,
     "embedding_base_url": str,

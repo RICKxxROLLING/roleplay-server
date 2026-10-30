@@ -346,7 +346,8 @@ def delete_message(
 
 
 class MemoryPatch(BaseModel):
-    summary: str
+    summary: str | None = None
+    facts: str | None = None
 
 
 @router.get("/{session_id}/memory")
@@ -359,6 +360,8 @@ def get_memory(session_id: int, db: DbSession = Depends(get_db)) -> dict:
     index = rag.index_state(db, s)
     return {
         "summary": s.summary or "",
+        "facts": s.facts or "",
+        "facts_enabled": settings.facts_enabled,
         "summarized_upto_id": s.summarized_upto_id or 0,
         "summarized_count": len(s.messages) - len(pending),
         "pending_count": len(pending),
@@ -453,10 +456,13 @@ def patch_memory(
     s = db.get(ChatSession, session_id)
     if not s:
         raise HTTPException(404, "Session not found")
-    s.summary = body.summary
+    if body.summary is not None:
+        s.summary = body.summary
+    if body.facts is not None:
+        s.facts = body.facts
     db.add(s)
     db.commit()
-    return {"ok": True, "summary": s.summary}
+    return {"ok": True, "summary": s.summary, "facts": s.facts}
 
 
 @router.post("/{session_id}/summarize")

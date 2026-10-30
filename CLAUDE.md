@@ -95,6 +95,15 @@ restores the new model's saved profile, else a name-matched preset, else keeps t
 values and the Models panel says so. Keys sent in the same patch beat the profile. Presets
 set only what is known about a model; the Stheno one is the measured setup.
 
+**Facts are a second pass of the fold, in lockstep with it.** `session.facts` is a bullet
+list rewritten (not appended) on each *successful* fold, from the same turns, so a rejected
+fold retries both together. A failed fact pass keeps the old list and never undoes the fold.
+Lines are judged one by one (`parse_facts`: dialogue, stage directions, first/second person,
+the user's interior life, duplicates) -- one bad line costs that line, not the list. The
+prompt prefills "- " for the same reason the summary prefills "Memory log:". Prototyped on
+Stheno against a transcript whose porch scene the prose summary had dropped: 3 runs, 11-12
+clean lines each, all keeping the cabin, the patrols and Tommy.
+
 **Pins enter the prompt only once folded.** A pending pinned message is already in the
 history verbatim, so the "Moments to keep in mind" block holds only pins at or below the
 watermark, in story order, under `PINNED_BUDGET_TOKENS` (newest kept when over). Retrieval

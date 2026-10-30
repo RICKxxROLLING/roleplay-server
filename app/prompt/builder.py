@@ -124,6 +124,7 @@ def build_prompt(
     user_name: str = "You",
     user_persona: str = "",
     summary: str = "",
+    facts: str = "",
     lore_before: list[str] | None = None,
     lore_after: list[str] | None = None,
     retrieved: list[str] | None = None,
@@ -190,6 +191,11 @@ def build_prompt(
         summary_block = f"Story so far: {summary}"
         used += estimate_tokens(summary_block)
 
+    # --- Facts: the specifics a prose summary drops ---
+    facts = substitute(facts.strip(), char, user_name)
+    facts_block = f"Known facts:\n{facts}" if facts else ""
+    used += estimate_tokens(facts_block)
+
     # --- Pinned moments: chosen by the user, so they sit above recall ---
     pinned = [t for t in (pinned or []) if t.strip()]
     pinned_block = ""
@@ -243,7 +249,7 @@ def build_prompt(
     # Everything above the history is one preamble: for Alpaca that renders
     # exactly as before, and chat formats need it inside a single system turn.
     preamble = "\n\n".join(
-        b for b in (head, example, summary_block, pinned_block, retrieved_block) if b
+        b for b in (head, example, summary_block, facts_block, pinned_block, retrieved_block) if b
     )
     sections = [fmt.system.format(text=preamble)]
     sections.extend(kept)

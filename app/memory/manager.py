@@ -26,7 +26,7 @@ from ..config import settings
 from ..db.models import ChatSession, Message
 from ..prompt.tokens import estimate_tokens
 from . import lorebook, rag
-from .summarizer import summarize
+from .summarizer import summarize, update_facts
 
 
 #: Context spent on pinned moments. A pin is a whole message, so a handful fit;
@@ -38,6 +38,7 @@ PINNED_BUDGET_TOKENS = 600
 class MemoryContext:
     history: list[tuple[str, str]]
     summary: str = ""
+    facts: str = ""
     lore_before: list[str] = field(default_factory=list)
     lore_after: list[str] = field(default_factory=list)
     #: Entry names/keys that fired, for the inspector.
@@ -103,6 +104,7 @@ class MemoryManager:
         ctx = MemoryContext(
             history=history,
             summary=session.summary or "",
+            facts=(session.facts or "") if settings.facts_enabled else "",
             lore_before=lorebook.render(lore.before_char),
             lore_after=lorebook.render(lore.after_char),
             lore_fired=[_label(e) for e in lore.all],
@@ -181,6 +183,16 @@ class MemoryManager:
         if new_summary and new_summary != (session.summary or ""):
             session.summary = new_summary
             session.summarized_upto_id = foldable[-1].id
+            # In lockstep with the summary: only turns the summary absorbed are
+            # folded into the facts, so a rejected fold retries both together.
+            # Best-effort -- a failed fact pass keeps the old list, the fold stands.
+            if settings.facts_enabled:
+                try:
+                    session.facts = await update_facts(
+                        session.facts or "", turns, card, user_name
+                    )
+                except Exception:
+                    pass
             db.add(session)
             db.commit()
             db.refresh(session)

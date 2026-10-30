@@ -176,6 +176,19 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
 
             {s.summary_enabled && (
               <>
+                <label className="flex items-center gap-2.5 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={s.facts_enabled}
+                    onChange={(e) => update("facts_enabled", e.target.checked)}
+                    className="accent-accent w-4 h-4"
+                  />
+                  Keep a fact list
+                  <span className="text-xs text-slate-600">
+                    names, objects and promises beside the summary · one extra
+                    generation per condense
+                  </span>
+                </label>
                 <div>
                   <div className="flex justify-between text-sm mb-1">
                     <label>Fold threshold</label>

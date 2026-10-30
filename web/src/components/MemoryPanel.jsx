@@ -15,6 +15,7 @@ export default function MemoryPanel({ open, onClose, sessionId, onChanged, onOpe
   const [mem, setMem] = useState(null);
   const [health, setHealth] = useState(null);
   const [draft, setDraft] = useState("");
+  const [factsDraft, setFactsDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
 
@@ -22,6 +23,7 @@ export default function MemoryPanel({ open, onClose, sessionId, onChanged, onOpe
     const m = await api.memory(sessionId);
     setMem(m);
     setDraft(m.summary);
+    setFactsDraft(m.facts ?? "");
     // Best-effort: a dead backend shouldn't blank the panel, it just means we
     // can't say whether the embedding model is present.
     api.health().then(setHealth).catch(() => setHealth(null));
@@ -33,7 +35,7 @@ export default function MemoryPanel({ open, onClose, sessionId, onChanged, onOpe
 
   if (!open) return null;
 
-  const dirty = mem && draft !== mem.summary;
+  const dirty = mem && (draft !== mem.summary || factsDraft !== (mem.facts ?? ""));
   const pct = mem
     ? Math.min(100, Math.round((mem.pending_tokens / mem.trigger_tokens) * 100))
     : 0;
@@ -41,7 +43,7 @@ export default function MemoryPanel({ open, onClose, sessionId, onChanged, onOpe
   async function save() {
     setBusy(true);
     try {
-      await api.saveMemory(sessionId, draft);
+      await api.saveMemory(sessionId, { summary: draft, facts: factsDraft });
       await load();
       setNote("Saved.");
       onChanged?.();
@@ -152,6 +154,24 @@ export default function MemoryPanel({ open, onClose, sessionId, onChanged, onOpe
                 className="w-full bg-ink-950 border border-ink-800 rounded-lg p-3 text-sm leading-relaxed outline-none focus:border-accent/60 resize-y placeholder:text-slate-600"
               />
             </div>
+
+            {mem?.facts_enabled !== false && (
+              <div>
+                <label className="text-sm mb-1.5 block">
+                  Known facts
+                  <span className="text-xs text-slate-600 ml-2">
+                    names, objects, promises — the details a summary drops
+                  </span>
+                </label>
+                <textarea
+                  value={factsDraft}
+                  onChange={(e) => setFactsDraft(e.target.value)}
+                  rows={8}
+                  placeholder="Fills in alongside the summary. One fact per line, starting with “- ”."
+                  className="w-full bg-ink-950 border border-ink-800 rounded-lg p-3 text-sm leading-relaxed outline-none focus:border-accent/60 resize-y placeholder:text-slate-600"
+                />
+              </div>
+            )}
 
             <div className="flex items-center gap-2">
               <button

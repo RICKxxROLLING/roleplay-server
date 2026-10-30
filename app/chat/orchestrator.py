@@ -39,6 +39,7 @@ async def build_turn_prompt(
         user_name=persona.name if persona else "You",
         user_persona=persona.description if persona else "",
         summary=ctx.summary,
+        facts=ctx.facts,
         lore_before=ctx.lore_before,
         lore_after=ctx.lore_after,
         retrieved=ctx.retrieved,

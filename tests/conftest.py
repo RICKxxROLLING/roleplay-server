@@ -118,12 +118,17 @@ class MockLLM(LLMClient):
     def __init__(self):
         self.prompts: list[str] = []
         self.summary_calls: list[str] = []
+        self.fact_calls: list[str] = []
         self.reply_count = 0
         #: Per-call replies, consumed first; `reply` once empty.
         self.replies: list[str] = []
 
     async def generate_stream(self, prompt, params):
         self.prompts.append(prompt)
+        if "fact sheet" in prompt.lower():
+            self.fact_calls.append(prompt)
+            yield f"Riley found the ledger.\n- Seraphine keeps the archive key {len(self.fact_calls)}."
+            return
         if "memory log" in prompt.lower():
             self.summary_calls.append(prompt)
             n = len(self.summary_calls)

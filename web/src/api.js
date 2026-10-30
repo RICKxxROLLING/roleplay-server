@@ -90,10 +90,10 @@ export const api = {
     }),
 
   memory: (id) => j(`/sessions/${id}/memory`),
-  saveMemory: (id, summary) =>
+  saveMemory: (id, patch) =>
     j(`/sessions/${id}/memory`, {
       method: "PATCH",
-      body: JSON.stringify({ summary }),
+      body: JSON.stringify(patch),
     }),
   forceSummarize: (id) => j(`/sessions/${id}/summarize`, { method: "POST" }),
   reindex: (id) => j(`/sessions/${id}/reindex`, { method: "POST" }),

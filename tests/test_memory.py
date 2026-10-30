@@ -359,3 +359,68 @@ def test_pins_appear_in_story_order():
 
     p = build_prompt(CharacterCard(name="Sera"), [], pinned=["Riley: one", "Riley: two"])
     assert p.text.index("Riley: one") < p.text.index("Riley: two")
+
+
+# --- facts ------------------------------------------------------------------
+
+def test_a_fold_also_writes_the_fact_list(client, session, llm):
+    flood(client, session)
+    m = client.get(f"/api/sessions/{session}/memory").json()
+    assert m["facts"].startswith("- Riley found the ledger.")
+    assert "archive key" in m["facts"]
+    prompt = client.get(f"/api/sessions/{session}/prompt").json()["prompt"]
+    assert "Known facts:\n- Riley found the ledger." in prompt
+
+
+def test_facts_can_be_turned_off(client, session, llm):
+    client.patch("/api/settings", json={"facts_enabled": False})
+    flood(client, session)
+    assert llm.fact_calls == []
+    assert "Known facts" not in client.get(f"/api/sessions/{session}/prompt").json()["prompt"]
+
+
+def test_facts_are_hand_editable(client, session, llm):
+    r = client.patch(f"/api/sessions/{session}/memory", json={"facts": "- Dina owns the brass key."})
+    assert r.json()["facts"] == "- Dina owns the brass key."
+    # A summary-only save must not wipe the facts.
+    client.patch(f"/api/sessions/{session}/memory", json={"summary": "They met."})
+    assert client.get(f"/api/sessions/{session}/memory").json()["facts"] == "- Dina owns the brass key."
+
+
+def test_a_failed_fact_pass_keeps_the_fold(client, session, llm, monkeypatch):
+    from app.memory import manager
+
+    async def boom(*a, **k):
+        raise RuntimeError("backend fell over")
+
+    monkeypatch.setattr(manager, "update_facts", boom)
+    flood(client, session)
+    m = client.get(f"/api/sessions/{session}/memory").json()
+    assert m["summarized_count"] > 0
+    assert m["facts"] == ""
+
+
+def test_fact_lines_are_judged_one_by_one():
+    from app.memory.summarizer import parse_facts
+
+    raw = "\n".join([
+        "Dina plans to move into the old cabin.",           # kept (prefilled bullet)
+        '- "We should go," Dina says to Riley.',            # dialogue
+        "- *She smiles at him.*",                           # stage direction
+        "- I think the patrol leaves at dawn.",             # first person
+        "- Riley knew she was lying about Ellie.",          # the user's interior life
+        "- Tommy asked for help on the south wall.",        # kept
+        "- Tommy asked for help on the south wall",         # duplicate
+        "- ok",                                             # too short
+    ])
+    assert parse_facts(raw, "Riley") == [
+        "Dina plans to move into the old cabin.",
+        "Tommy asked for help on the south wall.",
+    ]
+
+
+def test_fact_list_is_capped():
+    from app.memory.summarizer import MAX_FACTS, parse_facts
+
+    raw = "\n".join(f"- Fact number {i} about the archive." for i in range(MAX_FACTS + 10))
+    assert len(parse_facts(raw, "Riley")) == MAX_FACTS

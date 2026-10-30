@@ -74,6 +74,9 @@ class Settings(BaseSettings):
     summary_max_tokens: int = 400
     # Low temperature: summarising is a recall task, not a creative one.
     summary_temperature: float = 0.3
+    # Keep a fact list (names, objects, promises, open threads) beside the
+    # summary. One extra generation per fold; prose folds drop exactly these.
+    facts_enabled: bool = True
 
     # --- Phase 4: vector retrieval ---
     # Off by default. It needs a second model pulled (`ollama pull nomic-embed-text`),

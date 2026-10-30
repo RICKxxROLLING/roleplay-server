@@ -253,3 +253,115 @@ async def summarize(
     if narrates_user(cleaned, user_name):
         return existing
     return cleaned
+
+
+# --- Facts ------------------------------------------------------------------
+#
+# A list beside the prose summary. Prose folds keep the arc and drop the
+# specifics -- seen live, a porch conversation about a cabin, patrols and Tommy
+# never made it into the summary, and asked about it later the character
+# invented one. Prototyped against Stheno 8B on that transcript: three runs gave
+# 11-12 clean lines each, no dialogue, and all kept the cabin, the patrols and
+# Tommy.
+
+FACTS_PROMPT = """You keep the fact sheet for an ongoing roleplay between {user} and {char}.
+
+Update the fact sheet so it absorbs the new events. Each fact is one short line starting with "- ". Record:
+- names of people and places
+- objects, and who has them
+- promises, plans and decisions
+- what each person has told the other about themselves
+- threads left unresolved
+
+Keep existing facts unless the new events change them. At most {limit} facts.
+
+EXISTING FACTS:
+{facts}
+
+NEW EVENTS:
+{transcript}
+
+END OF NEW EVENTS.
+
+Now write the updated fact sheet: one fact per line, each under 20 words, third person, \
+no dialogue, no quotation marks."""
+
+#: A list longer than this stops being scannable for the model, and each line
+#: costs context on every turn.
+MAX_FACTS = 25
+
+_BULLET = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s*")
+
+
+def build_facts_prompt(
+    existing: str,
+    turns: list[tuple[str, str]],
+    char_name: str,
+    user_name: str,
+    prompt_format: str = "alpaca",
+) -> str:
+    fmt = get_format(prompt_format)
+    body = FACTS_PROMPT.format(
+        user=user_name,
+        char=char_name,
+        limit=MAX_FACTS,
+        facts=existing.strip() or "(none yet)",
+        transcript=render_transcript(turns, char_name, user_name),
+    )
+    # Opening the answer with a bullet keeps an RP tune in list mode, the same
+    # lesson as the summary prefill.
+    return fmt.user.format(text=body) + fmt.joiner + fmt.response_open + "- "
+
+
+def parse_facts(raw: str, user_name: str) -> list[str]:
+    """Bullet lines that pass the same voice checks as a summary, one by one.
+
+    Judged per line rather than all-or-nothing: one line of dialogue in a list
+    of twelve good facts should cost that line, not the other eleven.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for line in ("- " + raw).splitlines():
+        if any(m in line for m in ALL_MARKERS):
+            break
+        fact = _BULLET.sub("", line).strip()
+        words = len(fact.split())
+        if not fact or words < 3 or words > 35:
+            continue
+        if fact.count('"') >= 2 or "“" in fact or _STAGE_DIRECTION.search(fact):
+            continue
+        if _PERSONAL.search(fact) or narrates_user(fact, user_name):
+            continue
+        key = fact.lower().rstrip(".")
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(fact)
+    return out[:MAX_FACTS]
+
+
+async def update_facts(
+    existing: str,
+    turns: list[tuple[str, str]],
+    card: CharacterCard,
+    user_name: str,
+) -> str:
+    """Fold `turns` into the fact list. Returns `existing` if nothing usable came back."""
+    if not turns:
+        return existing
+    prompt = build_facts_prompt(
+        existing, turns, card.name or "Character", user_name, settings.prompt_format
+    )
+    params = GenerationParams(
+        temperature=settings.summary_temperature,
+        top_p=0.9,
+        top_k=40,
+        repeat_penalty=1.0,
+        context_tokens=settings.context_tokens,
+        max_new_tokens=500,
+        stop=list(get_format(settings.prompt_format).stops),
+    )
+    facts = parse_facts(await get_client().generate(prompt, params), user_name)
+    if not facts:
+        return existing
+    return "\n".join(f"- {f}" for f in facts)
