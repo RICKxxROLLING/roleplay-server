@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { Modal, Field, Input, Textarea, Button } from "./ui";
 import LorebookEditor from "./LorebookEditor";
+import CardDrafter from "./CardDrafter";
 
 const FIELDS = [
   ["description", "Description", 5, "Who they are, appearance, history."],
@@ -107,6 +108,14 @@ export default function CharacterEditor({ open, onClose, characterId, onChanged 
         <p className="text-sm text-slate-600">Loading…</p>
       ) : (
         <div>
+          {/* A thin card is the main cause of flat replies; this drafts the
+              missing depth from what is already written. */}
+          <CardDrafter
+            characterId={characterId}
+            current={form}
+            onApply={(fields) => setForm({ ...form, ...fields })}
+          />
+
           <Field label="Name">
             <Input value={form.name || ""} onChange={(e) => set("name", e.target.value)} />
           </Field>

@@ -51,7 +51,7 @@ app/
     openai_compat.py    /v1/completions for llama.cpp / vLLM / LM Studio
     embeddings.py       Embedder interface + both backends (separate from LLMClient)
     factory.py          explicit singletons + reset_client()/reset_embedder()
-  cards/                V2 PNG import, normalized schema
+  cards/                V2 PNG import, normalized schema; creator.py drafts cards with the model
   prompt/
     builder.py          slot ordering, token budgeting, guard + style directives
     formats.py          Alpaca / Llama 3 / ChatML wrappers (selected by prompt_format)
@@ -128,6 +128,20 @@ carried on as Tommy. Live on the test box, 9 turns of Dina + Tommy: every speake
 replies, no stored line narrating the other character. Known limits: one line of the user's
 speech survived as an unattributed quote in its own paragraph (the guard's existing gap),
 and the scene's "present" can drop a member the exchange doesn't mention.
+
+**The character creator drafts labelled sections, never saves, and is judged per section
+(`cards/creator.py`).** An RP tune asked for JSON writes prose in braces; a form prefilled
+with "Name:" it fills like the scene tracker. Each section is checked alone (a one-line
+name, a description of 200+ chars, a greeting of 80+), so one bad section costs that
+section. The draft returns to the editor with tick-boxes; expanding a card pre-ticks only
+fields that are empty or that the draft lengthens, so a hand-written greeting isn't swapped
+out unnoticed. Prototyped on Stheno (8-12 s a card): from a one-line brief, a world, and
+Laura's two-sentence card. Fixes from those runs, each pinned by a test: with a world's cast
+listed, the greeting addressed Tommy as the user -- the prompt now says the user is none of
+them; expanding skipped the example dialogue -- now asked for explicitly; the examples
+sometimes follow the greeting unlabelled from `<START>`, and a greeting can lose its opening
+asterisk -- both repaired in parsing. Names that clash with an existing card are flagged,
+not refused.
 
 **Scene state is updated after every reply and read back in the tail.** A short extra
 generation (`memory/scene.py`, ~0.6 s on the 2080) fills four fields, prefilled with

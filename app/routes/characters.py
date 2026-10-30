@@ -1,17 +1,18 @@
 from __future__ import annotations
 
+import json
 import os
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DbSession
 
-from ..cards import CardImportError, load_card
+from ..cards import CardImportError, creator, load_card
 from ..cards.models import CharacterCard, LoreEntry
 from ..config import settings
-from ..db import Character, SessionMember, get_db
+from ..db import Character, SessionMember, World, get_db
 
 router = APIRouter(prefix="/characters", tags=["characters"])
 
@@ -93,6 +94,50 @@ def create_character(body: CharacterIn, db: DbSession = Depends(get_db)) -> dict
     db.commit()
     db.refresh(char)
     return {"id": char.id, "name": char.name, "card": char.card}
+
+
+class DraftIn(BaseModel):
+    #: The idea, in the user's words. May be empty when expanding a card.
+    brief: str = ""
+    #: Set the new character in this world: its setting, lore names and cast.
+    world_id: int | None = None
+    #: Flesh out this card instead of starting from nothing.
+    character_id: int | None = None
+
+
+@router.post("/draft")
+def draft_character(body: DraftIn, db: DbSession = Depends(get_db)) -> StreamingResponse:
+    """Stream a drafted card (cards/creator.py). Nothing is saved: the editor
+    shows the draft and the user keeps what they want."""
+    world = db.get(World, body.world_id) if body.world_id else None
+    if body.world_id and not world:
+        raise HTTPException(404, "World not found")
+    existing = db.get(Character, body.character_id) if body.character_id else None
+    if body.character_id and not existing:
+        raise HTTPException(404, "Character not found")
+    if not body.brief.strip() and existing is None:
+        raise HTTPException(400, "Describe the character first")
+    card = CharacterCard.model_validate(existing.card or {}) if existing else None
+    if world is None and existing is not None:
+        world = existing.world
+    taken = {c.name.lower() for c in db.query(Character).all()
+             if existing is None or c.id != existing.id}
+
+    async def gen():
+        try:
+            async for event in creator.stream_draft(body.brief, world, card):
+                if event["type"] == "draft":
+                    name = event["fields"].get("name", "")
+                    # A second "Dina" would make every group chat and lore
+                    # mention ambiguous; say so rather than refuse.
+                    event["name_taken"] = name.lower() in taken
+                yield f"data: {json.dumps(event)}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'message': f'{type(exc).__name__}: {exc}'})}\n\n"
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @router.get("")

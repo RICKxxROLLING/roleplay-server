@@ -105,6 +105,17 @@ def enable_retrieval(client, **overrides):
     return r.json()
 
 
+DRAFT_REPLY = """ Bram Halloway
+Description: {{char}} keeps a brass ledger behind the bar of the Salt Lantern, a tavern wedged between two warehouses on the docks of Greyhaven. He is broad and grey-bearded, with ink on his fingers and a knife scar along one thumb, and he remembers every debt ever written in that ledger.
+Personality: Gruff, patient, dry. Talks in short sentences and never raises his voice.
+Scenario: {{user}} walks into the Salt Lantern on a stormy night owing {{char}} money.
+First message: *Rain hammers the shutters of the Salt Lantern as {{char}} turns a page of the ledger, lamp oil smoking beside him.* "You're late, {{user}}." *He taps an entry with one ink-stained finger.*
+Example dialogue: <START>
+{{user}}: I'll pay you Friday.
+{{char}}: "You said that last Friday." *He doesn't look up.*
+<END>"""
+
+
 class MockLLM(LLMClient):
     """Deterministic stand-in for a local model.
 
@@ -123,11 +134,18 @@ class MockLLM(LLMClient):
         #: Per-call replies, consumed first; `reply` once empty.
         self.replies: list[str] = []
         self.scene_calls: list[str] = []
+        self.draft_calls: list[str] = []
+        # A card draft as the model writes it, after the prefilled "Name:".
+        self.draft_reply = DRAFT_REPLY
         # What a scene update returns, after the prefilled "Location:".
         self.scene_reply = " the flooded archive\nTime: midnight\nWeather: indoors\nPresent: Seraphine, You"
 
     async def generate_stream(self, prompt, params):
         self.prompts.append(prompt)
+        if "you write character cards" in prompt.lower():
+            self.draft_calls.append(prompt)
+            yield self.draft_reply
+            return
         if "track the scene" in prompt.lower():
             self.scene_calls.append(prompt)
             yield self.scene_reply
@@ -186,13 +204,14 @@ def _reset_state():
 @pytest.fixture
 def llm(monkeypatch):
     """Install the mock across every module that resolves a client."""
+    import app.cards.creator as creator
     import app.chat.orchestrator as orch
     import app.memory.scene as scene
     import app.memory.summarizer as summarizer
     import app.routes.system as system
 
     mock = MockLLM()
-    for module in (orch, scene, summarizer, system):
+    for module in (creator, orch, scene, summarizer, system):
         monkeypatch.setattr(module, "get_client", lambda: mock)
     return mock
 
