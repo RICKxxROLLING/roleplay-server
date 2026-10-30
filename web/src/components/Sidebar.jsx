@@ -24,7 +24,32 @@ export default function Sidebar({
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      await api.importCard(file);
+      if (file.name.toLowerCase().endsWith(".json")) {
+        // A bundle (worlds + characters, app/routes/bundle.py) or a single
+        // V1/V2 card exported as JSON.
+        const data = JSON.parse(await file.text());
+        const bundle = data.format === "roleplay-bundle"
+          ? data
+          : { format: "roleplay-bundle", version: 1, characters: [{ card: data }] };
+        const names = (bundle.characters || []).map((c) => c.card?.data?.name || c.card?.name).filter(Boolean);
+        const replace = names.length > 0 && confirm(
+          `Import ${names.length} character${names.length === 1 ? "" : "s"}` +
+          `${bundle.worlds?.length ? ` and ${bundle.worlds.length} world${bundle.worlds.length === 1 ? "" : "s"}` : ""}.\n\n` +
+          "OK: also update characters that already exist with the same name (their chats are kept).\n" +
+          "Cancel: only add the new ones."
+        );
+        const r = await api.importBundle(bundle, replace);
+        const parts = [
+          r.characters_created.length && `added ${r.characters_created.join(", ")}`,
+          r.characters_updated.length && `updated ${r.characters_updated.join(", ")}`,
+          r.characters_skipped.length && `skipped ${r.characters_skipped.join(", ")} (already there)`,
+          (r.worlds_created.length || r.worlds_updated.length) &&
+            `world: ${[...r.worlds_created, ...r.worlds_updated].join(", ")}`,
+        ].filter(Boolean);
+        alert(`Imported -- ${parts.join("; ") || "nothing new"}.`);
+      } else {
+        await api.importCard(file);
+      }
       onImported?.();
     } catch (err) {
       alert(`Import failed: ${err.message}`);
@@ -108,7 +133,7 @@ export default function Sidebar({
             Models
           </button>
         </div>
-        <input ref={fileRef} type="file" accept=".png" hidden onChange={handleFile} />
+        <input ref={fileRef} type="file" accept=".png,.json" hidden onChange={handleFile} />
       </div>
 
       <div className="flex-1 overflow-y-auto scroll-thin">

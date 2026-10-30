@@ -50,6 +50,8 @@ export const api = {
     j(`/characters/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteCharacter: (id) => j(`/characters/${id}`, { method: "DELETE" }),
   avatarUrl: (id) => `${API}/characters/${id}/avatar`,
+  importBundle: (bundle, replace) =>
+    j("/import/bundle", { method: "POST", body: JSON.stringify({ ...bundle, replace }) }),
   importCard: async (file) => {
     const fd = new FormData();
     fd.append("file", file);
