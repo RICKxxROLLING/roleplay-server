@@ -357,3 +357,29 @@ def test_stop_keeps_the_partial_reply(client, session, llm):
         assert len(last.alternatives) == 2  # kept as a swipe, nothing lost
     finally:
         db.close()
+
+
+def test_a_gutted_reply_is_redone(client, session, llm):
+    """Most of the first draft narrates the user; the redo is kept instead."""
+    llm.replies = ["*You nod. You smile. You sit down. You look at her. She waits.*", "*She waits.*"]
+    events = sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": "hi"}))
+    assert {"type": "redo", "reason": "guard"} in events
+    last = client.get(f"/api/sessions/{session}").json()["messages"][-1]["content"]
+    assert last == "*She waits. reply 2.*"
+
+
+def test_a_lightly_trimmed_reply_is_not_redone(client, session, llm):
+    llm.reply = "*You nod slowly. She smiles and pours the tea for both of them.*"
+    events = sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": "hi"}))
+    assert not any(e["type"] == "redo" for e in events)
+    assert llm.reply_count == 1
+
+
+def test_a_reply_that_was_all_user_narration_says_so(client, session, llm, monkeypatch):
+    from app.chat import orchestrator
+
+    monkeypatch.setattr(orchestrator, "strip_user_actions", lambda text, *a: ("", 3))
+    events = sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": "hi"}))
+    assert llm.reply_count == 2  # one redo, then it gives up
+    assert any(e["type"] == "error" and "Regenerate" in e["message"] for e in events)
+    assert client.get(f"/api/sessions/{session}").json()["messages"][-1]["role"] == "user"

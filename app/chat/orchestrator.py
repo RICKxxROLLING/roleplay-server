@@ -74,6 +74,18 @@ def _without_label(text: str, card: CharacterCard) -> str:
     return reply[len(prefix) :].strip() if reply.startswith(prefix) else reply
 
 
+def _gutted(raw: str, kept: str) -> bool:
+    """Whether the guard left too little of a reply to stand on its own.
+
+    Measured over 288 Stheno replies: the guard touched 60, removing a median
+    of 11%, and only one lost more than a third -- still 1,200 characters. So
+    the share removed is the wrong trigger; what hurts is a reply left a stub
+    or empty, which used to save nothing and leave the user's turn unanswered.
+    Relative, not a character floor: a terse in-character reply is legitimate.
+    """
+    return not kept or len(kept) < len(raw) // 2
+
+
 def _guarded(reply: str, session: ChatSession, card: CharacterCard) -> tuple[str, int]:
     if not settings.guard_user_actions:
         return reply, 0
@@ -141,7 +153,7 @@ async def stream_reply(
 
     collected: list[str] = []
     try:
-        # Two attempts at most: a slipped narrator gets one redo, and the second
+        # Two attempts at most, shared by both redo reasons, and the second
         # result is kept whatever it is -- a loop here could spin on a card that
         # just reads as first person.
         for attempt in range(2):
@@ -150,14 +162,20 @@ async def stream_reply(
                 collected.append(piece)
                 yield {"type": "token", "text": piece}
 
-            reply = _without_label("".join(collected), card)
-            if (
-                attempt == 0
-                and settings.redo_first_person
-                and slipped_into_first_person(reply, card.first_mes)
+            raw = _without_label("".join(collected), card)
+            # Before persisting: once one reply narrating the user is in
+            # history, the model copies it -- see chat/guard.py.
+            reply, removed = _guarded(raw, session, card)
+            redo = None
+            if attempt == 0 and settings.redo_first_person and slipped_into_first_person(
+                raw, card.first_mes
             ):
+                redo = "first_person"
+            elif attempt == 0 and removed and _gutted(raw, reply):
+                redo = "guard"
+            if redo:
                 # Tells the UI to drop the draft it has streamed so far.
-                yield {"type": "redo", "reason": "first_person"}
+                yield {"type": "redo", "reason": redo}
                 continue
             break
     except (asyncio.CancelledError, GeneratorExit):
@@ -169,12 +187,15 @@ async def stream_reply(
         _persist(db, session, partial, swipe_of)
         raise
 
-    # Before persisting: once one reply narrating the user is in history, the
-    # model copies it -- see chat/guard.py. The UI reloads the stored message
-    # when the turn ends, so the streamed draft is replaced by this one.
-    reply, removed = _guarded(reply, session, card)
+    # The UI reloads the stored message when the turn ends, so the streamed
+    # draft is replaced by the guarded one.
     if removed:
         yield {"type": "guard", "removed": removed}
+    if not reply:
+        # Everything the model wrote was the user's side of the scene. Say so
+        # rather than leave the user's message silently unanswered.
+        yield {"type": "error", "message": "The reply only narrated your own actions, so "
+               "nothing was kept. Try Regenerate."}
 
     if not _persist(db, session, reply, swipe_of):
         return

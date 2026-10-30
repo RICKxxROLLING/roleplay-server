@@ -157,6 +157,13 @@ runs to 0 of 16, firing once in 32 turns. The card's greeting is the reference -
 greets in first person is never redone -- and the second attempt is kept whatever it is, so
 the loop cannot spin. The UI drops its streamed draft on the `redo` event.
 
+**A reply the guard guts is regenerated once; one it trims is not.** Over 288 Stheno replies
+the guard touched 60, removing a median of 11%, and only one lost more than a third (still
+1,200 characters) -- so "share removed" is the wrong trigger. `_gutted` fires when the reply
+is empty or under half its raw length. It shares the two-attempt budget with
+`redo_first_person`. An empty result used to save nothing silently; it now raises an
+`error` event telling the user to regenerate.
+
 **Never name the behaviour you are forbidding.** A tail reminder that said "never write
 {user} nodding, smiling, laughing or answering" took a chat from 3 user-narrating turns to
 13 of 16, and lengthened replies -- naming the actions primed them. The reminder now says
