@@ -92,9 +92,15 @@ def select(
     card: CharacterCard,
     history: list[tuple[str, str]],
     budget_tokens: int | None = None,
+    world_entries: list[LoreEntry] | None = None,
 ) -> LoreResult:
-    """Pick the entries that should be injected for this turn."""
-    entries = card.character_book or []
+    """Pick the entries that should be injected for this turn.
+
+    A shared world's entries join the card's own in one pool, under the card's
+    scan depth and budget, so a character in a world costs no more context
+    than one whose card carries the same entries.
+    """
+    entries = [*(card.character_book or []), *(world_entries or [])]
     if not entries:
         return LoreResult([], [])
 

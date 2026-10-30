@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session as DbSession
 
-from ..cards.models import CharacterCard
+from ..cards.models import CharacterCard, LoreEntry
 from ..config import settings
 from ..db.models import ChatSession, Message
 from ..prompt.tokens import estimate_tokens
@@ -38,6 +38,8 @@ PINNED_BUDGET_TOKENS = 600
 class MemoryContext:
     history: list[tuple[str, str]]
     summary: str = ""
+    #: The shared world's description, the setting the card sits in.
+    world: str = ""
     facts: str = ""
     lore_before: list[str] = field(default_factory=list)
     lore_after: list[str] = field(default_factory=list)
@@ -99,11 +101,14 @@ class MemoryManager:
         history = [(m.role, m.content) for m in msgs]
 
         # Lorebook scans recent turns only, so it runs on pending history.
-        lore = lorebook.select(card, history)
+        world = session.character.world if session.character else None
+        world_entries = [LoreEntry.model_validate(e) for e in (world.entries or [])] if world else []
+        lore = lorebook.select(card, history, world_entries=world_entries)
 
         ctx = MemoryContext(
             history=history,
             summary=session.summary or "",
+            world=(world.description or "").strip() if world else "",
             facts=(session.facts or "") if settings.facts_enabled else "",
             lore_before=lorebook.render(lore.before_char),
             lore_after=lorebook.render(lore.after_char),

@@ -55,6 +55,16 @@ export const api = {
     return res.json();
   },
 
+  worlds: () => j("/worlds"),
+  createWorld: (body) => j("/worlds", { method: "POST", body: JSON.stringify(body) }),
+  updateWorld: (id, patch) =>
+    j(`/worlds/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  deleteWorld: (id) => j(`/worlds/${id}`, { method: "DELETE" }),
+  setWorld: (charId, worldId) =>
+    j(`/worlds/membership/${charId}`, {
+      method: "PUT",
+      body: JSON.stringify({ world_id: worldId }),
+    }),
   personas: () => j("/personas"),
   createPersona: (body) =>
     j("/personas", { method: "POST", body: JSON.stringify(body) }),

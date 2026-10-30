@@ -15,7 +15,7 @@ from .db import SessionLocal, init_db
 from .llm import get_client
 from . import auth
 from .routes import auth as auth_routes
-from .routes import characters, personas, sessions, system
+from .routes import characters, personas, sessions, system, worlds
 
 
 @asynccontextmanager
@@ -85,6 +85,7 @@ app.include_router(auth_routes.router, prefix=API)
 app.include_router(system.router, prefix=API)
 app.include_router(characters.router, prefix=API)
 app.include_router(personas.router, prefix=API)
+app.include_router(worlds.router, prefix=API)
 app.include_router(sessions.router, prefix=API)
 
 

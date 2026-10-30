@@ -24,7 +24,7 @@ const textToKeys = (s) =>
     .filter(Boolean);
 
 /** Editor for a character's keyword-triggered world info. */
-export default function LorebookEditor({ form, set }) {
+export default function LorebookEditor({ form, set, showSettings = true }) {
   const [openIdx, setOpenIdx] = useState(null);
   const entries = form.character_book || [];
 
@@ -55,6 +55,9 @@ export default function LorebookEditor({ form, set }) {
         Costs no context until triggered.
       </p>
 
+      {/* Scan depth, budget and recursion belong to the card; a world's entries
+          are matched under the settings of whichever character is in the chat. */}
+      {showSettings && (
       <div className="grid grid-cols-3 gap-2 mb-4">
         <Field label="Scan depth" hint="">
           <Input
@@ -92,6 +95,7 @@ export default function LorebookEditor({ form, set }) {
           </label>
         </div>
       </div>
+      )}
 
       <div className="space-y-2">
         {entries.map((e, i) => {

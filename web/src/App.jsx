@@ -5,6 +5,7 @@ import ChatView from "./components/ChatView";
 import SettingsPanel from "./components/SettingsPanel";
 import MemoryPanel from "./components/MemoryPanel";
 import PersonaManager from "./components/PersonaManager";
+import WorldManager from "./components/WorldManager";
 import NewChatDialog from "./components/NewChatDialog";
 import CharacterEditor from "./components/CharacterEditor";
 import NewCharacterDialog from "./components/NewCharacterDialog";
@@ -87,6 +88,7 @@ export default function App() {
         onImported={refresh}
         onDeleteSession={removeSession}
         onManagePersonas={() => setPanel("personas")}
+        onManageWorlds={() => setPanel("worlds")}
         onManageModels={() => setPanel("models")}
         open={navOpen}
         onClose={() => setNavOpen(false)}
@@ -118,6 +120,12 @@ export default function App() {
 
       <PersonaManager
         open={panel === "personas"}
+        onClose={() => setPanel(null)}
+        onChanged={refresh}
+      />
+
+      <WorldManager
+        open={panel === "worlds"}
         onClose={() => setPanel(null)}
         onChanged={refresh}
       />

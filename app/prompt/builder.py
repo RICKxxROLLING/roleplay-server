@@ -133,6 +133,7 @@ def build_prompt(
     user_name: str = "You",
     user_persona: str = "",
     summary: str = "",
+    world: str = "",
     facts: str = "",
     lore_before: list[str] | None = None,
     lore_after: list[str] | None = None,
@@ -171,6 +172,10 @@ def build_prompt(
 
     for text in lore_before:
         head_parts.append(substitute(text, char, user_name))
+
+    # The world first: it is the setting the character description sits in.
+    if world.strip():
+        head_parts.append(f"Setting: {substitute(world.strip(), char, user_name)}")
 
     char_block = _character_block(card, char, user_name)
     if char_block:

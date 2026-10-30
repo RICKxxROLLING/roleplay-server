@@ -18,6 +18,8 @@ export default function CharacterEditor({ open, onClose, characterId, onChanged 
   const [form, setForm] = useState({});
   const [note, setNote] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [worlds, setWorlds] = useState([]);
+  const [worldId, setWorldId] = useState(null);
 
   useEffect(() => {
     if (!open || !characterId) return;
@@ -27,9 +29,25 @@ export default function CharacterEditor({ open, onClose, characterId, onChanged 
       .then((c) => {
         setCard(c.card);
         setForm(c.card);
+        setWorldId(c.world_id ?? null);
       })
       .catch((e) => setNote(e.message));
+    api.worlds().then(setWorlds).catch(() => {});
   }, [open, characterId]);
+
+  // Saved at once rather than with the card: membership is not card text, and
+  // tying it to the Save button would lose it on a cancelled edit.
+  async function chooseWorld(value) {
+    const id = value === "" ? null : Number(value);
+    try {
+      await api.setWorld(characterId, id);
+      setWorldId(id);
+      setNote(id ? "Added to the world." : "Removed from the world.");
+      onChanged?.();
+    } catch (e) {
+      setNote(e.message);
+    }
+  }
 
   if (!open) return null;
 
@@ -91,6 +109,19 @@ export default function CharacterEditor({ open, onClose, characterId, onChanged 
         <div>
           <Field label="Name">
             <Input value={form.name || ""} onChange={(e) => set("name", e.target.value)} />
+          </Field>
+
+          <Field label="World" hint="shared setting and lore; manage them under Worlds">
+            <select
+              value={worldId ?? ""}
+              onChange={(e) => chooseWorld(e.target.value)}
+              className="w-full bg-ink-950 border border-ink-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent/60"
+            >
+              <option value="">No world</option>
+              {worlds.map((w) => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))}
+            </select>
           </Field>
 
           {FIELDS.map(([key, label, rows, hint]) => (

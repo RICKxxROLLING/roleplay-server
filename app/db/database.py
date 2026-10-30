@@ -34,6 +34,7 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     ("sessions", "facts", "TEXT NOT NULL DEFAULT ''"),
     ("sessions", "scene", "JSON"),
     ("sessions", "scene_prev", "JSON"),
+    ("characters", "world_id", "INTEGER REFERENCES worlds(id)"),
 ]
 
 

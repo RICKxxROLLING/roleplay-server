@@ -65,7 +65,7 @@ app/
   chat/orchestrator.py  per-turn flow, typed stream events
   chat/guard.py         strips narration of the user's actions before a reply is stored
   db/                   SQLAlchemy models + additive migrations
-  routes/               characters, personas, sessions, system
+  routes/               characters, personas, sessions, system, worlds
 web/src/components/     React UI
 tests/                  pytest suite
 deploy/unraid/          compose, Docker templates, install guide
@@ -96,6 +96,14 @@ profile first (before the patch applies, so a combined patch can't leak into it)
 restores the new model's saved profile, else a name-matched preset, else keeps the current
 values and the Models panel says so. Keys sent in the same patch beat the profile. Presets
 set only what is known about a model; the Stheno one is the measured setup.
+
+**A shared world joins the card's lorebook; it doesn't replace it.** `World` holds a
+description and entries in the card schema; `Character.world_id` links a character to one.
+`lorebook.select` pools the world's entries with the card's under the *card's* scan depth and
+budget, so membership costs no more context than the same entries in the card. The world
+description goes in the head as "Setting:", above the character block it frames. Deleting a
+world keeps its characters (they leave it). Membership is set by its own endpoint, not the
+card PATCH, since it is not card text.
 
 **Scene state is updated after every reply and read back in the tail.** A short extra
 generation (`memory/scene.py`, ~0.6 s on the 2080) fills four fields, prefilled with

@@ -105,6 +105,7 @@ def list_characters(db: DbSession = Depends(get_db)) -> list[dict]:
             "has_avatar": bool(c.avatar_path),
             "tags": (c.card or {}).get("tags", []),
             "description": ((c.card or {}).get("description") or "")[:280],
+            "world_id": c.world_id,
         }
         for c in rows
     ]
@@ -115,7 +116,7 @@ def get_character(char_id: int, db: DbSession = Depends(get_db)) -> dict:
     c = db.get(Character, char_id)
     if not c:
         raise HTTPException(404, "Character not found")
-    return {"id": c.id, "name": c.name, "card": c.card}
+    return {"id": c.id, "name": c.name, "card": c.card, "world_id": c.world_id}
 
 
 class CardPatch(BaseModel):

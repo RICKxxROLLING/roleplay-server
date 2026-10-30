@@ -39,10 +39,33 @@ class Character(Base):
     card: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     avatar_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+    # The shared world this character lives in, if any. Its lore is matched
+    # alongside the card's own; the card keeps its book either way.
+    world_id: Mapped[int | None] = mapped_column(ForeignKey("worlds.id"), nullable=True)
 
     sessions: Mapped[list["ChatSession"]] = relationship(
         back_populates="character", cascade="all, delete-orphan"
     )
+    world: Mapped["World | None"] = relationship(back_populates="characters")
+
+
+class World(Base):
+    """A setting shared by several characters: a description plus lore entries.
+
+    Without it, facts about a place (Jackson, the Unitarian Empire) had to be
+    copied into every card set there, and drifted apart the moment one copy was
+    edited. Entries use the card lorebook's schema and matching (lorebook.py).
+    """
+
+    __tablename__ = "worlds"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    entries: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+
+    characters: Mapped[list[Character]] = relationship(back_populates="world")
 
 
 class AppSetting(Base):

@@ -6,6 +6,7 @@ from .models import (
     Message,
     MessageEmbedding,
     Persona,
+    World,
 )
 
 __all__ = [
@@ -19,4 +20,5 @@ __all__ = [
     "Message",
     "MessageEmbedding",
     "Persona",
+    "World",
 ]

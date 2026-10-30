@@ -12,6 +12,7 @@ export default function Sidebar({
   onImported,
   onDeleteSession,
   onManagePersonas,
+  onManageWorlds,
   onManageModels,
   health,
   open,
@@ -93,6 +94,12 @@ export default function Sidebar({
             className="flex-1 text-xs rounded-lg border border-ink-700 py-1.5 hover:bg-ink-850 transition"
           >
             Personas
+          </button>
+          <button
+            onClick={onManageWorlds}
+            className="flex-1 text-xs rounded-lg border border-ink-700 py-1.5 hover:bg-ink-850 transition"
+          >
+            Worlds
           </button>
           <button
             onClick={onManageModels}
