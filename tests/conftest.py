@@ -137,6 +137,7 @@ class MockLLM(LLMClient):
         self.draft_calls: list[str] = []
         # A card draft as the model writes it, after the prefilled "Name:".
         self.draft_reply = DRAFT_REPLY
+        self.draft_replies: list[str] = []
         # What a scene update returns, after the prefilled "Location:".
         self.scene_reply = " the flooded archive\nTime: midnight\nWeather: indoors\nPresent: Seraphine, You"
 
@@ -144,7 +145,7 @@ class MockLLM(LLMClient):
         self.prompts.append(prompt)
         if "you write character cards" in prompt.lower():
             self.draft_calls.append(prompt)
-            yield self.draft_reply
+            yield self.draft_replies.pop(0) if self.draft_replies else self.draft_reply
             return
         if "track the scene" in prompt.lower():
             self.scene_calls.append(prompt)

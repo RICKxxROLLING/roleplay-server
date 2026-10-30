@@ -172,4 +172,17 @@ async def stream_draft(
         pieces.append(piece)
         yield {"type": "token", "text": piece}
     draft = parse_draft(prefix + "".join(pieces))
+    if "mes_example" not in draft.fields and "first_mes" in draft.fields:
+        # Expanding, the model tends to stop after the greeting -- 2 of 3 live
+        # runs, even told to write every section. Continuing the same answer
+        # from its label is a short call, not a second draft.
+        so_far = "".join(pieces).rstrip()
+        tail = "\nExample dialogue: <START>\n"
+        yield {"type": "token", "text": tail}
+        params.max_new_tokens = 500
+        more: list[str] = []
+        async for piece in get_client().generate_stream(prompt + so_far + tail, params):
+            more.append(piece)
+            yield {"type": "token", "text": piece}
+        draft = parse_draft(prefix + so_far + tail + "".join(more))
     yield {"type": "draft", "fields": draft.fields, "missing": draft.missing}

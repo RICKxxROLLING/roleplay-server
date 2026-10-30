@@ -89,3 +89,19 @@ def test_a_dropped_opening_asterisk_is_restored():
 def test_labels_in_bold_or_any_case_are_read():
     d = parse_draft(" Ash\n**Personality:** Wry.\nfirst message: " + "z" * 90)
     assert d.fields["personality"] == "Wry." and d.fields["first_mes"].startswith("z")
+
+
+def test_missing_example_dialogue_is_continued_not_redrafted(client, llm):
+    no_examples = llm.draft_reply.split("Example dialogue:")[0]
+    llm.draft_replies = [no_examples, '{{user}}: Hi.\n{{char}}: "Hm." *He keeps writing.*']
+    d, _ = draft(client, brief="A tavern keeper")
+    assert len(llm.draft_calls) == 2
+    assert llm.draft_calls[1].endswith("Example dialogue: <START>\n")
+    assert llm.draft_calls[1].startswith(llm.draft_calls[0])  # the same answer, continued
+    assert d["fields"]["mes_example"].startswith("<START>\n{{user}}: Hi.")
+    assert d["missing"] == []
+
+
+def test_a_complete_draft_takes_one_call(client, llm):
+    draft(client, brief="A tavern keeper")
+    assert len(llm.draft_calls) == 1

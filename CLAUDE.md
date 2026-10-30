@@ -140,7 +140,9 @@ Laura's two-sentence card. Fixes from those runs, each pinned by a test: with a 
 listed, the greeting addressed Tommy as the user -- the prompt now says the user is none of
 them; expanding skipped the example dialogue -- now asked for explicitly; the examples
 sometimes follow the greeting unlabelled from `<START>`, and a greeting can lose its opening
-asterisk -- both repaired in parsing. Names that clash with an existing card are flagged,
+asterisk -- both repaired in parsing. Expanding still stopped after the greeting in 2 of 3
+live runs, so a missing example dialogue is continued from its label in the same answer
+(2 of 2 then complete). Names that clash with an existing card are flagged,
 not refused.
 
 **Scene state is updated after every reply and read back in the tail.** A short extra
