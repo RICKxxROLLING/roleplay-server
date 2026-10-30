@@ -111,7 +111,10 @@ a tighter "facts a reader could check, skip feelings" prompt (key retention fell
 "never drop a promise, offer or object" (5/0/4), temperature 0 (0/5), and extracting only
 new facts with a code-side append (scenery over substance, more invention, 0-2/5). What
 works is restoring any old line the rewrite doesn't cover (content-word overlap); key facts
-then never decreased across folds. Over the cap, mood-only lines go first, then the oldest.
+then never decreased across folds. Over the cap the least *specific* line goes
+(`specificity`: other names, commitment words, days, digits up; mood/symbolism words down).
+Evicting simply the oldest non-mood line was tried live and lost the earliest key facts --
+Tommy's patrol fell out at turn 20 -- because the filler was symbolism, not mood words.
 Known limit: a fact the model never writes down can't be restored, and filler still fills
 the list -- an 8B's sense of what matters is the bottleneck, not the prompt.
 

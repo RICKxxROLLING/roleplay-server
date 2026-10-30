@@ -358,28 +358,61 @@ async def update_facts(
         top_k=40,
         repeat_penalty=1.0,
         context_tokens=settings.context_tokens,
-        max_new_tokens=500,
+        # 25 lines of up to 20 words. At 500 a full list was cut mid-line live.
+        max_new_tokens=800,
         stop=list(get_format(settings.prompt_format).stops),
     )
     facts = parse_facts(await get_client().generate(prompt, params), user_name)
     if not facts:
         return existing
     old = [_BULLET.sub("", line).strip() for line in existing.splitlines() if line.strip()]
-    return "\n".join(f"- {f}" for f in merge_facts(old, facts))
+    leads = {(card.name or "").split(" ")[0], user_name.split(" ")[0]}
+    return "\n".join(f"- {f}" for f in merge_facts(old, facts, leads=leads))
 
 
 _STOPWORDS = frozenset(
     "a an the and or of to in on at for with by from is are was were be been her his "
     "their its he she they him them it this that as into about after before".split()
 )
-#: Lines that only describe how a moment felt. Evicted first when over the cap --
-#: not dropped outright, since "Dina feels guilty about Ellie" can matter.
+#: How a moment felt, rather than what happened. Scores a line down for eviction --
+#: not a filter, since "Dina feels guilty about Ellie" can matter.
 _MOOD = re.compile(
     r"\b(?:feel|feels|felt|feeling|sense of|mood|atmosphere|grateful|gratitude|expresses|"
     r"remains|uncertain|vulnerable|introspective|comfort|warmth|lost in thought|"
-    r"affection|nostalgi\w*|reflects|reminisce\w*)\b",
+    r"affection|nostalgi\w*|reflects|reminisce\w*|symbol\w*|bond|poignant|journey|"
+    r"evolves|solace|sentimental|characterized|deepening|growth)\b",
     re.I,
 )
+#: Words that mark a commitment or a possession -- what a reader must not lose.
+_COMMITMENT = re.compile(
+    r"\b(?:offer\w*|promis\w*|agree\w*|plan\w*|decid\w*|gave|gives|owns?|has|keys?|"
+    r"fix\w*|needs?|wants?|asks?|asked|will|owes?|told)\b",
+    re.I,
+)
+_WHEN = re.compile(
+    r"\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|tonight|tomorrow|"
+    r"week|dawn|night)s?\b",
+    re.I,
+)
+_GENERIC_CAPS = {"She", "He", "They", "The", "Her", "His", "Their", "It", "A", "An"}
+
+
+def specificity(fact: str, leads: set[str] = frozenset()) -> int:
+    """How much a line pins down, for choosing what to evict.
+
+    Ranked on a real 25-line list from the live box, every line of filler
+    ("a symbol of their shared dreams", "an emotional journey") scored at or
+    below 0 and every key fact (the Hendricks cabin offer, Tommy's Thursday
+    patrol, the promises line) 4 or more.
+    """
+    names = [w for w in re.findall(r"\b[A-Z][a-z]+", fact) if w not in leads | _GENERIC_CAPS]
+    return (
+        len(names)
+        + 2 * len(_COMMITMENT.findall(fact))
+        + len(_WHEN.findall(fact))
+        + len(re.findall(r"\d", fact))
+        - 2 * len(_MOOD.findall(fact))
+    )
 
 
 def _content_words(text: str) -> set[str]:
@@ -393,7 +426,12 @@ def _covered(fact: str, new: list[str]) -> bool:
     return any(len(words & _content_words(n)) >= need for n in new)
 
 
-def merge_facts(old: list[str], new: list[str], cap: int = MAX_FACTS) -> list[str]:
+def merge_facts(
+    old: list[str],
+    new: list[str],
+    cap: int = MAX_FACTS,
+    leads: set[str] = frozenset(),
+) -> list[str]:
     """The rewrite, plus any old fact it silently dropped.
 
     The model rewrites the whole list, and a rewrite can lose everything in one
@@ -404,9 +442,13 @@ def merge_facts(old: list[str], new: list[str], cap: int = MAX_FACTS) -> list[st
     stop it. Restoring uncovered old facts did: key facts never decreased
     across folds. What it cannot fix is a fact the model never wrote down.
 
-    Over the cap, mood-only lines go first, then the oldest.
+    Over the cap the least specific line goes, oldest first among equals. It
+    used to be simply the oldest non-mood line, and live that evicted the
+    earliest key facts -- Tommy's patrol fell out at turn 20 -- because the
+    filler around them was phrased as symbolism the mood list didn't catch.
     """
     out = [f for f in old if not _covered(f, new)] + list(new)
     while len(out) > cap:
-        out.pop(next((i for i, f in enumerate(out) if _MOOD.search(f)), 0))
+        worst = min(range(len(out)), key=lambda i: (specificity(out[i], leads), i))
+        out.pop(worst)
     return out

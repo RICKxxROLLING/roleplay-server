@@ -462,3 +462,26 @@ def test_a_fold_keeps_facts_the_model_left_out(client, session, llm):
     facts = client.get(f"/api/sessions/{session}/memory").json()["facts"]
     assert "brass key to the radio shack" in facts
     assert "archive key" in facts
+
+
+def test_over_the_cap_the_vaguest_line_goes_not_the_oldest():
+    """Lines from the live box: the earliest facts were the key ones."""
+    from app.memory.summarizer import merge_facts
+
+    old = ["Tommy needs Dina as a second rifle on the south wall on Thursday nights.",
+           "Riley offers Dina the old Hendricks cabin by the creek and will fix its stove."]
+    new = ["The radio, once a symbol of their shared dreams, now represents their enduring bond.",
+           "Dina's emotional journey continues as she adjusts to life in Jackson.",
+           "Dina and Riley encounter a Clicker while on patrol."]
+    out = merge_facts(old, new, cap=3, leads={"Dina", "Riley"})
+    assert old[0] in out and old[1] in out
+    assert "Clicker" in " ".join(out)
+    assert not any("symbol" in f or "journey" in f for f in out)
+
+
+def test_specificity_ranks_commitments_above_filler():
+    from app.memory.summarizer import specificity
+
+    leads = {"Dina", "Riley"}
+    assert specificity("Riley offers Dina the old Hendricks cabin.", leads) > 0
+    assert specificity("Their bond is a poignant symbol of hope.", leads) < 0
