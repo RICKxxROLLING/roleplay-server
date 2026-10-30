@@ -179,3 +179,33 @@ def test_deleting_a_chat_drops_its_waiting_notifications(client, session):
         push.notify(db, "Dina", "You up?", session_id=session)
     client.delete(f"/api/sessions/{session}")
     assert client.post("/api/push/pending").json()["notifications"] == []
+
+
+def test_a_test_with_no_devices_leaves_nothing_waiting(client):
+    assert client.post("/api/push/test").json() == {"sent": 0}
+    assert client.post("/api/push/pending").json()["notifications"] == []
+
+
+def test_stale_notifications_are_dropped_not_shown(client):
+    import datetime as dt
+
+    from app.db import SessionLocal
+
+    with SessionLocal() as db:
+        old = push.notify(db, "Dina", "From two days ago")
+        old.created_at = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=48)
+        db.commit()
+        push.notify(db, "Dina", "Just now")
+    got = client.post("/api/push/pending").json()["notifications"]
+    assert [n["body"] for n in got] == ["Just now"]
+    assert client.post("/api/push/pending").json()["notifications"] == []
+
+
+def test_a_wake_shows_at_most_five_newest(client):
+    from app.db import SessionLocal
+
+    with SessionLocal() as db:
+        for i in range(8):
+            push.notify(db, "Dina", f"message {i}")
+    got = client.post("/api/push/pending").json()["notifications"]
+    assert [n["body"] for n in got] == [f"message {i}" for i in range(3, 8)]

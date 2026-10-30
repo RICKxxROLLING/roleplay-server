@@ -321,7 +321,9 @@ request forwarder. A 404/410 from the relay forgets the device. Browsers require
 notification per push, so if the fetch fails the worker shows a generic one with no content.
 The worker never caches `/api`: a lost phone holds no chat. Service workers need HTTPS, so
 on plain LAN HTTP the app is a web page as before. `push.notify()` + `push.ping_all()` is the
-API Phase 3 (characters writing first) builds on; today only Settings' test uses it.
+API Phase 3 (characters writing first) builds on; today only Settings' test uses it. A
+wake shows at most the five newest, and anything over a day old is dropped unseen -- a
+notification no device fetched would otherwise surface days late.
 
 **Cloudflare Access is configured in Cloudflare, not verified here.** Checking the Access
 JWT would mean fetching Cloudflare's signing keys at runtime -- a cloud call this project

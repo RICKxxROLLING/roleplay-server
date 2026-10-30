@@ -178,13 +178,28 @@ def notify(db: DbSession, title: str, body: str, session_id: int | None = None) 
     return n
 
 
+#: Older than this, a notification is dropped rather than shown. One a device
+#: never fetched (Access session expired, phone off) would otherwise pop up days
+#: late on the next wake.
+PENDING_MAX_AGE_HOURS = 24
+#: At most this many per wake; the newest win.
+PENDING_MAX = 5
+
+
 def take_pending(db: DbSession) -> list[Notification]:
     """What a woken device shows; each notification is handed out once."""
+    import datetime as dt
+
     rows = db.query(Notification).filter(Notification.delivered.is_(False)).order_by(Notification.id).all()
+    cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=PENDING_MAX_AGE_HOURS)
+    fresh = []
     for n in rows:
         n.delivered = True
+        made = n.created_at if n.created_at.tzinfo else n.created_at.replace(tzinfo=dt.timezone.utc)
+        if made >= cutoff:
+            fresh.append(n)
     db.commit()
-    return rows
+    return fresh[-PENDING_MAX:]
 
 
 async def ping(db: DbSession, sub: PushSubscription) -> bool:

@@ -77,6 +77,9 @@ def devices(db: DbSession = Depends(get_db)) -> list[dict]:
 
 @router.post("/test")
 async def test(db: DbSession = Depends(get_db)) -> dict:
+    # Nothing to wake means nothing should wait to be shown later.
+    if not db.query(PushSubscription).count():
+        return {"sent": 0}
     push.notify(db, "Roleplay", "Notifications are working on this device.")
     return {"sent": await push.ping_all(db)}
 
