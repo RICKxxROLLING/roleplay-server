@@ -17,7 +17,15 @@ Deliberately narrow, because a false positive deletes the character's prose:
   "she looks at Riley" and "as you walk in" all survive.
 - A quote goes only when it is attached to a removed sentence -- directly
   before it (`"Hi," Riley says`) or directly after it with nothing attributing
-  it to someone else. That is the user's own line.
+  it to someone else. That is the user's own line. "Directly after" reaches
+  into the next paragraph only when the removed sentence ended its own: a
+  paragraph that is just a quote, after one that ended on the user acting, is
+  the user speaking. Seen live in a group chat ("Riley smiled.\n\n'I'd like
+  that...'"), with the quote surviving its stripped attribution.
+- A sentence led by the user's voice, face or expression ("Riley's expression
+  softened as he...") goes only together with an unattributed quote right after
+  it -- that pair is the user speaking. Without the quote it stays: "Riley's
+  eyes were kind" can be the character's view of him. Seen live on Stheno.
 
 Known gap: a line attributed by pronoun alone ("His tone is dry. 'Hey...'")
 cannot be told apart from the character's, so it stays.
@@ -33,6 +41,21 @@ _QUOTE_BEFORE = re.compile(r'("[^"\n]*"|“[^”\n]*”)[ \t,]*\*?[ \t]*$')
 _NOT_A_VERB = {"and", "or", "but", "too", "as", "who", "whose", "which", "that"}
 # Same line only: the next paragraph opening on "She..." attributes nothing.
 _ATTRIBUTION = r"[ \t]*,?[ \t]*\*?[ \t]*(?:she|he|they|it|{char}|her|his)\b"
+
+
+#: What a possessive-led sentence must be about to count as the user speaking.
+_SPEAKING_PARTS = (
+    "voice|tone|expression|face|features|eyes|gaze|lips|mouth|jaw|brow|smile|grin|words|reply"
+)
+
+
+def _possessive_pattern(names: list[str]) -> re.Pattern:
+    alts = "|".join(re.escape(n) for n in names if n and n != "You")
+    return re.compile(
+        rf"(?:(?<=^)|(?<=[.!?…]\s)|(?<=[.!?…]))\s*(?P<s>(?:{alts})(?:'s|’s)\s+"
+        rf"(?:\w+\s+)?(?:{_SPEAKING_PARTS})\b[^.!?…\n]*[.!?…]?)",
+        re.MULTILINE,
+    )
 
 
 def _subject_pattern(names: list[str]) -> re.Pattern:
@@ -87,6 +110,20 @@ def _gaps(start: int, end: int, cuts: list[tuple[int, int]]) -> list[tuple[int, 
     return out
 
 
+def _users_quote(text, b, sentence, char_first, attribution) -> tuple[int, int] | None:
+    """The cut for a quote right after a user sentence ending at `b`, if it is
+    the user's: unattributed, and the sentence does not hand over to the
+    character ("*Riley nods, and Dina exhales.* 'Thanks.'" -- that line is hers)."""
+    if char_first and re.search(rf"\b{re.escape(char_first)}\b", sentence):
+        return None
+    # Into the next paragraph only when the sentence ended its own.
+    lead = b + re.match(r"[* \t]*(?:\n[ \t]*){0,2}[* \t]*", text[b:]).end()
+    q = _QUOTE.match(text, lead)
+    if not q or attribution.match(text, q.end()):
+        return None
+    return q.start(), q.end() + _trailing_ws(text, q.end())
+
+
 def strip_user_actions(text: str, user_name: str, char_name: str = "") -> tuple[str, int]:
     """Return (cleaned text, user-subject sentences removed)."""
     name = (user_name or "").strip()
@@ -94,6 +131,7 @@ def strip_user_actions(text: str, user_name: str, char_name: str = "") -> tuple[
         return text, 0
     names = sorted({name, name.split()[0], "You"}, key=len, reverse=True)
     subject = _subject_pattern(names)
+    possessive = _possessive_pattern(names)
     attribution = re.compile(_ATTRIBUTION.format(char=re.escape(char_name or "\0")), re.I)
     char_first = (char_name or "").strip().split(" ")[0]
 
@@ -113,11 +151,17 @@ def strip_user_actions(text: str, user_name: str, char_name: str = "") -> tuple[
                 cuts.append((q.start(1), q.end(1) + _trailing_ws(text, q.end(1))))
             # "*Riley nods, and Dina exhales.* 'Thanks.'" -- once the sentence
             # brings the character in, the line after it is hers.
-            hands_back = bool(char_first) and re.search(rf"\b{re.escape(char_first)}\b", m.group("s"))
-            lead = b + re.match(r"[* \t]*\n?[* \t]*", text[b:]).end()
-            q = _QUOTE.match(text, lead)
-            if q and not hands_back and not attribution.match(text, q.end()):
-                cuts.append((q.start(), q.end() + _trailing_ws(text, q.end())))
+            q = _users_quote(text, b, m.group("s"), char_first, attribution)
+            if q:
+                cuts.append(q)
+        for m in possessive.finditer(text[start:end]):
+            a, b = start + m.start("s"), start + m.end("s")
+            q = _users_quote(text, b, m.group("s"), char_first, attribution)
+            if not q:
+                continue
+            span_cuts.append((a, b + _trailing_ws(text, b)))
+            cuts.append(q)
+            removed += 1
         if not span_cuts:
             continue
         # A span emptied entirely goes with its asterisks.

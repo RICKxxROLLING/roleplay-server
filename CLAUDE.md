@@ -209,6 +209,12 @@ narrated the user in 4 and 9 of 16 turns: the spread is feedback, not noise -- o
 the loop. The guard is deliberately narrow (narration only, user as sentence subject only,
 quotes only when attached to a removed sentence); its tests are both directions. The UI
 reloads the stored message at the end of a turn, so the streamed draft is replaced.
+Two narrow additions, both from the live group chat: a quote opening the next paragraph
+after a removed sentence that ended its own, and a sentence led by the user's voice, face or
+expression ("Riley's expression softened...") together with the unattributed quote after
+it -- never the possessive sentence alone. Replayed over all 146 stored replies on the test
+box: no change (no false positives). Over 16 fresh raw Stheno replies: one extra cut, and it
+was the user's line.
 
 **A reply that slips into first-person narration is regenerated once (`redo_first_person`).**
 Same feedback loop as narrating the user: ~1 Stheno reply in 5 slips, and every reply after a

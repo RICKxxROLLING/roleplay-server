@@ -130,3 +130,63 @@ def test_slip_detected_against_a_third_person_greeting():
 def test_first_person_card_is_left_alone():
     greeting = "I look up as you walk in. My coffee has gone cold; I don't care."
     assert not slipped_into_first_person("I grin and wave you over to my table. I knew it.", greeting)
+
+
+# --- the user's lines the guard used to miss (seen live, Stheno 8B) ------------
+
+def test_quote_in_the_next_paragraph_after_the_users_action_removed():
+    text = ('*Dina brushes snow from his hair.* "Kiddo wants his dinner."\n\n'
+            "Riley smiles and nods.\n\n"
+            '"I\'d like that. You\'re always welcome here, okay?"\n\n'
+            "His simple offer means more than Dina can express.")
+    out = strip(text)
+    assert "always welcome" not in out and "Riley smiles" not in out
+    assert "Kiddo wants his dinner" in out and "simple offer" in out
+
+
+def test_possessive_lead_in_with_a_quote_is_the_user_speaking():
+    text = ("She held up her hands in mock defense.\n\n"
+            "Riley's expression softened as he took in her tired features. "
+            '"What are you doing here, anyway?"\n\n'
+            "Dina looked away.")
+    out = strip(text)
+    assert "What are you doing here" not in out and "expression softened" not in out
+    assert out.startswith("She held up her hands") and out.endswith("Dina looked away.")
+
+
+def test_possessive_lead_in_starred():
+    out = strip('*Riley\'s voice drops low.* "You came back because...?" *The fire crackles.*')
+    assert "came back" not in out and "voice drops" not in out
+    assert "The fire crackles" in out
+
+
+# --- kept -----------------------------------------------------------------------
+
+def test_possessive_without_a_quote_is_kept():
+    text = "Riley's eyes were kind, and that was the worst part. Dina looked away."
+    assert strip(text) == text
+
+
+def test_possessive_of_a_thing_is_kept():
+    text = 'Riley\'s cabin stood at the edge of town. "Home sweet home," Dina muttered.'
+    assert strip(text) == text
+
+
+def test_possessive_followed_by_her_own_attributed_line_is_kept():
+    text = 'Riley\'s face fell. "I didn\'t mean it like that," she said quickly.'
+    assert strip(text) == text
+
+
+def test_possessive_that_hands_back_to_the_character_is_kept():
+    text = "Riley's gaze met Dina's across the table. \"Don't look at me like that.\""
+    assert strip(text) == text
+
+
+def test_next_paragraph_quote_attributed_to_her_is_kept():
+    text = 'Riley nods.\n\n"Then it\'s settled," she says.'
+    assert strip(text) == '"Then it\'s settled," she says.'
+
+
+def test_next_paragraph_quote_after_her_own_sentence_is_kept():
+    text = 'Riley nods. Dina sighs and turns away.\n\n"We leave at dawn."'
+    assert strip(text) == 'Dina sighs and turns away.\n\n"We leave at dawn."'
