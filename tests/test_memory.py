@@ -424,3 +424,41 @@ def test_fact_list_is_capped():
 
     raw = "\n".join(f"- Fact number {i} about the archive." for i in range(MAX_FACTS + 10))
     assert len(parse_facts(raw, "Riley")) == MAX_FACTS
+
+
+def test_a_fact_the_rewrite_dropped_comes_back():
+    from app.memory.summarizer import merge_facts
+
+    old = ["Riley offers Dina the old Hendricks cabin by the creek.",
+           "Tommy wants Dina on the south wall on Thursday nights."]
+    new = ["Dina and Riley patrol the snowy woods outside Jackson."]
+    out = merge_facts(old, new)
+    assert old[0] in out and old[1] in out
+    assert out[-1] == new[0]
+
+
+def test_an_updated_fact_is_not_duplicated():
+    from app.memory.summarizer import merge_facts
+
+    old = ["Riley offers Dina the old Hendricks cabin by the creek."]
+    new = ["Dina accepts the old Hendricks cabin by the creek from Riley."]
+    assert merge_facts(old, new) == new
+
+
+def test_over_the_cap_moods_go_before_facts():
+    from app.memory.summarizer import merge_facts
+
+    old = ["Riley offers Dina the old Hendricks cabin by the creek."]
+    new = ["Dina feels a quiet sense of comfort in Jackson.", "Tommy runs the south wall patrol."]
+    out = merge_facts(old, new, cap=2)
+    assert out == ["Riley offers Dina the old Hendricks cabin by the creek.",
+                   "Tommy runs the south wall patrol."]
+
+
+def test_a_fold_keeps_facts_the_model_left_out(client, session, llm):
+    client.patch(f"/api/sessions/{session}/memory",
+                 json={"facts": "- Dina owns the brass key to the radio shack."})
+    flood(client, session)
+    facts = client.get(f"/api/sessions/{session}/memory").json()["facts"]
+    assert "brass key to the radio shack" in facts
+    assert "archive key" in facts

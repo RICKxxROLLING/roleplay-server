@@ -104,6 +104,17 @@ prompt prefills "- " for the same reason the summary prefills "Memory log:". Pro
 Stheno against a transcript whose porch scene the prose summary had dropped: 3 runs, 11-12
 clean lines each, all keeping the cabin, the patrols and Tommy.
 
+**A fact rewrite cannot drop an old fact (`merge_facts`).** The single pass is fine; the
+sequence is not. Replaying one live chat as four folds with three seeds, the five key facts
+ended 4/0/4 under the plain rewrite -- one pass took a list from 4 to 0. Tried and rejected:
+a tighter "facts a reader could check, skip feelings" prompt (key retention fell to 2/5),
+"never drop a promise, offer or object" (5/0/4), temperature 0 (0/5), and extracting only
+new facts with a code-side append (scenery over substance, more invention, 0-2/5). What
+works is restoring any old line the rewrite doesn't cover (content-word overlap); key facts
+then never decreased across folds. Over the cap, mood-only lines go first, then the oldest.
+Known limit: a fact the model never writes down can't be restored, and filler still fills
+the list -- an 8B's sense of what matters is the bottleneck, not the prompt.
+
 **Pins enter the prompt only once folded.** A pending pinned message is already in the
 history verbatim, so the "Moments to keep in mind" block holds only pins at or below the
 watermark, in story order, under `PINNED_BUDGET_TOKENS` (newest kept when over). Retrieval

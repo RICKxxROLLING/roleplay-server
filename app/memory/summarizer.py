@@ -364,4 +364,49 @@ async def update_facts(
     facts = parse_facts(await get_client().generate(prompt, params), user_name)
     if not facts:
         return existing
-    return "\n".join(f"- {f}" for f in facts)
+    old = [_BULLET.sub("", line).strip() for line in existing.splitlines() if line.strip()]
+    return "\n".join(f"- {f}" for f in merge_facts(old, facts))
+
+
+_STOPWORDS = frozenset(
+    "a an the and or of to in on at for with by from is are was were be been her his "
+    "their its he she they him them it this that as into about after before".split()
+)
+#: Lines that only describe how a moment felt. Evicted first when over the cap --
+#: not dropped outright, since "Dina feels guilty about Ellie" can matter.
+_MOOD = re.compile(
+    r"\b(?:feel|feels|felt|feeling|sense of|mood|atmosphere|grateful|gratitude|expresses|"
+    r"remains|uncertain|vulnerable|introspective|comfort|warmth|lost in thought|"
+    r"affection|nostalgi\w*|reflects|reminisce\w*)\b",
+    re.I,
+)
+
+
+def _content_words(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z]+", text.lower()) if len(w) > 2 and w not in _STOPWORDS}
+
+
+def _covered(fact: str, new: list[str]) -> bool:
+    """Whether a new line still says most of what `fact` said."""
+    words = _content_words(fact)
+    need = max(2, len(words) // 2)
+    return any(len(words & _content_words(n)) >= need for n in new)
+
+
+def merge_facts(old: list[str], new: list[str], cap: int = MAX_FACTS) -> list[str]:
+    """The rewrite, plus any old fact it silently dropped.
+
+    The model rewrites the whole list, and a rewrite can lose everything in one
+    pass. Replaying the same four folds on Stheno, with three seeds: the key
+    facts (the Hendricks cabin, the stove, Tommy's Thursday patrol) ended 4, 0
+    and 4 of 5 under the plain rewrite -- one pass took a list from 4 to 0.
+    Prompt rules ("never drop a promise or an object") and temperature 0 did not
+    stop it. Restoring uncovered old facts did: key facts never decreased
+    across folds. What it cannot fix is a fact the model never wrote down.
+
+    Over the cap, mood-only lines go first, then the oldest.
+    """
+    out = [f for f in old if not _covered(f, new)] + list(new)
+    while len(out) > cap:
+        out.pop(next((i for i, f in enumerate(out) if _MOOD.search(f)), 0))
+    return out
