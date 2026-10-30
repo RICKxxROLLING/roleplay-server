@@ -344,7 +344,9 @@ opinion only a little" fixed both: 10/10 parsed, Dina's view stayed grounded, Ga
 barely moved between two quiet exchanges. Feeding the view back did not leak ("privately" 0
 times) and did not change Dina's format: her unquoted-speech rate was 2/6 without a view and
 2/6 with it -- an earlier 3/4 vs 0/4 was noise. A swipe replaces its reply's entry; Forget
-starts a character's opinion afresh.
+starts a character's opinion afresh. Live on the test box (Tommy, four kind turns): views tracked each
+event, ~2.3 s per reply; four kind turns in a row reached "indispensable comrade" -- fast, and
+what earned trust should rate-limit.
 
 **Texting mode replaces the prose directives instead of adding to them (`chat/texting.py`).**
 Per chat, "story" or "texting". In texting the system line and the tail ask for the words
