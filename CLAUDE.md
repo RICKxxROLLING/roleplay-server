@@ -108,7 +108,10 @@ exchange *ends*, naming moves and time skips, followed every change. Then, verif
 model anchored on the old scene when it came first: "back home that evening" stayed "outside
 the stable gate, afternoon" in 6/6 samples, and a reply's *suggestion* was recorded as done.
 The exchange now comes first and the old scene last, "for reference only": 3/3 correct, and
-both test transcripts replayed cleanly. Example weather phrases
+both test transcripts replayed cleanly. Known limit: a place a reply dwells on at length
+("I've always loved that little cabin by the woods...") can be taken for the location even
+while they stand at the stables -- a "talked-about places don't count" rule and sending the
+untrimmed reply both failed to fix it (3/3 still said the cabin). The scene bar is the fix. Example weather phrases
 in the prompt were parroted and drifted, so weather is mostly indoors/outdoors -- editable.
 
 **Facts are a second pass of the fold, in lockstep with it.** `session.facts` is a bullet
