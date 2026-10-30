@@ -78,6 +78,11 @@ export const api = {
     }),
   deleteMessage: (sid, mid) =>
     j(`/sessions/${sid}/messages/${mid}`, { method: "DELETE" }),
+  setPinned: (sid, mid, pinned) =>
+    j(`/sessions/${sid}/messages/${mid}`, {
+      method: "PATCH",
+      body: JSON.stringify({ pinned }),
+    }),
   swipe: (sid, mid, index) =>
     j(`/sessions/${sid}/messages/${mid}/swipe`, {
       method: "POST",

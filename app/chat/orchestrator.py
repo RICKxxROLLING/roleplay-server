@@ -42,6 +42,7 @@ async def build_turn_prompt(
         lore_before=ctx.lore_before,
         lore_after=ctx.lore_after,
         retrieved=ctx.retrieved,
+        pinned=ctx.pinned,
         context_tokens=(overrides or {}).get("context_tokens", settings.context_tokens),
         max_new_tokens=(overrides or {}).get("max_new_tokens", settings.max_new_tokens),
         reserve_tokens=settings.reserve_tokens,

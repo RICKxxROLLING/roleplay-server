@@ -29,6 +29,11 @@ from . import lorebook, rag
 from .summarizer import summarize
 
 
+#: Context spent on pinned moments. A pin is a whole message, so a handful fit;
+#: past this the oldest pins drop out and the inspector reports them.
+PINNED_BUDGET_TOKENS = 600
+
+
 @dataclass
 class MemoryContext:
     history: list[tuple[str, str]]
@@ -44,6 +49,9 @@ class MemoryContext:
     retrieved_hits: list[rag.Hit] = field(default_factory=list)
     retrieval_dropped: int = 0
     retrieval_error: str | None = None
+    #: Pinned messages already condensed into the summary, speaker-labelled.
+    pinned: list[str] = field(default_factory=list)
+    pinned_dropped: int = 0
 
     @property
     def lore(self) -> list[str]:
@@ -101,14 +109,34 @@ class MemoryManager:
             lore_dropped=lore.dropped,
         )
 
+        # Pins only matter once folded: a pending pin is already in the history
+        # verbatim. Seen live: asked about a porch scene the summary had
+        # skipped, the character invented one -- a pin is the user's way to
+        # keep a moment the fold might drop.
+        user_name = session.persona.name if session.persona else "You"
+        char_name = card.name or "Character"
+        mark = session.summarized_upto_id or 0
+        pins = [m for m in session.messages
+                if m.pinned and m.id <= mark and m.id not in (exclude_ids or ())]
+        kept, used = [], 0
+        for m in reversed(pins):  # newest first under the budget...
+            line = f"{user_name if m.role == 'user' else char_name}: {m.content.strip()}"
+            cost = estimate_tokens(line)
+            if used + cost > PINNED_BUDGET_TOKENS:
+                ctx.pinned_dropped += 1
+                continue
+            kept.append(line)
+            used += cost
+        ctx.pinned = kept[::-1]  # ...then shown in the order they happened
+
         if db is not None and settings.retrieval_enabled:
             # Anything still pending is about to be sent verbatim, so retrieving
-            # it would only buy a duplicate.
+            # it would only buy a duplicate; a pin is already in the prompt too.
             result = await rag.retrieve(
-                db, session, history, exclude_ids={m.id for m in msgs}
+                db, session, history,
+                exclude_ids={m.id for m in msgs} | {m.id for m in pins},
             )
-            user_name = session.persona.name if session.persona else "You"
-            ctx.retrieved = rag.render(result.hits, card.name or "Character", user_name)
+            ctx.retrieved = rag.render(result.hits, char_name, user_name)
             ctx.retrieved_hits = result.hits
             ctx.retrieval_dropped = result.dropped
             ctx.retrieval_error = result.error

@@ -48,6 +48,7 @@ def _serialise(m: Message) -> dict:
         "role": m.role,
         "content": m.content,
         "created_at": m.created_at.isoformat() if m.created_at else None,
+        "pinned": bool(m.pinned),
         "swipes": len(m.alternatives) if m.alternatives else 1,
         "swipe_index": m.alt_index if m.alternatives else 0,
     }
@@ -228,6 +229,8 @@ async def inspect_prompt(session_id: int, db: DbSession = Depends(get_db)) -> di
         "lore_entries": built.lore_entries,
         "lore_fired": ctx.lore_fired,
         "lore_dropped": ctx.lore_dropped,
+        "pinned_entries": len(ctx.pinned),
+        "pinned_dropped": ctx.pinned_dropped,
         "retrieved_entries": built.retrieved_entries,
         "retrieved": [
             {
@@ -278,7 +281,8 @@ def update_session(
 
 
 class MessagePatch(BaseModel):
-    content: str
+    content: str | None = None
+    pinned: bool | None = None
 
 
 @router.patch("/{session_id}/messages/{message_id}")
@@ -291,11 +295,17 @@ def edit_message(
     m = db.get(Message, message_id)
     if not m or m.session_id != session_id:
         raise HTTPException(404, "Message not found")
+    s = db.get(ChatSession, session_id)
+    if body.pinned is not None:
+        m.pinned = body.pinned
+    if body.content is None:
+        db.commit()
+        return {"id": m.id, "content": m.content, "pinned": m.pinned,
+                "below_watermark": False, "note": None}
     content = body.content.strip()
     if not content:
         raise HTTPException(400, "Message cannot be empty")
 
-    s = db.get(ChatSession, session_id)
     m.content = content
     if m.alternatives:
         # The edit belongs to the swipe on screen; without this, flipping away

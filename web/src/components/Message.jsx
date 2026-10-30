@@ -62,6 +62,15 @@ export default function Message({
     }
   }
 
+  async function togglePin() {
+    try {
+      await api.setPinned(sessionId, msg.id, !msg.pinned);
+      onChanged?.();
+    } catch (e) {
+      setNote(e.message);
+    }
+  }
+
   async function remove() {
     if (!confirm("Delete this message?")) return;
     try {
@@ -95,6 +104,14 @@ export default function Message({
       <div className={`max-w-[85%] sm:max-w-[72%] min-w-0 ${isUser ? "text-right" : ""}`}>
         <div className="text-xs text-slate-500 mb-1 flex items-center gap-2">
           <span className={isUser ? "ml-auto" : ""}>{name}</span>
+          {msg.pinned && (
+            <span
+              className="text-[10px] px-1.5 rounded-full bg-accent/15 border border-accent/30 text-accent/90"
+              title="Kept word for word in the prompt, even after the summary condenses it"
+            >
+              pinned
+            </span>
+          )}
           {/* Always visible on touch: there is no hover, so these were unreachable. */}
           {editable && !editing && (
             <span className="opacity-100 md:opacity-0 md:group-hover:opacity-100 flex gap-1.5 transition">
@@ -106,6 +123,13 @@ export default function Message({
                 className="hover:text-slate-300"
               >
                 edit
+              </button>
+              <button
+                onClick={togglePin}
+                className="hover:text-slate-300"
+                title="Keep this message word for word in the character's memory"
+              >
+                {msg.pinned ? "unpin" : "pin"}
               </button>
               <button onClick={remove} className="hover:text-rose-400">
                 delete

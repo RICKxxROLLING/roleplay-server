@@ -127,6 +127,7 @@ def build_prompt(
     lore_before: list[str] | None = None,
     lore_after: list[str] | None = None,
     retrieved: list[str] | None = None,
+    pinned: list[str] | None = None,
     context_tokens: int = 4096,
     max_new_tokens: int = 400,
     reserve_tokens: int = 256,
@@ -189,6 +190,14 @@ def build_prompt(
         summary_block = f"Story so far: {summary}"
         used += estimate_tokens(summary_block)
 
+    # --- Pinned moments: chosen by the user, so they sit above recall ---
+    pinned = [t for t in (pinned or []) if t.strip()]
+    pinned_block = ""
+    if pinned:
+        lines = "\n".join(substitute(t, char, user_name) for t in pinned)
+        pinned_block = f"Moments to keep in mind, in the order they happened:\n{lines}"
+        used += estimate_tokens(pinned_block)
+
     # --- Phase 4 hook: retrieved past turns ---
     # Already capped by the retriever's own token budget, so it competes with
     # history for what's left rather than being trimmed again here.
@@ -233,7 +242,9 @@ def build_prompt(
 
     # Everything above the history is one preamble: for Alpaca that renders
     # exactly as before, and chat formats need it inside a single system turn.
-    preamble = "\n\n".join(b for b in (head, example, summary_block, retrieved_block) if b)
+    preamble = "\n\n".join(
+        b for b in (head, example, summary_block, pinned_block, retrieved_block) if b
+    )
     sections = [fmt.system.format(text=preamble)]
     sections.extend(kept)
     # Always present now -- the tail carries the impersonation reminder even when

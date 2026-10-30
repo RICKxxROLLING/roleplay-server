@@ -322,6 +322,9 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
                     {prompt.lore_dropped > 0 &&
                       ` (${prompt.lore_dropped} over budget)`}
                     {" · "}
+                    {prompt.pinned_entries ?? 0} pinned
+                    {prompt.pinned_dropped > 0 && ` (${prompt.pinned_dropped} over budget)`}
+                    {" · "}
                     {prompt.retrieved_entries ?? 0} recalled
                     {prompt.retrieval_dropped > 0 &&
                       ` (${prompt.retrieval_dropped} over budget)`}

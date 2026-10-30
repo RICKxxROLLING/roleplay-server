@@ -309,3 +309,53 @@ def test_clean_strips_chat_template_markers():
     assert _clean("Sera and Riley met at the archive.<|eot_id|>junk") == (
         "Sera and Riley met at the archive."
     )
+
+
+# --- pins -------------------------------------------------------------------
+
+def _pin_first_user_turn(client, session):
+    msgs = client.get(f"/api/sessions/{session}").json()["messages"]
+    first = next(m for m in msgs if m["role"] == "user")
+    r = client.patch(f"/api/sessions/{session}/messages/{first['id']}", json={"pinned": True})
+    assert r.status_code == 200 and r.json()["pinned"] is True
+    return first
+
+
+def test_a_pinned_message_survives_being_folded(client, session, llm):
+    client.post(f"/api/sessions/{session}/messages",
+                json={"content": "The porch: we agreed she'd take the south wall shift."})
+    first = _pin_first_user_turn(client, session)
+    flood(client, session)
+    prompt = client.get(f"/api/sessions/{session}/prompt").json()["prompt"]
+    db = SessionLocal()
+    s = db.get(ChatSession, session)
+    assert first["id"] <= s.summarized_upto_id, "setup: the pinned turn should be folded"
+    db.close()
+    assert "Moments to keep in mind" in prompt
+    assert "south wall shift" in prompt
+
+
+def test_unpinned_folded_messages_stay_out(client, session, llm):
+    client.post(f"/api/sessions/{session}/messages",
+                json={"content": "The porch: we agreed she'd take the south wall shift."})
+    first = _pin_first_user_turn(client, session)
+    client.patch(f"/api/sessions/{session}/messages/{first['id']}", json={"pinned": False})
+    flood(client, session)
+    prompt = client.get(f"/api/sessions/{session}/prompt").json()["prompt"]
+    assert "south wall shift" not in prompt
+    assert "Moments to keep in mind" not in prompt
+
+
+def test_pinning_does_not_change_the_text(client, session, llm):
+    client.post(f"/api/sessions/{session}/messages", json={"content": "Keep this."})
+    first = _pin_first_user_turn(client, session)
+    msgs = client.get(f"/api/sessions/{session}").json()["messages"]
+    assert next(m for m in msgs if m["id"] == first["id"])["content"] == "Keep this."
+
+
+def test_pins_appear_in_story_order():
+    from app.prompt import build_prompt
+    from app.cards.models import CharacterCard
+
+    p = build_prompt(CharacterCard(name="Sera"), [], pinned=["Riley: one", "Riley: two"])
+    assert p.text.index("Riley: one") < p.text.index("Riley: two")

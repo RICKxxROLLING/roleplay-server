@@ -95,6 +95,12 @@ restores the new model's saved profile, else a name-matched preset, else keeps t
 values and the Models panel says so. Keys sent in the same patch beat the profile. Presets
 set only what is known about a model; the Stheno one is the measured setup.
 
+**Pins enter the prompt only once folded.** A pending pinned message is already in the
+history verbatim, so the "Moments to keep in mind" block holds only pins at or below the
+watermark, in story order, under `PINNED_BUDGET_TOKENS` (newest kept when over). Retrieval
+excludes pinned ids so the same text never appears twice. Motivated live: asked about a
+porch scene the summary had skipped, the character invented one.
+
 **Stop keeps the partial reply.** A client disconnect already ends generation on the GPU:
 Starlette cancels the streaming generator, which closes the httpx stream to Ollama, which
 stops. Measured on the live box -- a probe call answered 0.1 s after Stop. (An older note

@@ -122,6 +122,9 @@ class Message(Base):
     # guards never need to know swipes exist. None until the first regenerate.
     alternatives: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     alt_index: Mapped[int] = mapped_column(default=0)
+    # Kept verbatim in the prompt even after the summary condenses it -- see
+    # memory/manager.py. For moments the user does not trust a fold to keep.
+    pinned: Mapped[bool] = mapped_column(default=False)
 
     session: Mapped[ChatSession] = relationship(back_populates="messages")
     embedding: Mapped["MessageEmbedding | None"] = relationship(
