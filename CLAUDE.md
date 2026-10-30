@@ -156,6 +156,12 @@ stored slip followed it (13 and 16 of 16 turns in two runs). One redo before sto
 runs to 0 of 16, firing once in 32 turns. The card's greeting is the reference -- a card that
 greets in first person is never redone -- and the second attempt is kept whatever it is, so
 the loop cannot spin. The UI drops its streamed draft on the `redo` event.
+Two refinements from the live box: when both attempts slip, the one with fewer first-person
+words is kept; and once the last saved reply is already first person the redo is skipped.
+After a double slip on turn one (about 1 in 25 at the measured rate) the redo fired on every
+later turn, doubling GPU time, and never pulled the chat back. Five fresh first replies on
+the same build: one redo, all five saved in third person -- the double slip was luck, not a
+regression.
 
 **A reply the guard guts is regenerated once; one it trims is not.** Over 288 Stheno replies
 the guard touched 60, removing a median of 11%, and only one lost more than a third (still

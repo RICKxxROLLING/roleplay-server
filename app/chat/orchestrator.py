@@ -17,7 +17,7 @@ from ..db.models import ChatSession, Message
 from ..llm import GenerationParams, get_client
 from ..memory import memory_manager, rag
 from ..prompt import build_prompt
-from .guard import slipped_into_first_person, strip_user_actions
+from .guard import first_person_narration, slipped_into_first_person, strip_user_actions
 
 
 def _card_of(session: ChatSession) -> CharacterCard:
@@ -151,6 +151,19 @@ async def stream_reply(
 
     client = get_client()
 
+    # A chat whose last saved reply is already first person has drifted, and a
+    # redo cannot pull it back -- the model copies the transcript. Seen live
+    # after a double slip on turn one: the redo fired on every later turn,
+    # doubling GPU time, and every reply stayed first person. Regenerating or
+    # editing that reply is what recovers such a chat.
+    prior = [m for m in session.messages
+             if m.role == "assistant" and (swipe_of is None or m.id != swipe_of.id)]
+    # prior[0] is the greeting, the reference itself, so it never counts as drift.
+    drifted = len(prior) > 1 and slipped_into_first_person(
+        prior[-1].content, card.first_mes
+    )
+    first_try: tuple[str, str, int] | None = None
+
     collected: list[str] = []
     try:
         # Two attempts at most, shared by both redo reasons, and the second
@@ -167,10 +180,21 @@ async def stream_reply(
             # history, the model copies it -- see chat/guard.py.
             reply, removed = _guarded(raw, session, card)
             redo = None
-            if attempt == 0 and settings.redo_first_person and slipped_into_first_person(
-                raw, card.first_mes
+            if (
+                attempt == 0
+                and settings.redo_first_person
+                and not drifted
+                and slipped_into_first_person(raw, card.first_mes)
             ):
                 redo = "first_person"
+                first_try = (raw, reply, removed)
+            elif (
+                attempt == 1
+                and first_try is not None
+                and first_person_narration(raw) > first_person_narration(first_try[0])
+            ):
+                # Both attempts slipped: keep whichever slipped less.
+                raw, reply, removed = first_try
             elif attempt == 0 and removed and _gutted(raw, reply):
                 redo = "guard"
             if redo:

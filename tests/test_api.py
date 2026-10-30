@@ -383,3 +383,21 @@ def test_a_reply_that_was_all_user_narration_says_so(client, session, llm, monke
     assert llm.reply_count == 2  # one redo, then it gives up
     assert any(e["type"] == "error" and "Regenerate" in e["message"] for e in events)
     assert client.get(f"/api/sessions/{session}").json()["messages"][-1]["role"] == "user"
+
+
+def test_a_chat_already_in_first_person_is_not_redone_every_turn(client, session, llm):
+    """The redo can't recover a drifted chat; it would only double every turn."""
+    llm.replies = ["*I nod. I smile. I mean it.*"] * 2
+    sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": "hi"}))
+    assert llm.reply_count == 2  # turn one: redo, both slipped
+    llm.replies = ["*I wave. I sit. I wait.*"]
+    events = sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": "again"}))
+    assert not any(e["type"] == "redo" for e in events)
+    assert llm.reply_count == 3
+
+
+def test_when_both_attempts_slip_the_milder_one_is_kept(client, session, llm):
+    llm.replies = ["*I nod. My smile. She waits.*", "*I nod. I smile. My hands. Mine. I wait.*"]
+    sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": "hi"}))
+    last = client.get(f"/api/sessions/{session}").json()["messages"][-1]["content"]
+    assert last.startswith("*I nod. My smile. She waits.")
