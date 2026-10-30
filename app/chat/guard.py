@@ -27,8 +27,15 @@ Deliberately narrow, because a false positive deletes the character's prose:
   it -- that pair is the user speaking. Without the quote it stays: "Riley's
   eyes were kind" can be the character's view of him. Seen live on Stheno.
 
-Known gap: a line attributed by pronoun alone ("His tone is dry. 'Hey...'")
-cannot be told apart from the character's, so it stays.
+- A quote attributed by pronoun alone (`"Yeah, good times," he acknowledged`)
+  goes only when the pronoun is the user's and not the character's, and the
+  last name mentioned before it, outside speech, is the user's. Pronouns are
+  read off the persona and the card (`infer_pronoun`); when either is unclear
+  the rule is off. Any other name in between -- another character, a place, a
+  name the guard doesn't know -- keeps the quote. Seen live in a group chat.
+
+Known gap: a pronoun-led sentence before a quote ("He shrugs. 'Sure.'") and a
+user who shares the character's pronoun still cannot be told apart, so they stay.
 """
 from __future__ import annotations
 
@@ -110,6 +117,69 @@ def _gaps(start: int, end: int, cuts: list[tuple[int, int]]) -> list[tuple[int, 
     return out
 
 
+# Subject forms only. A persona is about the user but mentions the character
+# ("wants to help her rebuild her life"), and the object and possessive forms
+# are where those mentions land: counting them, the live Riley persona read 3
+# "he" to 2 "she" and the rule went off for him.
+_SHE = re.compile(r"\b(?:she|herself)\b", re.I)
+_HE = re.compile(r"\b(?:he|himself)\b", re.I)
+
+
+def infer_pronoun(text: str) -> str | None:
+    """"he" or "she" when a persona or card clearly uses one, else None.
+
+    Clearly: at least two uses and three times the other. A card that names
+    its character throughout, or mixes people, gives None -- and the pronoun
+    rule then stays off, which is the safe direction.
+    """
+    she, he = len(_SHE.findall(text or "")), len(_HE.findall(text or ""))
+    if she >= 2 and she >= 3 * he:
+        return "she"
+    if he >= 2 and he >= 3 * she:
+        return "he"
+    return None
+
+
+# `"...," he acknowledged, his gaze fixed ahead.` -- the attribution clause to the
+# end of its sentence, stopping before any further quote.
+_PRONOUN_ATTRIBUTION = re.compile(r'[ \t]*,?[ \t]*\*?[ \t]*(?P<p>he|she)\s+(?P<v>[a-z][\w-]*)[^.!?…\n"“]*[.!?…]?')
+# Capitalised words that can't be a person, so they don't stand between the user
+# and the quote. Anything else capitalised (a place, an unknown name) does.
+_NOT_A_NAME = {"She", "He", "Her", "His", "Him", "They", "Their", "The", "A", "An"}
+
+
+def _last_name_before(text: str, i: int) -> str | None:
+    """The last capitalised word before `i`, in this paragraph and the one
+    before it, outside speech."""
+    start = max(text.rfind("\n\n", 0, max(text.rfind("\n\n", 0, i), 0)), 0)
+    window = _QUOTE.sub(" ", text[start:i])
+    # "Dina's" is a mention of Dina.
+    names = [re.sub(r"['’]s$", "", w) for w in re.findall(r"\b[A-Z][\w'’]*\b", window)]
+    names = [w for w in names if w not in _NOT_A_NAME]
+    return names[-1] if names else None
+
+
+def _pronoun_quotes(text, names, user_pronoun, char_pronoun, char_first, attribution):
+    """(cuts, lines removed) for the user's lines attributed only by their pronoun."""
+    if not user_pronoun or not char_pronoun or user_pronoun == char_pronoun:
+        return [], 0
+    cuts, removed = [], 0
+    for q in _QUOTE.finditer(text):
+        m = _PRONOUN_ATTRIBUTION.match(text, q.end())
+        if not m or m.group("p") != user_pronoun or m.group("v") in _NOT_A_VERB:
+            continue
+        last = _last_name_before(text, q.start())
+        if last not in names:
+            continue
+        cuts.append((q.start(), m.end() + _trailing_ws(text, m.end())))
+        removed += 1
+        # `"Yeah," he said. "Feels like ages."` -- the line after is his too.
+        more = _users_quote(text, m.end(), m.group(0), char_first, attribution)
+        if more:
+            cuts.append(more)
+    return cuts, removed
+
+
 def _users_quote(text, b, sentence, char_first, attribution) -> tuple[int, int] | None:
     """The cut for a quote right after a user sentence ending at `b`, if it is
     the user's: unattributed, and the sentence does not hand over to the
@@ -124,8 +194,15 @@ def _users_quote(text, b, sentence, char_first, attribution) -> tuple[int, int] 
     return q.start(), q.end() + _trailing_ws(text, q.end())
 
 
-def strip_user_actions(text: str, user_name: str, char_name: str = "") -> tuple[str, int]:
-    """Return (cleaned text, user-subject sentences removed)."""
+def strip_user_actions(
+    text: str, user_name: str, char_name: str = "",
+    user_pronoun: str | None = None, char_pronoun: str | None = None,
+) -> tuple[str, int]:
+    """Return (cleaned text, user-subject sentences removed).
+
+    The pronouns, from `infer_pronoun`, enable the pronoun-attribution rule;
+    without both it is off.
+    """
     name = (user_name or "").strip()
     if not name:
         return text, 0
@@ -169,6 +246,12 @@ def strip_user_actions(text: str, user_name: str, char_name: str = "") -> tuple[
         if text[start - 1 : start] == "*" and text[end : end + 1] == "*" and not kept.strip():
             span_cuts = [(start - 1, end + 1 + _trailing_ws(text, end + 1))]
         cuts.extend(span_cuts)
+
+    pronoun_cuts, more = _pronoun_quotes(
+        text, names, user_pronoun, char_pronoun, char_first, attribution
+    )
+    cuts.extend(pronoun_cuts)
+    removed += more
 
     if not cuts:
         return text, 0

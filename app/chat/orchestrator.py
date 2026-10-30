@@ -19,7 +19,12 @@ from ..memory import memory_manager, rag
 from ..memory.scene import blank as blank_scene, update_scene
 from ..prompt import build_prompt, tokens
 from . import group
-from .guard import first_person_narration, slipped_into_first_person, strip_user_actions
+from .guard import (
+    first_person_narration,
+    infer_pronoun,
+    slipped_into_first_person,
+    strip_user_actions,
+)
 
 
 def _card_of(character: Character) -> CharacterCard:
@@ -120,15 +125,27 @@ def _guarded(reply: str, session: ChatSession, card: CharacterCard) -> tuple[str
     if not settings.guard_user_actions:
         return reply, 0
     user_name = session.persona.name if session.persona else "You"
-    reply, removed = strip_user_actions(reply, user_name, card.name)
+    char_pronoun = _pronoun_of(card)
+    reply, removed = strip_user_actions(
+        reply, user_name, card.name,
+        infer_pronoun(session.persona.description) if session.persona else None, char_pronoun,
+    )
     # In a group the other characters speak in their own turns, so the same
     # rule holds for them: the speaker writing their actions and lines would
     # teach every later prompt that it may.
     for other in group.cast(session):
         if other.name != card.name:
-            reply, more = strip_user_actions(reply, other.name, card.name)
+            reply, more = strip_user_actions(
+                reply, other.name, card.name, _pronoun_of(_card_of(other)), char_pronoun
+            )
             removed += more
     return reply, removed
+
+
+def _pronoun_of(card: CharacterCard) -> str | None:
+    # The greeting counts: cards that name their character throughout the
+    # description often still narrate it by pronoun when it first appears.
+    return infer_pronoun(" ".join((card.description, card.personality, card.first_mes)))
 
 
 def _persist(

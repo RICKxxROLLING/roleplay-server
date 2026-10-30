@@ -215,6 +215,13 @@ expression ("Riley's expression softened...") together with the unattributed quo
 it -- never the possessive sentence alone. Replayed over all 146 stored replies on the test
 box: no change (no false positives). Over 16 fresh raw Stheno replies: one extra cut, and it
 was the user's line.
+Then the pronoun case (`"Yeah, good times," he acknowledged`): cut only when the pronoun is
+the user's and not the character's, both read off the persona and card (`infer_pronoun`,
+subject forms only -- with object forms the live persona's "help her rebuild her life"
+made Riley unclear), and the last name before the quote, outside speech, is the user's.
+Any other capitalised word in between keeps it, so an unknown NPC or a place errs safe.
+Over the same 146 stored replies: three cuts, all three the user's lines; no change in 16
+fresh raw replies.
 
 **A reply that slips into first-person narration is regenerated once (`redo_first_person`).**
 Same feedback loop as narrating the user: ~1 Stheno reply in 5 slips, and every reply after a

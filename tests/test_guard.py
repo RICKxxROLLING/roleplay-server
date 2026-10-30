@@ -190,3 +190,83 @@ def test_next_paragraph_quote_attributed_to_her_is_kept():
 def test_next_paragraph_quote_after_her_own_sentence_is_kept():
     text = 'Riley nods. Dina sighs and turns away.\n\n"We leave at dawn."'
     assert strip(text) == 'Dina sighs and turns away.\n\n"We leave at dawn."'
+
+
+# --- pronoun attribution ----------------------------------------------------------
+
+from app.chat.guard import infer_pronoun  # noqa: E402
+
+
+def strip_p(text: str, user="he", char="she") -> str:
+    return strip_user_actions(text, "Riley", "Dina", user, char)[0]
+
+
+LIVE = ('"By the way," Dina said, falling into step beside Riley, "remember the stables?"\n\n'
+        '"Yeah, good times," he acknowledged, his gaze fixed on some point ahead. '
+        '"Feels like ages ago now."\n\n'
+        "Dina nodded.")
+
+
+def test_users_line_attributed_by_his_pronoun_removed():
+    out = strip_p(LIVE)
+    assert "good times" not in out and "acknowledged" not in out
+    assert "Feels like ages" not in out  # his next line too
+    assert "remember the stables" in out and out.endswith("Dina nodded.")
+    assert strip_user_actions(LIVE, "Riley", "Dina", "he", "she")[1] == 1
+
+
+def test_pronoun_rule_is_off_without_both_pronouns():
+    assert strip_p(LIVE, user=None) == LIVE
+    assert strip_p(LIVE, char=None) == LIVE
+
+
+def test_pronoun_rule_is_off_when_they_share_one():
+    assert strip_p(LIVE, user="she", char="she") == LIVE
+
+
+def test_her_own_pronoun_is_kept():
+    text = 'Dina glanced at Riley. "Good times," she said softly.'
+    assert strip_p(text) == text
+
+
+def test_another_name_in_between_keeps_the_quote():
+    # JJ, Tommy, a place: any of them could be "he".
+    for who in ("JJ", "Tommy", "Jackson"):
+        text = f'Dina looked at Riley, then at {who}. "Mama!" he said.'
+        assert strip_p(text) == text, who
+
+
+def test_a_name_inside_speech_does_not_count():
+    text = 'Dina turned to Riley. "Tommy says hi." "Tell him thanks," he replied.'
+    assert "Tell him thanks" not in strip_p(text)
+    assert '"Tommy says hi."' in strip_p(text)
+
+
+def test_infer_pronoun():
+    assert infer_pronoun("Dina is a young woman. She is tough; her laugh is loud, and she swears.") == "she"
+    assert infer_pronoun("{{user}} is a 30-year-old man. He is quiet; his humor is dry. He reads.") == "he"
+    assert infer_pronoun("Tommy is Joel's brother. Tommy leads patrols.") is None
+    assert infer_pronoun("She and he and her and him.") is None
+
+
+def test_pronouns_come_from_the_persona_and_the_card(client, llm):
+    from conftest import sse_events
+
+    riley = client.post("/api/personas", json={
+        "name": "Riley", "description": "{{user}} is a quiet man. He reads; his humor is dry. He listens."}).json()
+    dina = client.post("/api/characters", json={
+        "name": "Dina", "first_mes": "Hey.",
+        "description": "Dina is tough. She swears a lot; her laugh is loud, and she never backs down."}).json()
+    sid = client.post("/api/sessions", json={"character_id": dina["id"], "persona_id": riley["id"]}).json()["id"]
+    llm.replies = ['Dina bumped Riley\'s shoulder. "Remember the stables?"\n\n'
+                   '"Yeah, good times," he acknowledged quietly.\n\nDina grinned.']
+    events = sse_events(client.post(f"/api/sessions/{sid}/messages", json={"content": "Hey."}))
+    assert any(e["type"] == "guard" for e in events)
+    stored = client.get(f"/api/sessions/{sid}").json()["messages"][-1]["content"]
+    assert "good times" not in stored and "Remember the stables" in stored
+
+
+def test_infer_pronoun_reads_a_persona_that_mentions_the_character():
+    live = ("{{user}} is a 30-year-old man. He has short brown hair. {{user}} listens more than "
+            "he speaks. He has known Dina since childhood and wants to help her rebuild her life.")
+    assert infer_pronoun(live) == "he"
