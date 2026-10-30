@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { api } from "../api";
+import { useEffect, useRef, useState } from "react";
+import { api, streamTurn } from "../api";
 import { Textarea } from "./ui";
 
 const SLIDERS = [
@@ -317,6 +317,8 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
             </div>
           )}
 
+          <TestModelSection />
+
           <PasswordSection />
 
           {sessionId && (
@@ -499,6 +501,156 @@ function PasswordSection() {
         One password for the whole server — there are no accounts. Changing or
         removing it signs out every device.
       </p>
+    </div>
+  );
+}
+
+/**
+ * Test this model: a scripted 12-turn chat through the real pipeline, scored.
+ *
+ * The numbers are the ones every tuning decision here was taken on, so "is
+ * this model working?" has an answer without reading transcripts. The chat is
+ * temporary and deleted afterwards; it shares the GPU while it runs.
+ */
+function TestModelSection() {
+  const [chars, setChars] = useState([]);
+  const [personas, setPersonas] = useState([]);
+  const [charId, setCharId] = useState("");
+  const [personaId, setPersonaId] = useState("");
+  const [progress, setProgress] = useState(null);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+  const [showTurns, setShowTurns] = useState(false);
+  const abortRef = useRef(null);
+
+  useEffect(() => {
+    api.characters().then((c) => {
+      setChars(c);
+      if (c.length) setCharId(String(c[0].id));
+    }).catch(() => {});
+    api.personas().then(setPersonas).catch(() => {});
+    return () => abortRef.current?.();
+  }, []);
+
+  function start() {
+    setResult(null);
+    setError(null);
+    setProgress({ turn: 0, of: 12 });
+    abortRef.current = streamTurn(
+      "/eval",
+      { character_id: Number(charId), persona_id: personaId ? Number(personaId) : null },
+      {
+        onEvent: (evt) => {
+          if (evt.type === "progress") setProgress({ turn: evt.turn, of: evt.of });
+          if (evt.type === "result") {
+            setResult(evt);
+            setProgress(null);
+          }
+        },
+        onError: (e) => {
+          setError(e.message);
+          setProgress(null);
+        },
+        onDone: () => setProgress(null),
+      }
+    );
+  }
+
+  const s = result?.summary;
+  const rows = s
+    ? [
+        ["Turns that acted for you", `${s.acted_for_you} of ${s.turns}`, `${s.lines_removed} lines removed`],
+        ["Saved in first person", `${s.first_person_saved} of ${s.turns}`, `${s.redo_first_person} redone`],
+        ["Replies redone after the guard", s.redo_guard, `${s.empty_replies} empty`],
+        ["Average reply", `${s.avg_words} words`, `${s.avg_seconds} s`],
+        ["Narration / scene detail", `${Math.round(s.narration_share * 100)}%`, `${s.scene_per_100} setting words per 100`],
+        ["Repetition", `${s.repeated_openings} repeated openings`, `${s.recurring_phrases} recurring phrases`],
+        ["Memory", `${s.memory_folds} condenses`, ""],
+      ]
+    : [];
+
+  return (
+    <div className="pt-3 border-t border-ink-800 space-y-3">
+      <div className="text-sm">
+        Test this model
+        <span className="text-xs text-slate-600 ml-2">
+          a scripted 12-turn chat with your current settings, scored
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-2 items-center">
+        <select
+          value={charId}
+          onChange={(e) => setCharId(e.target.value)}
+          disabled={!!progress}
+          className="bg-ink-950 border border-ink-800 rounded-lg px-2 py-1 text-sm outline-none focus:border-accent/60"
+        >
+          {chars.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+        <select
+          value={personaId}
+          onChange={(e) => setPersonaId(e.target.value)}
+          disabled={!!progress}
+          className="bg-ink-950 border border-ink-800 rounded-lg px-2 py-1 text-sm outline-none focus:border-accent/60"
+        >
+          <option value="">as You</option>
+          {personas.map((p) => (
+            <option key={p.id} value={p.id}>as {p.name}</option>
+          ))}
+        </select>
+        <button
+          onClick={start}
+          disabled={!charId || !!progress}
+          className="text-sm px-3 py-1.5 rounded-lg bg-accent/25 border border-accent/40 hover:bg-accent/35 disabled:opacity-40"
+        >
+          {progress ? `Turn ${progress.turn}/${progress.of}…` : "Run test"}
+        </button>
+      </div>
+      <p className="text-[11px] text-slate-600">
+        Takes a few minutes and uses the GPU while it runs. The test chat is
+        deleted afterwards.
+      </p>
+      {error && <div className="text-xs text-rose-400">{error}</div>}
+      {s && (
+        <div className="space-y-2">
+          {s.health.length > 0 ? (
+            <ul className="text-xs text-amber-400/90 bg-amber-950/30 border border-amber-900/40 rounded-lg px-3 py-2 space-y-1">
+              {s.health.map((h, i) => <li key={i}>{h}</li>)}
+            </ul>
+          ) : (
+            <div className="text-xs text-emerald-400/90">No problems flagged.</div>
+          )}
+          <table className="w-full text-xs">
+            <tbody>
+              {rows.map(([label, a, b]) => (
+                <tr key={label} className="border-t border-ink-800">
+                  <td className="py-1 text-slate-400">{label}</td>
+                  <td className="py-1 tabular-nums">{a}</td>
+                  <td className="py-1 text-slate-500 tabular-nums">{b}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <button onClick={() => setShowTurns((v) => !v)} className="text-xs text-slate-500 hover:text-slate-300">
+            {showTurns ? "Hide" : "Show"} the {result.rows.length} replies
+          </button>
+          {showTurns && (
+            <div className="max-h-64 overflow-auto scroll-thin space-y-2 text-[11px]">
+              {result.rows.map((r) => (
+                <div key={r.turn} className="bg-ink-950 border border-ink-800 rounded-lg p-2">
+                  <div className="text-slate-500 mb-1">
+                    {r.turn}. {r.user} · {r.seconds}s
+                    {r.redos.length > 0 && ` · redone (${r.redos.join(", ")})`}
+                    {r.guard_removed > 0 && ` · ${r.guard_removed} lines removed`}
+                  </div>
+                  <div className="whitespace-pre-wrap text-slate-300">{r.reply || "(no reply)"}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

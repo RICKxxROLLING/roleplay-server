@@ -43,6 +43,7 @@ anything GPU-related.
 app/
   config.py             pydantic-settings; env vars are FIRST-RUN DEFAULTS ONLY
   profiles.py           per-model format + samplers: saved profiles, built-in presets
+  eval.py               "Test this model": scripted chat through stream_reply, scored
   settings_store.py     DB-backed runtime settings; overrides env at startup
   llm/
     base.py             LLMClient interface — the only thing above this layer
@@ -418,6 +419,12 @@ mounting the production volume -- a test there pins that.
   through the API.
 - Ollama on :11434 is shared and holds no chat data, so offline prompt experiments may
   call it directly. Keep runs short: they queue in front of the owner's replies.
+
+**Settings -> Test this model** (`POST /api/eval`, `app/eval.py`) is the in-app version of the
+scripts used for every measurement above: 12 generic turns through the real `stream_reply`
+(guard, both redos, memory) in a temporary session deleted in a `finally`. The turns are
+card-agnostic and include thin ones ("*I nod.*", "...") because those tempt impersonation.
+Its health flags use this file's thresholds. It shares the GPU, so it is a manual action.
 
 ## Conventions
 

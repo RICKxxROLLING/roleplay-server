@@ -167,3 +167,38 @@ async def patch_settings(
         # Present only on a model switch: which profile came with the model.
         **({"profile": report} if report else {}),
     }
+
+
+class EvalIn(BaseModel):
+    character_id: int
+    persona_id: int | None = None
+    turns: int = Field(12, ge=1, le=12)
+
+
+@router.post("/eval")
+async def run_eval(body: EvalIn) -> StreamingResponse:
+    """Test this model: a scripted chat through the real pipeline, scored.
+
+    Streams a `progress` event per turn, then `result`. See app/eval.py.
+    """
+    from .. import eval as model_eval
+    from ..db import SessionLocal
+
+    async def gen() -> AsyncIterator[str]:
+        # Its own DB session, as for chat streaming: the request-scoped one is
+        # closed before the generator body runs.
+        db = SessionLocal()
+        try:
+            async for evt in model_eval.run(db, body.character_id, body.persona_id, body.turns):
+                yield f"data: {json.dumps(evt)}\n\n"
+        except Exception as exc:
+            payload = {"type": "error", "message": f"{type(exc).__name__}: {exc}"}
+            yield f"data: {json.dumps(payload)}\n\n"
+        finally:
+            db.close()
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
