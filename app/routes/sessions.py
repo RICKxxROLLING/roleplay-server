@@ -9,9 +9,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session as DbSession
 
 from ..cards.models import CharacterCard
-from ..chat import build_turn_prompt, stream_reply
+from ..chat import build_turn_prompt, group, stream_reply
 from ..config import settings
-from ..db import Character, ChatSession, Message, Persona, SessionLocal, get_db
+from ..db import Character, ChatSession, Message, Persona, SessionLocal, SessionMember, get_db
 from ..memory import memory_manager, rag
 from ..prompt import estimate_tokens, substitute, tokens
 
@@ -23,6 +23,8 @@ class SessionIn(BaseModel):
     persona_id: int | None = None
     title: str | None = None
     greeting_index: int = 0  # 0 = first_mes, 1+ = alternate_greetings
+    # Group chat: other characters in the scene. The greeting stays the main one's.
+    member_ids: list[int] = []
 
 
 class MessageIn(BaseModel):
@@ -33,19 +35,25 @@ class MessageIn(BaseModel):
     top_k: int | None = None
     repeat_penalty: float | None = None
     max_new_tokens: int | None = None
+    # Group chat: who answers. Unset lets the server choose (chat/group.py).
+    speaker_id: int | None = None
 
     def overrides(self) -> dict:
-        return {k: v for k, v in self.model_dump(exclude={"content"}).items() if v is not None}
+        return {k: v for k, v in self.model_dump(exclude={"content", "speaker_id"}).items()
+                if v is not None}
 
 
 def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
 
 
-def _serialise(m: Message) -> dict:
+def _serialise(m: Message, s: ChatSession | None = None) -> dict:
+    s = s or m.session
     return {
         "id": m.id,
         "role": m.role,
+        "speaker_id": group.speaker_id(s, m) if m.role == "assistant" else None,
+        "speaker_name": group.speaker_name(s, m) if m.role == "assistant" else None,
         "content": m.content,
         "created_at": m.created_at.isoformat() if m.created_at else None,
         "pinned": bool(m.pinned),
@@ -63,12 +71,16 @@ def create_session(body: SessionIn, db: DbSession = Depends(get_db)) -> dict:
     if body.persona_id and not persona:
         raise HTTPException(404, "Persona not found")
 
+    members = _members(db, char.id, body.member_ids)
+    names = " & ".join([char.name, *(c.name for c in members)])
     s = ChatSession(
         character_id=char.id,
         persona_id=persona.id if persona else None,
-        title=body.title or f"Chat with {char.name}",
+        title=body.title or f"Chat with {names}",
     )
     db.add(s)
+    db.commit()
+    s.members = [SessionMember(character_id=c.id, position=i) for i, c in enumerate(members)]
     db.commit()
     db.refresh(s)
 
@@ -88,7 +100,42 @@ def create_session(body: SessionIn, db: DbSession = Depends(get_db)) -> dict:
         db.commit()
         db.refresh(s)
 
-    return {"id": s.id, "title": s.title, "messages": [_serialise(m) for m in s.messages]}
+    return {"id": s.id, "title": s.title, "messages": [_serialise(m, s) for m in s.messages]}
+
+
+def _members(db: DbSession, owner_id: int, ids: list[int]) -> list[Character]:
+    out, seen = [], {owner_id}
+    for cid in ids:
+        if cid in seen:
+            continue
+        c = db.get(Character, cid)
+        if not c:
+            raise HTTPException(404, f"Character {cid} not found")
+        out.append(c)
+        seen.add(cid)
+    return out
+
+
+def _cast(s: ChatSession) -> list[dict]:
+    return [{"id": c.id, "name": c.name, "has_avatar": bool(c.avatar_path)}
+            for c in group.cast(s)]
+
+
+class MembersIn(BaseModel):
+    member_ids: list[int]
+
+
+@router.put("/{session_id}/members")
+def set_members(session_id: int, body: MembersIn, db: DbSession = Depends(get_db)) -> dict:
+    """Who else is in the scene. Lines by a character who leaves keep their name."""
+    s = db.get(ChatSession, session_id)
+    if not s:
+        raise HTTPException(404, "Session not found")
+    members = _members(db, s.character_id, body.member_ids)
+    s.members = [SessionMember(character_id=c.id, position=i) for i, c in enumerate(members)]
+    db.commit()
+    db.refresh(s)
+    return {"cast": _cast(s)}
 
 
 @router.get("")
@@ -100,6 +147,7 @@ def list_sessions(db: DbSession = Depends(get_db)) -> list[dict]:
             "title": s.title,
             "character_id": s.character_id,
             "character_name": s.character.name if s.character else None,
+            "member_names": [c.name for c in group.cast(s)[1:]],
             "message_count": len(s.messages),
         }
         for s in rows
@@ -119,12 +167,14 @@ def get_session(session_id: int, db: DbSession = Depends(get_db)) -> dict:
         "persona_id": s.persona_id,
         "summary": s.summary,
         "scene": s.scene,
-        "messages": [_serialise(m) for m in s.messages],
+        "cast": _cast(s),
+        "messages": [_serialise(m, s) for m in s.messages],
     }
 
 
 def _stream_response(
-    session_id: int, overrides: dict, swipe_of_id: int | None = None
+    session_id: int, overrides: dict, swipe_of_id: int | None = None,
+    speaker_id: int | None = None,
 ) -> StreamingResponse:
     """Open a *fresh* DB session inside the generator.
 
@@ -140,8 +190,10 @@ def _stream_response(
                 yield _sse({"type": "error", "message": "Session not found"})
                 return
             swipe_of = db.get(Message, swipe_of_id) if swipe_of_id else None
+            speaker = group.by_id(s, speaker_id) if speaker_id else None
             # The orchestrator already emits typed events; pass them straight through.
-            async for event in stream_reply(db, s, overrides, swipe_of=swipe_of):
+            async for event in stream_reply(db, s, overrides, swipe_of=swipe_of,
+                                            speaker=speaker):
                 yield _sse(event)
             yield _sse({"type": "done"})
         except Exception as exc:  # surface backend failures to the UI
@@ -165,10 +217,28 @@ def send_message(
         raise HTTPException(404, "Session not found")
     if not body.content.strip():
         raise HTTPException(400, "Message cannot be empty")
+    if body.speaker_id is not None and not group.by_id(s, body.speaker_id):
+        raise HTTPException(400, "That character is not in this chat")
 
     db.add(Message(session_id=s.id, role="user", content=body.content.strip()))
     db.commit()
-    return _stream_response(session_id, body.overrides())
+    return _stream_response(session_id, body.overrides(), speaker_id=body.speaker_id)
+
+
+class RespondIn(BaseModel):
+    character_id: int | None = None
+
+
+@router.post("/{session_id}/respond")
+def respond(session_id: int, body: RespondIn, db: DbSession = Depends(get_db)) -> StreamingResponse:
+    """A character speaks next without a new user message -- in a group, one
+    answering another. Unset picks as for a user message."""
+    s = db.get(ChatSession, session_id)
+    if not s:
+        raise HTTPException(404, "Session not found")
+    if body.character_id is not None and not group.by_id(s, body.character_id):
+        raise HTTPException(400, "That character is not in this chat")
+    return _stream_response(session_id, {}, speaker_id=body.character_id)
 
 
 @router.post("/{session_id}/regenerate")
@@ -210,19 +280,25 @@ def select_swipe(
     m.alt_index = body.index
     m.content = m.alternatives[body.index]
     db.commit()
-    return _serialise(m)
+    return _serialise(m, s)
 
 
 @router.get("/{session_id}/prompt")
-async def inspect_prompt(session_id: int, db: DbSession = Depends(get_db)) -> dict:
+async def inspect_prompt(
+    session_id: int, speaker_id: int | None = None, db: DbSession = Depends(get_db)
+) -> dict:
     """Debug view -- exactly what the model will receive."""
     s = db.get(ChatSession, session_id)
     if not s:
         raise HTTPException(404, "Session not found")
+    last_user = next((m.content for m in reversed(s.messages) if m.role == "user"), "")
+    speaker = (group.by_id(s, speaker_id) if speaker_id else None) \
+        or group.choose_speaker(s, last_user)
     # One build, not two: retrieval embeds the query, so calling build_context
     # again here would double the round-trips just to report on them.
-    _card, ctx, built = await build_turn_prompt(s, db=db)
+    _card, ctx, built = await build_turn_prompt(s, db=db, speaker=speaker)
     return {
+        "speaker": speaker.name if speaker else None,
         "prompt": built.text,
         "stop": built.stop,
         "estimated_tokens": built.used_tokens,

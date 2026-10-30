@@ -137,6 +137,26 @@ class ChatSession(Base):
         cascade="all, delete-orphan",
         order_by="Message.id",
     )
+    # Group chats: characters in the scene besides `character`, who stays the
+    # chat's owner -- its card seeds the greeting, its world frames the chat.
+    members: Mapped[list["SessionMember"]] = relationship(
+        cascade="all, delete-orphan", order_by="SessionMember.position"
+    )
+
+
+class SessionMember(Base):
+    """A character taking part in a group chat alongside the session's own.
+
+    A new table, so `create_all` adds it to existing databases.
+    """
+
+    __tablename__ = "session_members"
+
+    session_id: Mapped[int] = mapped_column(ForeignKey("sessions.id"), primary_key=True)
+    character_id: Mapped[int] = mapped_column(ForeignKey("characters.id"), primary_key=True)
+    position: Mapped[int] = mapped_column(default=0)
+
+    character: Mapped[Character] = relationship()
 
 
 class Message(Base):
@@ -155,6 +175,10 @@ class Message(Base):
     # Kept verbatim in the prompt even after the summary condenses it -- see
     # memory/manager.py. For moments the user does not trust a fold to keep.
     pinned: Mapped[bool] = mapped_column(default=False)
+    # Which character wrote a reply. None means the session's own character,
+    # so every message from before group chats reads correctly.
+    speaker_id: Mapped[int | None] = mapped_column(ForeignKey("characters.id"), nullable=True)
+    speaker: Mapped[Character | None] = relationship()
 
     session: Mapped[ChatSession] = relationship(back_populates="messages")
     embedding: Mapped["MessageEmbedding | None"] = relationship(

@@ -15,6 +15,7 @@ export default function NewChatDialog({
   open,
   onClose,
   character,
+  characters = [],
   personas,
   onCreated,
   onManagePersonas,
@@ -23,6 +24,7 @@ export default function NewChatDialog({
   const [personaId, setPersonaId] = useState("");
   const [greetingIndex, setGreetingIndex] = useState(0);
   const [title, setTitle] = useState("");
+  const [memberIds, setMemberIds] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -30,6 +32,7 @@ export default function NewChatDialog({
     if (!open || !character) return;
     setError(null);
     setGreetingIndex(0);
+    setMemberIds([]);
     setPersonaId(personas[0]?.id ?? "");
     setTitle(`Chat with ${character.name}`);
     api
@@ -41,6 +44,17 @@ export default function NewChatDialog({
   if (!open || !character) return null;
 
   const greetings = card ? [card.first_mes, ...(card.alternate_greetings || [])] : [];
+  const others = characters.filter((c) => c.id !== character.id);
+  const defaultTitle = (ids) =>
+    `Chat with ${[character.name, ...others.filter((c) => ids.includes(c.id)).map((c) => c.name)].join(" & ")}`;
+
+  function toggleMember(id) {
+    const next = memberIds.includes(id) ? memberIds.filter((m) => m !== id) : [...memberIds, id];
+    // Keep a hand-typed name; only the generated one follows the cast.
+    if (title === defaultTitle(memberIds)) setTitle(defaultTitle(next));
+    setMemberIds(next);
+  }
+
   const userName = personas.find((p) => p.id === Number(personaId))?.name || "You";
 
   async function create() {
@@ -51,6 +65,7 @@ export default function NewChatDialog({
         character_id: character.id,
         persona_id: personaId === "" ? null : Number(personaId),
         greeting_index: greetingIndex,
+        member_ids: memberIds,
         title: title.trim() || undefined,
       });
       onCreated?.(s.id);
@@ -85,6 +100,29 @@ export default function NewChatDialog({
           <Button onClick={onManagePersonas}>Manage</Button>
         </div>
       </Field>
+
+      {others.length > 0 && (
+        <Field
+          label="Also in the scene"
+          hint="optional: a group chat, one character answering at a time"
+        >
+          <div className="flex flex-wrap gap-1.5">
+            {others.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => toggleMember(c.id)}
+                className={`px-2.5 py-1 rounded-full text-xs border transition ${
+                  memberIds.includes(c.id)
+                    ? "border-accent/50 bg-accent/10 text-slate-200"
+                    : "border-ink-800 text-slate-400 hover:border-ink-700"
+                }`}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+        </Field>
+      )}
 
       <Field
         label="Opening message"

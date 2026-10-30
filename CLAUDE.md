@@ -64,6 +64,7 @@ app/
     rag.py              message embedding, cosine search, budget eviction
   chat/orchestrator.py  per-turn flow, typed stream events
   chat/guard.py         strips narration of the user's actions before a reply is stored
+  chat/group.py         group chats: cast, speaker choice, per-speaker history roles
   db/                   SQLAlchemy models + additive migrations
   routes/               characters, personas, sessions, system, worlds
 web/src/components/     React UI
@@ -104,6 +105,19 @@ budget, so membership costs no more context than the same entries in the card. T
 description goes in the head as "Setting:", above the character block it frames. Deleting a
 world keeps its characters (they leave it). Membership is set by its own endpoint, not the
 card PATCH, since it is not card text.
+
+**A group chat is one speaker per reply, each from its own side (`chat/group.py`).** A
+session keeps its `character` (greeting, world, the side summaries fold from) and adds
+`SessionMember` rows; `Message.speaker_id` records who wrote a reply (None = the session's
+character, so old chats read unchanged). Every prompt is still two-sided: the speaker's card
+and lore, its lines as assistant turns, and the other characters' lines as *user-side* turns
+labelled by name (`other:Name` history roles). On the assistant side they would hand the
+speaker a transcript where it already wrote as someone else -- the narrate-the-user feedback
+loop again. The others get a one-line "Also in this scene" plus a short blurb, a
+`\nName:` stop each, and the guard runs for each of their names too. Who answers: the
+user's pick, else the one character the message names, else whoever waited longest. A swipe
+is re-rolled by whoever wrote it. Folds, facts, pins and recall label each line by speaker.
+Not measured live yet.
 
 **Scene state is updated after every reply and read back in the tail.** A short extra
 generation (`memory/scene.py`, ~0.6 s on the 2080) fills four fields, prefilled with

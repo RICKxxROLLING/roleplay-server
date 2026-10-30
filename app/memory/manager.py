@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session as DbSession
 
 from ..cards.models import CharacterCard, LoreEntry
 from ..config import settings
-from ..db.models import ChatSession, Message
+from ..db.models import Character, ChatSession, Message
 from ..prompt.tokens import estimate_tokens
 from . import lorebook, rag
 from .summarizer import summarize, update_facts
@@ -87,6 +87,7 @@ class MemoryManager:
         card: CharacterCard,
         db: DbSession | None = None,
         exclude_ids: set[int] | None = None,
+        speaker: Character | None = None,
     ) -> MemoryContext:
         """Compose the three memory sources into one context.
 
@@ -97,11 +98,17 @@ class MemoryManager:
         `db` is optional so callers that only want summary + lorebook (and have
         no session handy) can skip retrieval entirely.
         """
+        from ..chat import group  # chat imports memory; import late
+
         msgs = [m for m in self.pending(session) if m.id not in (exclude_ids or ())]
-        history = [(m.role, m.content) for m in msgs]
+        # `speaker` is who writes this reply in a group chat; others' lines are
+        # labelled by name (chat/group.py). None is the session's character.
+        history = group.history_roles(session, msgs, speaker)
 
         # Lorebook scans recent turns only, so it runs on pending history.
-        world = session.character.world if session.character else None
+        # The speaker's world: members of a group need not share one.
+        owner = speaker or session.character
+        world = owner.world if owner else None
         world_entries = [LoreEntry.model_validate(e) for e in (world.entries or [])] if world else []
         lore = lorebook.select(card, history, world_entries=world_entries)
 
@@ -122,12 +129,17 @@ class MemoryManager:
         # keep a moment the fold might drop.
         user_name = session.persona.name if session.persona else "You"
         char_name = card.name or "Character"
+        names = {c.id: c.name for c in group.cast(session)}
+
+        def who(m: Message) -> str:
+            return user_name if m.role == "user" else group.speaker_name(session, m, names)
+
         mark = session.summarized_upto_id or 0
         pins = [m for m in session.messages
                 if m.pinned and m.id <= mark and m.id not in (exclude_ids or ())]
         kept, used = [], 0
         for m in reversed(pins):  # newest first under the budget...
-            line = f"{user_name if m.role == 'user' else char_name}: {m.content.strip()}"
+            line = f"{who(m)}: {m.content.strip()}"
             cost = estimate_tokens(line)
             if used + cost > PINNED_BUDGET_TOKENS:
                 ctx.pinned_dropped += 1
@@ -143,7 +155,12 @@ class MemoryManager:
                 db, session, history,
                 exclude_ids={m.id for m in msgs} | {m.id for m in pins},
             )
-            ctx.retrieved = rag.render(result.hits, char_name, user_name)
+            by_id = {m.id: m for m in session.messages}
+            ctx.retrieved = rag.render(
+                result.hits, char_name, user_name,
+                speakers={h.message_id: who(by_id[h.message_id])
+                          for h in result.hits if h.message_id in by_id},
+            )
             ctx.retrieved_hits = result.hits
             ctx.retrieval_dropped = result.dropped
             ctx.retrieval_error = result.error
@@ -178,8 +195,11 @@ class MemoryManager:
         if not foldable:
             return 0
 
+        from ..chat import group
+
         user_name = session.persona.name if session.persona else "You"
-        turns = [(m.role, m.content) for m in foldable]
+        # Folded from the session character's side; the others keep their names.
+        turns = group.history_roles(session, foldable)
 
         new_summary = await summarize(session.summary or "", turns, card, user_name)
 

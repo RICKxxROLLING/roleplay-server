@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session as DbSession
 from ..cards import CardImportError, load_card
 from ..cards.models import CharacterCard, LoreEntry
 from ..config import settings
-from ..db import Character, get_db
+from ..db import Character, SessionMember, get_db
 
 router = APIRouter(prefix="/characters", tags=["characters"])
 
@@ -179,6 +179,9 @@ def delete_character(char_id: int, db: DbSession = Depends(get_db)) -> dict:
         raise HTTPException(404, "Character not found")
     if c.avatar_path and os.path.exists(c.avatar_path):
         os.remove(c.avatar_path)
+    # Leaves any group chat it was in; its old lines there keep their text and
+    # read as "Someone" (chat/group.py).
+    db.query(SessionMember).filter(SessionMember.character_id == c.id).delete()
     db.delete(c)
     db.commit()
     return {"ok": True}

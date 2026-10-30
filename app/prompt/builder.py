@@ -124,7 +124,18 @@ def _format_turn(
     newline-anchored user stop and the orchestrator's prefix strip rely on them."""
     if role == "user":
         return fmt.user.format(text=f"{user}: {content}")
+    if role.startswith("other:"):
+        # Another character in a group chat. User side, never assistant: the
+        # speaker must not read a transcript in which it wrote as someone else.
+        return fmt.user.format(text=f"{role[len('other:'):]}: {content}")
     return fmt.assistant.format(text=f"{char}: {content}")
+
+
+# Said as what to do, not what to avoid -- see TAIL_REMINDER and CLAUDE.md.
+GROUP_LINE = (
+    "Also in this scene, each speaking for themselves in their own turns: {names}. "
+    "Write {{{{char}}}}'s part only."
+)
 
 
 def build_prompt(
@@ -145,8 +156,13 @@ def build_prompt(
     prompt_format: str | PromptFormat = "alpaca",
     narration_style: str = "",
     scene: dict | None = None,
+    others: list[tuple[str, str]] | None = None,
 ) -> BuiltPrompt:
-    """`history` is [(role, content), ...] oldest-first, excluding the pending reply."""
+    """`history` is [(role, content), ...] oldest-first, excluding the pending reply.
+
+    `others` is [(name, short description)] for the other characters of a group
+    chat; their lines arrive in `history` as "other:Name" roles.
+    """
     fmt = prompt_format if isinstance(prompt_format, PromptFormat) else get_format(prompt_format)
     char = card.name or "Character"
     budget = context_tokens - max_new_tokens - reserve_tokens
@@ -183,6 +199,13 @@ def build_prompt(
 
     for text in lore_after:
         head_parts.append(substitute(text, char, user_name))
+
+    others = [(n, d) for n, d in (others or []) if n and n != char]
+    if others:
+        head_parts.append("\n".join(
+            [substitute(GROUP_LINE.format(names=", ".join(n for n, _ in others)), char, user_name)]
+            + [f"{n}: {substitute(d, n, user_name)}" for n, d in others if d]
+        ))
 
     head = "\n\n".join(p for p in head_parts if p)
     used = estimate_tokens(head)
@@ -281,7 +304,9 @@ def build_prompt(
         # Stop before the model starts writing the user's side of the scene.
         # Note: only the newline-anchored user label -- a bare "Name:" would
         # truncate legitimate prose like: she turned to Riley: "..."
-        stop=[fmt.stops[0], f"\n{user_name}:", *fmt.stops[1:]],
+        # In a group, the other characters' labels too: each speaks in its own turn.
+        stop=[fmt.stops[0], f"\n{user_name}:", *(f"\n{n}:" for n, _ in others),
+              *fmt.stops[1:]],
         used_tokens=used,
         dropped_messages=dropped,
         lore_entries=lore_count,

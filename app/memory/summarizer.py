@@ -54,10 +54,12 @@ SUMMARY_PREFILL = "Memory log:\n\n"
 def render_transcript(
     turns: list[tuple[str, str]], char_name: str, user_name: str
 ) -> str:
+    from ..chat.group import label  # chat imports memory; import late
+
     lines = []
     for role, content in turns:
-        speaker = user_name if role == "user" else char_name
-        lines.append(f"{speaker}: {content}")
+        # Group chats carry other characters' lines as "other:Name" roles.
+        lines.append(f"{label(role, char_name, user_name)}: {content}")
     return "\n".join(lines)
 
 

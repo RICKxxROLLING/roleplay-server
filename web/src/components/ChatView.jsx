@@ -5,6 +5,7 @@ import Message from "./Message";
 export default function ChatView({
   sessionId,
   personas,
+  characters = [],
   onOpenSettings,
   onOpenMemory,
   onDirty,
@@ -19,6 +20,9 @@ export default function ChatView({
   const [error, setError] = useState(null);
   const [renaming, setRenaming] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
+  // Group chats: who is writing the reply being streamed.
+  const [streamSpeaker, setStreamSpeaker] = useState(null);
+  const [castOpen, setCastOpen] = useState(false);
   const abortRef = useRef(null);
   const bottomRef = useRef(null);
 
@@ -63,6 +67,20 @@ export default function ChatView({
   }, [session?.messages?.length, streamText]);
 
   const charName = session?.character_name;
+  const cast = session?.cast || [];
+  const isGroup = cast.length > 1;
+  const writerName = streamSpeaker?.name || charName;
+  const writerId = streamSpeaker?.id || session?.character_id;
+
+  async function setMembers(ids) {
+    try {
+      await api.setMembers(sessionId, ids);
+      await reload();
+      onDirty?.();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
   const userName = personas.find((p) => p.id === session?.persona_id)?.name || "You";
 
   function runStream(path, body) {
@@ -70,11 +88,17 @@ export default function ChatView({
     setError(null);
     setStreamText("");
     setGuardRemoved(0);
+    setStreamSpeaker(null);
     let acc = "";
+    let speaker = charName;
 
     abortRef.current = streamTurn(path, body, {
       onEvent: (evt) => {
         if (evt.type === "guard") setGuardRemoved(evt.removed);
+        if (evt.type === "speaker") {
+          speaker = evt.name;
+          setStreamSpeaker({ id: evt.id, name: evt.name });
+        }
         if (evt.type === "scene") setSession((s) => (s ? { ...s, scene: evt.scene } : s));
         // The server is regenerating; what streamed so far is discarded.
         if (evt.type === "redo") {
@@ -84,7 +108,7 @@ export default function ChatView({
       },
       onToken: (t) => {
         acc += t;
-        setStreamText(stripSpeakerPrefix(acc, charName));
+        setStreamText(stripSpeakerPrefix(acc, speaker));
       },
       onMemory: (evt) => {
         if (evt.status === "compressing") setMemoryState({ kind: "busy" });
@@ -118,16 +142,25 @@ export default function ChatView({
     });
   }
 
-  async function send() {
+  /** `speakerId` (group chats) picks who answers; unset lets the server choose. */
+  async function send(speakerId) {
     const content = draft.trim();
-    if (!content || busy) return;
+    if (busy) return;
+    if (!content) {
+      // Nothing typed: that character simply speaks next.
+      if (speakerId) runStream(`/sessions/${sessionId}/respond`, { character_id: speakerId });
+      return;
+    }
     setDraft("");
     // Optimistic echo so the user's turn appears instantly.
     setSession((s) => ({
       ...s,
       messages: [...s.messages, { id: `tmp-${Date.now()}`, role: "user", content }],
     }));
-    runStream(`/sessions/${sessionId}/messages`, { content });
+    runStream(`/sessions/${sessionId}/messages`, {
+      content,
+      ...(speakerId ? { speaker_id: speakerId } : {}),
+    });
   }
 
   function regenerate() {
@@ -264,8 +297,8 @@ export default function ChatView({
             msg={m}
             swipeable={!busy && i === session.messages.length - 1 && typeof m.id === "number"}
             onRegenerate={regenerate}
-            charName={charName}
-            charId={session.character_id}
+            charName={m.speaker_name || charName}
+            charId={m.speaker_id || session.character_id}
             userName={userName}
             sessionId={sessionId}
             onChanged={() => {
@@ -278,15 +311,15 @@ export default function ChatView({
         {streamText && (
           <Message
             msg={{ role: "assistant", content: streamText }}
-            charName={charName}
-            charId={session?.character_id}
+            charName={writerName}
+            charId={writerId}
             userName={userName}
             streaming
           />
         )}
 
         {busy && !streamText && (
-          <div className="text-xs text-slate-600 pl-12">{charName} is writing…</div>
+          <div className="text-xs text-slate-600 pl-12">{writerName} is writing…</div>
         )}
 
         {guardRemoved > 0 && !busy && (
@@ -332,6 +365,19 @@ export default function ChatView({
       </div>
 
       <div className="border-t border-ink-800 p-4">
+        {(isGroup || castOpen) && (
+          <CastBar
+            cast={cast}
+            characters={characters}
+            ownerId={session?.character_id}
+            busy={busy}
+            hasDraft={!!draft.trim()}
+            open={castOpen}
+            setOpen={setCastOpen}
+            onAnswer={send}
+            onMembers={setMembers}
+          />
+        )}
         <div className="flex gap-2 items-end">
           <textarea
             value={draft}
@@ -346,6 +392,15 @@ export default function ChatView({
             placeholder="Write your turn…  (Enter to send, Shift+Enter for a new line)"
             className="flex-1 resize-none bg-ink-900 border border-ink-700 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/60 placeholder:text-slate-600"
           />
+          {!isGroup && !castOpen && characters.length > 1 && (
+            <button
+              onClick={() => setCastOpen(true)}
+              title="Bring more characters into this scene"
+              className="px-3 py-2.5 rounded-xl border border-ink-700 text-sm text-slate-400 hover:bg-ink-850"
+            >
+              +
+            </button>
+          )}
           {busy ? (
             <button
               onClick={stop}
@@ -355,7 +410,7 @@ export default function ChatView({
             </button>
           ) : (
             <button
-              onClick={send}
+              onClick={() => send()}
               disabled={!draft.trim()}
               className="px-4 py-2.5 rounded-xl bg-accent/25 border border-accent/40 text-sm hover:bg-accent/35 disabled:opacity-40"
             >
@@ -364,6 +419,60 @@ export default function ChatView({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Group chats: who is in the scene, and who answers next. A name button sends
+ * the draft to that character, or with nothing typed has them speak next --
+ * one character answering another. Send on its own lets the server choose:
+ * whoever the message names, else whoever has waited longest.
+ */
+function CastBar({ cast, characters, ownerId, busy, hasDraft, open, setOpen, onAnswer, onMembers }) {
+  const memberIds = cast.filter((c) => c.id !== ownerId).map((c) => c.id);
+  const toggle = (id) =>
+    onMembers(memberIds.includes(id) ? memberIds.filter((m) => m !== id) : [...memberIds, id]);
+
+  return (
+    <div className="mb-2 text-[11px] text-slate-500">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {cast.length > 1 && <span>{hasDraft ? "Send to" : "Have speak"}</span>}
+        {cast.length > 1 &&
+          cast.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => onAnswer(c.id)}
+              disabled={busy}
+              className="px-2.5 py-1 rounded-full border border-ink-700 text-slate-300 hover:border-accent/50 hover:bg-accent/10 disabled:opacity-40"
+            >
+              {c.name}
+            </button>
+          ))}
+        <button onClick={() => setOpen(!open)} className="ml-auto hover:text-slate-300">
+          {open ? "done" : "cast"}
+        </button>
+      </div>
+      {open && (
+        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+          <span>In the scene</span>
+          {characters
+            .filter((c) => c.id !== ownerId)
+            .map((c) => (
+              <button
+                key={c.id}
+                onClick={() => toggle(c.id)}
+                className={`px-2.5 py-1 rounded-full border transition ${
+                  memberIds.includes(c.id)
+                    ? "border-accent/50 bg-accent/10 text-slate-200"
+                    : "border-ink-800 hover:border-ink-700"
+                }`}
+              >
+                {c.name}
+              </button>
+            ))}
+        </div>
+      )}
     </div>
   );
 }

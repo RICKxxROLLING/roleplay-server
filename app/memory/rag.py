@@ -419,12 +419,16 @@ async def probe(
     return ProbeResult(results=results, candidates=len(candidates))
 
 
-def render(hits: list[Hit], char_name: str, user_name: str) -> list[str]:
+def render(
+    hits: list[Hit], char_name: str, user_name: str, speakers: dict[int, str] | None = None
+) -> list[str]:
     """Speaker-label each hit. Unattributed lines get read as narration and the
-    model loses track of who said what."""
+    model loses track of who said what. `speakers` (message id -> name) names
+    the writer of each line in a group chat."""
     out = []
     for h in hits:
-        speaker = user_name if h.role == "user" else char_name
+        speaker = (speakers or {}).get(h.message_id) or (
+            user_name if h.role == "user" else char_name)
         text = h.content.strip()
         if text:
             out.append(f"{speaker}: {text}")

@@ -98,6 +98,7 @@ export default function App() {
         onOpenNav={() => setNavOpen(true)}
         sessionId={activeId}
         personas={personas}
+        characters={characters}
         onOpenSettings={() => setPanel("settings")}
         onOpenMemory={() => setPanel("memory")}
         onDirty={refresh}
@@ -139,6 +140,7 @@ export default function App() {
       <NewChatDialog
         open={newChatFor !== null}
         character={newChatFor}
+        characters={characters}
         personas={personas}
         onClose={() => setNewChatFor(null)}
         onCreated={async (id) => {

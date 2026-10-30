@@ -80,6 +80,11 @@ export const api = {
     j(`/sessions/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteSession: (id) => j(`/sessions/${id}`, { method: "DELETE" }),
   inspectPrompt: (id) => j(`/sessions/${id}/prompt`),
+  setMembers: (id, memberIds) =>
+    j(`/sessions/${id}/members`, {
+      method: "PUT",
+      body: JSON.stringify({ member_ids: memberIds }),
+    }),
 
   editMessage: (sid, mid, content) =>
     j(`/sessions/${sid}/messages/${mid}`, {

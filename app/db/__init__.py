@@ -6,6 +6,7 @@ from .models import (
     Message,
     MessageEmbedding,
     Persona,
+    SessionMember,
     World,
 )
 
@@ -20,5 +21,6 @@ __all__ = [
     "Message",
     "MessageEmbedding",
     "Persona",
+    "SessionMember",
     "World",
 ]

@@ -13,16 +13,35 @@ from sqlalchemy.orm import Session as DbSession
 
 from ..cards.models import CharacterCard
 from ..config import settings
-from ..db.models import ChatSession, Message
+from ..db.models import Character, ChatSession, Message
 from ..llm import GenerationParams, get_client
 from ..memory import memory_manager, rag
-from ..memory.scene import update_scene
+from ..memory.scene import blank as blank_scene, update_scene
 from ..prompt import build_prompt, tokens
+from . import group
 from .guard import first_person_narration, slipped_into_first_person, strip_user_actions
 
 
-def _card_of(session: ChatSession) -> CharacterCard:
-    return CharacterCard.model_validate(session.character.card or {})
+def _card_of(character: Character) -> CharacterCard:
+    return CharacterCard.model_validate(character.card or {})
+
+
+#: How much of another character's description a speaker gets. Enough to know
+#: who they are; their full card is theirs to play, not the speaker's.
+OTHER_BLURB_CHARS = 240
+
+
+def _blurb(card: CharacterCard) -> str:
+    text = " ".join((card.description or "").split())
+    if len(text) <= OTHER_BLURB_CHARS:
+        return text
+    cut = text[:OTHER_BLURB_CHARS]
+    end = cut.rfind(". ")
+    return cut[: end + 1] if end > OTHER_BLURB_CHARS // 2 else cut.rsplit(" ", 1)[0] + "..."
+
+
+def _others(session: ChatSession, speaker: Character) -> list[tuple[str, str]]:
+    return [(c.name, _blurb(_card_of(c))) for c in group.cast(session) if c.id != speaker.id]
 
 
 async def build_turn_prompt(
@@ -30,9 +49,14 @@ async def build_turn_prompt(
     overrides: dict | None = None,
     db: DbSession | None = None,
     exclude_ids: set[int] | None = None,
+    speaker: Character | None = None,
 ):
-    card = _card_of(session)
-    ctx = await memory_manager.build_context(session, card, db=db, exclude_ids=exclude_ids)
+    """`speaker` writes the reply; None is the session's own character."""
+    speaker = speaker or session.character
+    card = _card_of(speaker)
+    ctx = await memory_manager.build_context(
+        session, card, db=db, exclude_ids=exclude_ids, speaker=speaker
+    )
     persona = session.persona
     return card, ctx, build_prompt(
         card=card,
@@ -54,6 +78,7 @@ async def build_turn_prompt(
         # A swipe replaces the last reply, so it starts from the scene before it.
         scene=(session.scene_prev if exclude_ids else session.scene)
         if settings.scene_enabled else None,
+        others=_others(session, speaker),
     )
 
 
@@ -95,11 +120,20 @@ def _guarded(reply: str, session: ChatSession, card: CharacterCard) -> tuple[str
     if not settings.guard_user_actions:
         return reply, 0
     user_name = session.persona.name if session.persona else "You"
-    return strip_user_actions(reply, user_name, card.name)
+    reply, removed = strip_user_actions(reply, user_name, card.name)
+    # In a group the other characters speak in their own turns, so the same
+    # rule holds for them: the speaker writing their actions and lines would
+    # teach every later prompt that it may.
+    for other in group.cast(session):
+        if other.name != card.name:
+            reply, more = strip_user_actions(reply, other.name, card.name)
+            removed += more
+    return reply, removed
 
 
 def _persist(
-    db: DbSession, session: ChatSession, reply: str, swipe_of: Message | None
+    db: DbSession, session: ChatSession, reply: str, swipe_of: Message | None,
+    speaker: Character | None = None,
 ) -> bool:
     """Save `reply` as a new message or as another swipe. False if empty."""
     if not reply:
@@ -107,7 +141,8 @@ def _persist(
     if swipe_of is not None:
         add_swipe(swipe_of, reply)
     else:
-        db.add(Message(session_id=session.id, role="assistant", content=reply))
+        db.add(Message(session_id=session.id, role="assistant", content=reply,
+                       speaker_id=speaker.id if speaker else None))
     db.commit()
     return True
 
@@ -131,15 +166,29 @@ async def stream_reply(
     session: ChatSession,
     overrides: dict | None = None,
     swipe_of: Message | None = None,
+    speaker: Character | None = None,
 ) -> AsyncIterator[dict]:
     """Stream the character's next reply, persist it, then update memory.
 
     With `swipe_of` (the session's last reply) the new text is added to that
     message as another swipe instead of becoming a new message, and the reply
     being replaced is left out of the prompt.
+
+    `speaker` picks who answers in a group chat; by default the character the
+    user's message names, else whoever has waited longest (chat/group.py). A
+    swipe is always re-rolled by the character who wrote it.
     """
+    user_text = next((m.content for m in reversed(session.messages) if m.role == "user"), "")
+    if swipe_of is not None:
+        speaker = group.by_id(session, group.speaker_id(session, swipe_of)) or session.character
+    elif speaker is None:
+        speaker = group.choose_speaker(session, user_text)
+    if group.is_group(session):
+        yield {"type": "speaker", "id": speaker.id, "name": speaker.name}
+
     card, ctx, built = await build_turn_prompt(
-        session, overrides, db=db, exclude_ids={swipe_of.id} if swipe_of else None
+        session, overrides, db=db, exclude_ids={swipe_of.id} if swipe_of else None,
+        speaker=speaker,
     )
     if ctx.retrieval_error:
         yield {
@@ -161,10 +210,15 @@ async def stream_reply(
     # after a double slip on turn one: the redo fired on every later turn,
     # doubling GPU time, and every reply stayed first person. Regenerating or
     # editing that reply is what recovers such a chat.
+    # The greeting is the reference itself, so it never counts as drift; in a
+    # group only the speaker's own last reply does.
+    first = session.messages[0] if session.messages else None
+    greeting_id = first.id if first is not None and first.role == "assistant" else None
     prior = [m for m in session.messages
-             if m.role == "assistant" and (swipe_of is None or m.id != swipe_of.id)]
-    # prior[0] is the greeting, the reference itself, so it never counts as drift.
-    drifted = len(prior) > 1 and slipped_into_first_person(
+             if m.role == "assistant" and m.id != greeting_id
+             and group.speaker_id(session, m) == speaker.id
+             and (swipe_of is None or m.id != swipe_of.id)]
+    drifted = bool(prior) and slipped_into_first_person(
         prior[-1].content, card.first_mes
     )
     first_try: tuple[str, str, int] | None = None
@@ -215,7 +269,7 @@ async def stream_reply(
         # written so it can be edited, continued or swiped rather than lost.
         # No awaits from here: a closing generator may not suspend again.
         partial, _removed = _guarded(_without_label("".join(collected), card), session, card)
-        _persist(db, session, partial, swipe_of)
+        _persist(db, session, partial, swipe_of, speaker)
         raise
 
     # The UI reloads the stored message when the turn ends, so the streamed
@@ -228,15 +282,16 @@ async def stream_reply(
         yield {"type": "error", "message": "The reply only narrated your own actions, so "
                "nothing was kept. Try Regenerate."}
 
-    if not _persist(db, session, reply, swipe_of):
+    if not _persist(db, session, reply, swipe_of, speaker):
         return
 
     # --- Scene state: cheap, best-effort, and never allowed to break the turn ---
     if settings.scene_enabled:
         try:
             base = session.scene_prev if swipe_of is not None else session.scene
-            user_text = next((m.content for m in reversed(session.messages)
-                              if m.role == "user"), "")
+            if base is None:
+                base = blank_scene(", ".join(c.name for c in group.cast(session)),
+                                   session.persona.name if session.persona else "You")
             new_scene = await update_scene(
                 base, user_text, reply, card,
                 session.persona.name if session.persona else "You",
@@ -271,7 +326,9 @@ async def stream_reply(
     if memory_manager.should_summarize(session):
         yield {"type": "memory", "status": "compressing"}
         try:
-            folded = await memory_manager.summarize_now(db, session, card)
+            # Folded from the session character's side, whoever spoke last.
+            folded = await memory_manager.summarize_now(
+                db, session, _card_of(session.character))
             yield {"type": "memory", "status": "done", "folded": folded}
         except Exception as exc:
             # A failed fold must never break the chat -- the turn is already
