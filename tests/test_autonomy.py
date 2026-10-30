@@ -207,12 +207,12 @@ def test_a_long_silence_tells_the_model_the_time(client, session, llm):
             m.created_at = (dt.datetime.now(UTC) - dt.timedelta(hours=20)).replace(tzinfo=None)
         db.commit()
     client.post(f"/api/sessions/{session}/messages", json={"content": "Morning!"})
-    p = [x for x in llm.prompts if "Morning!" in x and "track the scene" not in x.lower()][0]
+    p = [x for x in llm.prompts if "Morning!" in x and "track the scene" not in x.lower() and "private journal" not in x.lower()][0]
     assert "have passed since the previous message" in p and "about 20 hours" in p
 
 
 def test_mid_conversation_says_nothing_about_time(client, session, llm):
     client.post(f"/api/sessions/{session}/messages", json={"content": "Hi."})
     client.post(f"/api/sessions/{session}/messages", json={"content": "And another."})
-    p = [x for x in llm.prompts if "And another." in x and "track the scene" not in x.lower()][0]
+    p = [x for x in llm.prompts if "And another." in x and "track the scene" not in x.lower() and "private journal" not in x.lower()][0]
     assert "have passed since" not in p

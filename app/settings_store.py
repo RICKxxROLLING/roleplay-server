@@ -42,6 +42,7 @@ PERSISTABLE: dict[str, type] = {
     "summary_temperature": float,
     "facts_enabled": bool,
     "scene_enabled": bool,
+    "thoughts_enabled": bool,
     "timezone": str,
     "autonomy_quiet_start": str,
     "autonomy_quiet_end": str,

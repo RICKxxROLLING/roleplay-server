@@ -6,7 +6,7 @@ from conftest import sse_events
 from app.prompt import build_prompt
 from app.cards.models import CharacterCard
 
-SIDE_TASKS = ("memory log", "fact sheet", "track the scene")
+SIDE_TASKS = ("memory log", "fact sheet", "track the scene", "private journal")
 
 
 def chat_prompts(llm):

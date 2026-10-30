@@ -5,7 +5,7 @@ from conftest import sse_events
 
 from app.chat.texting import TO_STORY, TO_TEXTING, clean_texts
 
-SIDE = ("memory log", "fact sheet", "track the scene")
+SIDE = ("memory log", "fact sheet", "track the scene", "private journal")
 
 
 def chat_prompts(llm):

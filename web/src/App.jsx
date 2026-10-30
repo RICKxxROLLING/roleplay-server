@@ -11,6 +11,7 @@ import CharacterEditor from "./components/CharacterEditor";
 import NewCharacterDialog from "./components/NewCharacterDialog";
 import ModelManager from "./components/ModelManager";
 import LoginScreen from "./components/LoginScreen";
+import JournalPanel from "./components/JournalPanel";
 
 export default function App() {
   const [characters, setCharacters] = useState([]);
@@ -122,6 +123,7 @@ export default function App() {
         characters={characters}
         onOpenSettings={() => setPanel("settings")}
         onOpenMemory={() => setPanel("memory")}
+        onOpenJournal={() => setPanel("journal")}
         onDirty={refresh}
       />
 
@@ -130,6 +132,12 @@ export default function App() {
         onClose={() => setPanel(null)}
         sessionId={activeId}
         onOpenModels={() => setPanel("models")}
+      />
+
+      <JournalPanel
+        open={panel === "journal"}
+        onClose={() => setPanel(null)}
+        sessionId={activeId}
       />
 
       <MemoryPanel

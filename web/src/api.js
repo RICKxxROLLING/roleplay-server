@@ -86,6 +86,8 @@ export const api = {
     j(`/sessions/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteSession: (id) => j(`/sessions/${id}`, { method: "DELETE" }),
   inspectPrompt: (id) => j(`/sessions/${id}/prompt`),
+  journal: (id) => j(`/sessions/${id}/journal`),
+  forgetJournal: (id, charId) => j(`/sessions/${id}/journal/${charId}`, { method: "DELETE" }),
   writeFirst: (id, force = false) =>
     j(`/sessions/${id}/write-first`, { method: "POST", body: JSON.stringify({ force }) }),
   pushKey: () => j("/push/key"),

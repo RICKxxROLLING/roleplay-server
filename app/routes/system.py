@@ -127,6 +127,8 @@ class SettingsPatch(BaseModel):
     facts_enabled: bool | None = None
     scene_enabled: bool | None = None
 
+    thoughts_enabled: bool | None = None
+
     # Characters writing first. Times are "HH:MM" in the owner's zone.
     timezone: str | None = Field(None, max_length=64)
     autonomy_quiet_start: str | None = Field(None, pattern=r"^\d{1,2}:\d{2}$")

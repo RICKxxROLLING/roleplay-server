@@ -16,6 +16,7 @@ from ..config import settings
 from ..db.models import Character, ChatSession, Message
 from ..llm import GenerationParams, get_client
 from ..memory import memory_manager, rag
+from ..memory import thoughts
 from ..memory.scene import blank as blank_scene, update_scene
 from ..prompt import build_prompt, tokens
 from . import autonomy, group, texting
@@ -90,6 +91,8 @@ async def build_turn_prompt(
         time_note="" if initiative or exclude_ids else autonomy.time_line(session),
         texting=session.mode == "texting",
         mode_note=texting.mode_note(session, exclude_ids),
+        private_view=thoughts.latest_view(db, session.id, speaker.id, exclude_ids)
+        if settings.thoughts_enabled and db is not None else "",
     )
 
 
@@ -343,6 +346,17 @@ async def stream_reply(
         except Exception:
             pass
     db.refresh(session)
+
+    # --- The character's own thoughts: private, never shown mid-chat ---
+    if settings.thoughts_enabled:
+        try:
+            saved = swipe_of if swipe_of is not None else session.messages[-1]
+            await thoughts.after_reply(
+                db, session, speaker, saved, "" if initiative else user_text,
+                session.persona.name if session.persona else "You",
+            )
+        except Exception:
+            pass
 
     # --- Phase 4: embed both sides of the turn ---
     # Deliberately *after* the reply is persisted rather than before generation:

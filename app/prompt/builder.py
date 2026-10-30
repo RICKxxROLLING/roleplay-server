@@ -182,6 +182,7 @@ def build_prompt(
     texting: bool = False,
     mode_note: str = "",
     texting_examples: bool = True,
+    private_view: str = "",
 ) -> BuiltPrompt:
     """`history` is [(role, content), ...] oldest-first, excluding the pending reply.
 
@@ -261,6 +262,12 @@ def build_prompt(
     facts_block = f"Known facts:\n{facts}" if facts else ""
     used += estimate_tokens(facts_block)
 
+    # --- The character's own opinion of the user (memory/thoughts.py) ---
+    # Third person only, by design: first person in context pulls the narrator into it.
+    view = substitute(private_view.strip(), char, user_name)
+    view_block = f"What {char} privately thinks of {user_name}, unknown to {user_name}: {view}" if view else ""
+    used += estimate_tokens(view_block)
+
     # --- Pinned moments: chosen by the user, so they sit above recall ---
     pinned = [t for t in (pinned or []) if t.strip()]
     pinned_block = ""
@@ -322,7 +329,8 @@ def build_prompt(
     # Everything above the history is one preamble: for Alpaca that renders
     # exactly as before, and chat formats need it inside a single system turn.
     preamble = "\n\n".join(
-        b for b in (head, example, summary_block, facts_block, pinned_block, retrieved_block) if b
+        b for b in (head, example, summary_block, facts_block, view_block, pinned_block,
+                    retrieved_block) if b
     )
     sections = [fmt.system.format(text=preamble)]
     sections.extend(kept)

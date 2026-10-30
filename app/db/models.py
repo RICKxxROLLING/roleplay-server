@@ -254,3 +254,22 @@ class Notification(Base):
     delivered: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
 
+
+class CharacterThought(Base):
+    """One private journal entry, written after a reply (memory/thoughts.py).
+
+    `view` is the character's opinion of the user at that point; the newest one
+    per (session, character) is what the next prompt reads. Tied to the reply
+    that prompted it, so a swipe replaces its entry rather than adding another.
+    """
+
+    __tablename__ = "character_thoughts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("sessions.id"), index=True)
+    character_id: Mapped[int] = mapped_column(ForeignKey("characters.id"), index=True)
+    message_id: Mapped[int | None] = mapped_column(ForeignKey("messages.id"), nullable=True)
+    journal: Mapped[str] = mapped_column(Text)
+    view: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+

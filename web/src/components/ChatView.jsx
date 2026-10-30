@@ -8,6 +8,7 @@ export default function ChatView({
   characters = [],
   onOpenSettings,
   onOpenMemory,
+  onOpenJournal,
   onDirty,
   onOpenNav,
 }) {
@@ -355,6 +356,13 @@ export default function ChatView({
             className="text-xs sm:text-sm px-2 sm:px-3 py-1.5 rounded-lg border border-ink-700 hover:bg-ink-850"
           >
             Memory
+          </button>
+          <button
+            onClick={onOpenJournal}
+            title="What the character privately thinks -- never shown in the chat"
+            className="text-xs sm:text-sm px-2 sm:px-3 py-1.5 rounded-lg border border-ink-700 hover:bg-ink-850"
+          >
+            Journal
           </button>
           <button
             onClick={onOpenSettings}

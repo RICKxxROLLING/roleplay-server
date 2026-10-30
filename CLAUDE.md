@@ -63,6 +63,7 @@ app/
     summarizer.py       fold prompt + LLM call
     lorebook.py         keyword matching, budget eviction
     scene.py            location / time / weather / present, updated after each reply
+    thoughts.py         the character's private journal and view of the user, after each reply
     rag.py              message embedding, cosine search, budget eviction
   chat/orchestrator.py  per-turn flow, typed stream events
   chat/guard.py         strips narration of the user's actions before a reply is stored
@@ -328,6 +329,22 @@ long scene-setting that hit the cap, and these worlds have no phones (Garrick wr
 parchment); "brief, the world's own medium, straight to the point" gave two short in-voice
 texts. Ordinary replies also get "It is now ...; N hours have passed" after an hour's silence,
 so a character doesn't greet a midnight return with "good morning".
+
+**A character's thoughts are two outputs: a journal for the owner, a view for the prompt
+(`memory/thoughts.py`).** After each reply a short pass (~2 s on the 2080) writes a journal
+entry in the character's own voice -- shown only in the Journal panel -- and a one-line,
+third-person "Privately, Dina ..." view of the user. Only the view goes back into prompts,
+and `parse_thought` refuses any view with I/me/my in it, because first person in context is
+what pulls a narrator into first person. Each pass sees the previous view, so opinions move
+gradually -- the base for earned trust. Walked through two live transcripts on Stheno: the
+first wording escalated every pass (Dina: "anchor" -> "beacon of hope" -> "revere" -> "North
+Star" in seven ordinary exchanges; "I loved him" over cocoa) and once wrote Garrick's journal
+as Riley. Naming whose journal it is, asking for plain words, and "most moments change an
+opinion only a little" fixed both: 10/10 parsed, Dina's view stayed grounded, Garrick's
+barely moved between two quiet exchanges. Feeding the view back did not leak ("privately" 0
+times) and did not change Dina's format: her unquoted-speech rate was 2/6 without a view and
+2/6 with it -- an earlier 3/4 vs 0/4 was noise. A swipe replaces its reply's entry; Forget
+starts a character's opinion afresh.
 
 **Texting mode replaces the prose directives instead of adding to them (`chat/texting.py`).**
 Per chat, "story" or "texting". In texting the system line and the tail ask for the words

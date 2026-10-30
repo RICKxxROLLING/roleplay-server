@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     autonomy_check_minutes: int = 15
     # The background loop. Tests turn it off; the per-chat switch is the real control.
     autonomy_scheduler: bool = True
+
+    # A private journal and opinion of the user after each reply (memory/thoughts.py).
+    thoughts_enabled: bool = True
     # Strip sentences narrating the user's own actions before a reply is
     # stored. On by default: prompting alone measured 4-9 such turns in 16 on
     # an 8B, and each one stored teaches the next. See chat/guard.py.

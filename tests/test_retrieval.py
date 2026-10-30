@@ -30,7 +30,7 @@ def chat(client, session, text):
 
 def last_turn_prompt(llm) -> str:
     """The most recent chat prompt -- not a summary, fact or scene call."""
-    side_tasks = ("memory log", "fact sheet", "track the scene")
+    side_tasks = ("memory log", "fact sheet", "track the scene", "private journal")
     return next(p for p in reversed(llm.prompts)
                 if not any(t in p.lower() for t in side_tasks))
 

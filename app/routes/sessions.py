@@ -610,6 +610,9 @@ def delete_session(session_id: int, db: DbSession = Depends(get_db)) -> dict:
         raise HTTPException(404, "Session not found")
     # Waiting notifications about it would open a chat that no longer exists.
     db.query(Notification).filter(Notification.session_id == session_id).delete()
+    from ..db.models import CharacterThought
+
+    db.query(CharacterThought).filter(CharacterThought.session_id == session_id).delete()
     db.delete(s)
     db.commit()
     return {"ok": True}
@@ -637,3 +640,40 @@ def patch_scene(session_id: int, body: ScenePatch, db: DbSession = Depends(get_d
     s.scene = scene
     db.commit()
     return {"scene": s.scene}
+
+
+@router.get("/{session_id}/journal")
+def journal(session_id: int, db: DbSession = Depends(get_db)) -> list[dict]:
+    """Each character's private journal in this chat, newest first, with their
+    current view of the user on top (memory/thoughts.py). Never shown mid-chat."""
+    from ..db.models import CharacterThought
+
+    s = db.get(ChatSession, session_id)
+    if not s:
+        raise HTTPException(404, "Session not found")
+    out = []
+    for c in group.cast(s):
+        rows = (db.query(CharacterThought)
+                .filter(CharacterThought.session_id == s.id, CharacterThought.character_id == c.id)
+                .order_by(CharacterThought.id.desc()).all())
+        out.append({
+            "character_id": c.id,
+            "name": c.name,
+            "view": rows[0].view if rows else "",
+            "entries": [{"id": t.id, "journal": t.journal, "view": t.view, "message_id": t.message_id,
+                         "created_at": t.created_at.isoformat() if t.created_at else None} for t in rows],
+        })
+    return out
+
+
+@router.delete("/{session_id}/journal/{character_id}")
+def forget_journal(session_id: int, character_id: int, db: DbSession = Depends(get_db)) -> dict:
+    """Wipe a character's private thoughts in this chat: they start forming an
+    opinion of the user afresh from the next reply."""
+    from ..db.models import CharacterThought
+
+    n = (db.query(CharacterThought)
+         .filter(CharacterThought.session_id == session_id, CharacterThought.character_id == character_id)
+         .delete())
+    db.commit()
+    return {"forgotten": n}

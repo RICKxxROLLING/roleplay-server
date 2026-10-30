@@ -137,6 +137,7 @@ class MockLLM(LLMClient):
         self.replies: list[str] = []
         self.scene_calls: list[str] = []
         self.draft_calls: list[str] = []
+        self.thought_calls: list[str] = []
         # A card draft as the model writes it, after the prefilled "Name:".
         self.draft_reply = DRAFT_REPLY
         self.draft_replies: list[str] = []
@@ -145,6 +146,13 @@ class MockLLM(LLMClient):
 
     async def generate_stream(self, prompt, params):
         self.prompts.append(prompt)
+        if "writing in your own private journal" in prompt.lower():
+            self.thought_calls.append(prompt)
+            name = prompt.split("You are ", 1)[1].split(",", 1)[0]
+            n = len(self.thought_calls)
+            yield (f" The archive was quiet, and that conversation stayed with me longer than it should. "
+                   f"Entry {n}.\nView: Privately, {name} is starting to trust them, a little ({n}).")
+            return
         if "you write character cards" in prompt.lower():
             self.draft_calls.append(prompt)
             yield self.draft_replies.pop(0) if self.draft_replies else self.draft_reply
@@ -217,10 +225,11 @@ def llm(monkeypatch):
     import app.chat.orchestrator as orch
     import app.memory.scene as scene
     import app.memory.summarizer as summarizer
+    import app.memory.thoughts as thoughts_mod
     import app.routes.system as system
 
     mock = MockLLM()
-    for module in (autonomy, creator, orch, scene, summarizer, system):
+    for module in (autonomy, creator, orch, scene, summarizer, system, thoughts_mod):
         monkeypatch.setattr(module, "get_client", lambda: mock)
     return mock
 

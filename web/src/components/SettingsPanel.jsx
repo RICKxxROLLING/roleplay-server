@@ -175,6 +175,19 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
               </span>
             </label>
 
+            <label className="flex items-center gap-2.5 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={s.thoughts_enabled}
+                onChange={(e) => update("thoughts_enabled", e.target.checked)}
+                className="accent-accent w-4 h-4"
+              />
+              Their own thoughts
+              <span className="text-xs text-slate-600">
+                a private journal and opinion of you, after each reply · about 2 s
+              </span>
+            </label>
+
             <AutonomySettings s={s} update={update} />
 
             <label className="flex items-center gap-2.5 text-sm cursor-pointer">

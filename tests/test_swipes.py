@@ -32,7 +32,7 @@ def test_regenerate_adds_a_swipe_instead_of_replacing(client, session, llm):
 def test_the_replaced_reply_is_not_in_the_regenerate_prompt(client, session, llm):
     chat(client, session)
     regenerate(client, session)
-    chat_prompts = [p for p in llm.prompts if "track the scene" not in p.lower()]
+    chat_prompts = [p for p in llm.prompts if "track the scene" not in p.lower() and "private journal" not in p.lower()]
     assert "reply 1." not in chat_prompts[-1]
 
 
