@@ -344,6 +344,9 @@ there?"). The first reply after a switch gets one tail line -- "have gone their 
 ways... texting" or "together in person again" -- worked out from whether the last reply
 was `texted`. The scene tracker pauses while texting so the story's scene is intact when
 they meet again. Replies cap at 200 tokens; the UI draws each line as a phone bubble.
+Live on the test box the format held (5/5 texts clean) but texts 2-3 drifted back into the
+story scene the last prose reply ended in, so "they are apart" now rides in the tail on
+every texting reply, not only the first after a switch (4/4 apart vs 3/4, same chat).
 
 **Push notifications are an empty ping (`app/push.py`, `web/public/sw.js`).** A sleeping phone
 can only be woken through its vendor's relay (Apple, Google, Mozilla), so the owner chose:

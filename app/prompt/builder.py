@@ -73,9 +73,15 @@ TEXTING_SYSTEM = (
     "Write only the texts {{char}} sends: the words they type, the way {{char}} really "
     "texts -- short and casual, in their own voice, with their own humor and habits."
 )
+# "Apart" is said on every texting reply, not just the first after a switch.
+# Seen live: a story reply that ended with them together at the gate pulled the
+# second and third texts back into that scene ("JJ, stay close to Uncle Riley").
+# Offline on the same chat, the every-turn line kept 4/4 replies texting from
+# apart, against 3/4 without it, and both answered the user's latest text.
 TEXTING_TAIL = (
-    "Reply as {{char}} with their next text to {{user}}: just the words they type, short "
-    "and casual. One to three short messages, each on its own line."
+    "{{char}} and {{user}} are apart; {{char}} is answering {{user}}'s latest text from "
+    "wherever they are. Reply as {{char}} with their next text to {{user}}: just the words "
+    "they type, short and casual. One to three short messages, each on its own line."
 )
 
 INSTRUCTION = "### Instruction:"
