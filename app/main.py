@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import mimetypes
 import os
 from contextlib import asynccontextmanager
 
@@ -15,7 +16,7 @@ from .db import SessionLocal, init_db
 from .llm import get_client
 from . import auth
 from .routes import auth as auth_routes
-from .routes import characters, personas, sessions, system, worlds
+from .routes import characters, personas, push, sessions, system, worlds
 
 
 @asynccontextmanager
@@ -87,9 +88,12 @@ app.include_router(characters.router, prefix=API)
 app.include_router(personas.router, prefix=API)
 app.include_router(worlds.router, prefix=API)
 app.include_router(sessions.router, prefix=API)
+app.include_router(push.router, prefix=API)
 
 
 # --- Static UI (built by the Docker web stage into /app/static) ---
+# Not in every platform's table; a manifest served as octet-stream can fail to install.
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 _static = settings.static_dir
 _has_ui = os.path.isdir(_static) and os.path.isfile(os.path.join(_static, "index.html"))
 
@@ -113,7 +117,10 @@ if _has_ui:
         candidate = os.path.normpath(os.path.join(_static, path))
         # Guard against ../ escaping the static root.
         if candidate.startswith(_static) and os.path.isfile(candidate):
-            return FileResponse(candidate)
+            # The service worker must be re-checked on every load, or a phone
+            # can run a stale one for a day after an update.
+            headers = {"Cache-Control": "no-cache"} if path == "sw.js" else None
+            return FileResponse(candidate, headers=headers)
         return FileResponse(os.path.join(_static, "index.html"))
 
 else:

@@ -12,6 +12,7 @@ from ..cards.models import CharacterCard
 from ..chat import build_turn_prompt, group, stream_reply
 from ..config import settings
 from ..db import Character, ChatSession, Message, Persona, SessionLocal, SessionMember, get_db
+from ..db.models import Notification
 from ..memory import memory_manager, rag
 from ..prompt import estimate_tokens, substitute, tokens
 
@@ -560,6 +561,8 @@ def delete_session(session_id: int, db: DbSession = Depends(get_db)) -> dict:
     s = db.get(ChatSession, session_id)
     if not s:
         raise HTTPException(404, "Session not found")
+    # Waiting notifications about it would open a chat that no longer exists.
+    db.query(Notification).filter(Notification.session_id == session_id).delete()
     db.delete(s)
     db.commit()
     return {"ok": True}

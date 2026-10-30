@@ -216,3 +216,31 @@ class MessageEmbedding(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
 
     message: Mapped[Message] = relationship(back_populates="embedding")
+
+
+class PushSubscription(Base):
+    """One device that turned notifications on (app/push.py).
+
+    Only the endpoint is kept: pushes are sent empty, so the browser's payload
+    keys (p256dh/auth) would never be used and are not stored.
+    """
+
+    __tablename__ = "push_subscriptions"
+
+    endpoint: Mapped[str] = mapped_column(String(1000), primary_key=True)
+    label: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+
+
+class Notification(Base):
+    """Waiting for a device to fetch it after an empty push wakes it."""
+
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int | None] = mapped_column(ForeignKey("sessions.id", ondelete="SET NULL"), nullable=True)
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text, default="")
+    delivered: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+

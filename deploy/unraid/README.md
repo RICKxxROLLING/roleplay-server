@@ -215,6 +215,26 @@ order; each one stands on its own if another fails.
    two-factor on regardless: they still protect the server from your LAN and if an Access
    policy is ever loosened by mistake.
 
+### The app on your phone
+
+Through the public HTTPS address the server is an installable app:
+
+- **iPhone:** open it in Safari → Share → **Add to Home Screen**, then open it from the icon.
+  Notifications on iPhone work only from the Home Screen app (iOS 16.4 or later).
+- **Android:** Chrome offers **Install app** in its menu (or a banner).
+
+Then **Settings → Notifications → Turn on for this device**, and **Send a test**. Each device
+is turned on separately and listed there.
+
+Notifications travel as an *empty* wake-up through Apple's, Google's or Mozilla's push
+service — no name, no text. The phone then asks this server what happened. If Cloudflare
+Access is in front, keep its session duration long (a week or a month): when the Access
+session has expired, the phone can't fetch the details and shows a generic "Something new is
+waiting" instead; opening the app signs you back in.
+
+On plain LAN HTTP (`http://10.x.x.x:8000`) none of this applies — browsers only allow
+installing and notifications over HTTPS — and the app works as an ordinary web page.
+
 What the server does on its side:
 
 - **Logins are throttled per visitor.** Five wrong attempts lock that visitor out for a

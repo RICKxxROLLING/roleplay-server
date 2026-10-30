@@ -6,7 +6,9 @@ Context for Claude Code working on this repo. Read this before changing anything
 
 A fully local AI roleplay chat server. FastAPI backend + React UI, talking to a model on the
 user's own GPU. No cloud calls, ever — that's the whole point of the project, so never
-introduce a dependency that phones out at runtime.
+introduce a dependency that phones out at runtime. The one exception, chosen by the owner:
+push notifications, opt-in per device, sent **empty** through the browser's relay (see
+"Push notifications are an empty ping" below). Never put chat content in a push.
 
 Deployment target is **Unraid** (Docker Compose or native Docker templates). Development
 happens on **Windows**.
@@ -306,6 +308,20 @@ stolen session cannot swap or remove the factor; enabling signs out every other 
 Login checks both and answers one generic error, so the password can't be confirmed
 without the code. No QR code: that needs an encoder this project would have to add -- the
 key is shown grouped, plus an `otpauth://` link that opens the app on a phone.
+
+**Push notifications are an empty ping (`app/push.py`, `web/public/sw.js`).** A sleeping phone
+can only be woken through its vendor's relay (Apple, Google, Mozilla), so the owner chose:
+the push carries no payload at all, and the service worker then fetches `/api/push/pending`
+from this server over the signed-in connection. The relay learns only that and when. Empty
+pushes need no RFC 8291 payload encryption, which keeps this dependency-free; the VAPID JWT
+the relays require is ES256, implemented in integer arithmetic with RFC 6979 nonces and
+pinned to that RFC's P-256 test vectors. Subscriptions are accepted only on the vendors'
+relay hosts -- an endpoint is a URL the server POSTs to, so anything else would make it a
+request forwarder. A 404/410 from the relay forgets the device. Browsers require a visible
+notification per push, so if the fetch fails the worker shows a generic one with no content.
+The worker never caches `/api`: a lost phone holds no chat. Service workers need HTTPS, so
+on plain LAN HTTP the app is a web page as before. `push.notify()` + `push.ping_all()` is the
+API Phase 3 (characters writing first) builds on; today only Settings' test uses it.
 
 **Cloudflare Access is configured in Cloudflare, not verified here.** Checking the Access
 JWT would mean fetching Cloudflare's signing keys at runtime -- a cloud call this project

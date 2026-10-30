@@ -86,6 +86,13 @@ export const api = {
     j(`/sessions/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteSession: (id) => j(`/sessions/${id}`, { method: "DELETE" }),
   inspectPrompt: (id) => j(`/sessions/${id}/prompt`),
+  pushKey: () => j("/push/key"),
+  pushSubscribe: (endpoint, label) =>
+    j("/push/subscribe", { method: "POST", body: JSON.stringify({ endpoint, label }) }),
+  pushUnsubscribe: (endpoint) =>
+    j("/push/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint }) }),
+  pushDevices: () => j("/push/devices"),
+  pushTest: () => j("/push/test", { method: "POST" }),
   setMembers: (id, memberIds) =>
     j(`/sessions/${id}/members`, {
       method: "PUT",

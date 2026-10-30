@@ -58,6 +58,20 @@ export default function App() {
     checkAuth();
   }, [checkAuth]);
 
+  // A tapped notification opens its chat: /?session=ID on a cold start, or a
+  // message from the service worker when the app is already running.
+  useEffect(() => {
+    const open = (url) => {
+      const id = Number(new URL(url, window.location.origin).searchParams.get("session"));
+      if (id) setActiveId(id);
+    };
+    open(window.location.href);
+    if (window.location.search) window.history.replaceState(null, "", "/");
+    const onMessage = (e) => e.data?.type === "open" && open(e.data.url);
+    navigator.serviceWorker?.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker?.removeEventListener("message", onMessage);
+  }, []);
+
   useEffect(() => {
     if (!authed) return;
     refresh();

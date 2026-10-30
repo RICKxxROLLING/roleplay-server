@@ -335,6 +335,7 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
 
           <PasswordSection />
           <TwoFactorSection />
+          <NotificationsSection />
 
           {sessionId && (
             <div className="pt-2 border-t border-ink-800">
@@ -518,6 +519,142 @@ function PasswordSection() {
       <p className="text-[11px] text-slate-600 leading-relaxed">
         One password for the whole server — there are no accounts. Changing or
         removing it signs out every device.
+      </p>
+    </div>
+  );
+}
+
+/** "Firefox on Linux", "iPhone" -- enough to tell devices apart in the list. */
+function deviceLabel() {
+  const ua = navigator.userAgent;
+  const os = /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Android"
+    : /Mac OS X/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : /Linux/.test(ua) ? "Linux" : "";
+  const browser = /Edg\//.test(ua) ? "Edge" : /Firefox\//.test(ua) ? "Firefox"
+    : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "Browser";
+  return os === "iPhone" || os === "iPad" ? os : `${browser}${os ? ` on ${os}` : ""}`;
+}
+
+const b64ToBytes = (s) => {
+  const raw = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (s.length % 4)) % 4));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+};
+
+/**
+ * Push notifications for this device (app/push.py). Pushes go out empty
+ * through the browser's relay; the device then fetches what happened from
+ * this server. Only possible over HTTPS, and on iPhone only from the app
+ * added to the Home Screen.
+ */
+function NotificationsSection() {
+  const [sub, setSub] = useState(undefined); // undefined = checking, null = off
+  const [devices, setDevices] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(null);
+
+  const supported = window.isSecureContext && "serviceWorker" in navigator && "PushManager" in window;
+  const ios = /iPhone|iPad/.test(navigator.userAgent);
+  const installed = window.matchMedia?.("(display-mode: standalone)").matches || navigator.standalone;
+
+  const load = () => api.pushDevices().then(setDevices).catch(() => {});
+  useEffect(() => {
+    load();
+    if (!supported) return setSub(null);
+    navigator.serviceWorker.ready
+      .then((reg) => reg.pushManager.getSubscription())
+      .then((s) => setSub(s || null))
+      .catch(() => setSub(null));
+  }, []);
+
+  async function run(fn) {
+    setBusy(true);
+    setNote(null);
+    try {
+      await fn();
+    } catch (e) {
+      setNote(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const turnOn = () => run(async () => {
+    if ((await Notification.requestPermission()) !== "granted")
+      throw new Error("Notifications are blocked for this site in the browser's settings.");
+    const reg = await navigator.serviceWorker.ready;
+    const { key } = await api.pushKey();
+    const s = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(key) });
+    await api.pushSubscribe(s.endpoint, deviceLabel());
+    setSub(s);
+    await load();
+    setNote("On. Try a test notification.");
+  });
+
+  const turnOff = () => run(async () => {
+    await api.pushUnsubscribe(sub.endpoint);
+    await sub.unsubscribe();
+    setSub(null);
+    await load();
+  });
+
+  const button = "text-sm px-3 py-1.5 rounded-lg border border-ink-700 hover:bg-ink-850 disabled:opacity-40";
+  const primary = "text-sm px-3 py-1.5 rounded-lg bg-accent/25 border border-accent/40 hover:bg-accent/35 disabled:opacity-40";
+
+  return (
+    <div className="pt-3 border-t border-ink-800 space-y-3">
+      <div className="text-sm">
+        Notifications
+        <span className="text-xs text-slate-600 ml-2">
+          {sub ? "on for this device" : "off for this device"}
+        </span>
+      </div>
+
+      {!window.isSecureContext ? (
+        <p className="text-xs text-slate-500">
+          Notifications and installing the app need HTTPS -- open this server through its public
+          (Cloudflare) address to turn them on.
+        </p>
+      ) : ios && !installed ? (
+        <p className="text-xs text-slate-500">
+          On iPhone, notifications work only from the app: tap Share → Add to Home Screen, open it
+          from there, and come back here.
+        </p>
+      ) : !supported ? (
+        <p className="text-xs text-slate-500">This browser can't receive push notifications.</p>
+      ) : (
+        <div className="flex items-center gap-2">
+          {sub ? (
+            <>
+              <button className={button} disabled={busy} onClick={() => run(async () => {
+                const r = await api.pushTest();
+                setNote(r.sent ? "Sent -- it should arrive in a few seconds." : "No device accepted it.");
+              })}>
+                Send a test
+              </button>
+              <button className={button} disabled={busy} onClick={turnOff}>Turn off here</button>
+            </>
+          ) : (
+            <button className={primary} disabled={busy || sub === undefined} onClick={turnOn}>
+              Turn on for this device
+            </button>
+          )}
+          {note && <span className="text-xs text-slate-500">{note}</span>}
+        </div>
+      )}
+
+      {devices.length > 0 && (
+        <ul className="text-xs text-slate-500 space-y-0.5">
+          {devices.map((d, i) => (
+            <li key={i}>
+              {d.label} <span className="text-slate-600">· since {d.since.slice(0, 10)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <p className="text-[11px] text-slate-600 leading-relaxed">
+        Each notification travels as an empty wake-up through your browser's push service (Apple,
+        Google or Mozilla); the phone then fetches who wrote and what from this server. The push
+        service never sees a name or a word of a chat.
       </p>
     </div>
   );
