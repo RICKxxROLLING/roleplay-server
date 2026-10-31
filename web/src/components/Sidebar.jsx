@@ -73,7 +73,10 @@ export default function Sidebar({
       )}
 
       <aside
-        className={`bg-ink-900 border-r border-ink-800 flex flex-col
+        // overflow-hidden: off-canvas on a phone, a long unbroken line (a full
+        // Hugging Face model name) spilled out of the hidden drawer and across
+        // the chat header. Seen live on an iPhone.
+        className={`bg-ink-900 border-r border-ink-800 flex flex-col overflow-hidden
           fixed inset-y-0 left-0 z-40 w-72 transition-transform duration-200
           ${open ? "translate-x-0" : "-translate-x-full"}
           md:static md:translate-x-0 md:shrink-0 md:z-auto`}
@@ -82,7 +85,7 @@ export default function Sidebar({
         <h1 className="font-semibold tracking-tight">Roleplay</h1>
         <button
           onClick={onManageModels}
-          className="mt-1.5 flex items-center gap-1.5 text-xs hover:text-slate-300 transition"
+          className="mt-1.5 flex items-center gap-1.5 text-xs hover:text-slate-300 transition w-full min-w-0"
           title="Manage models"
         >
           <span
@@ -90,7 +93,7 @@ export default function Sidebar({
               !health?.ok ? "bg-rose-400" : modelMissing ? "bg-amber-400" : "bg-emerald-400"
             }`}
           />
-          <span className="text-slate-500 truncate">
+          <span className="text-slate-500 truncate min-w-0">
             {!health?.ok
               ? "backend offline"
               : modelMissing

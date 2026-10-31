@@ -28,7 +28,12 @@ export default function App() {
   const [editingCharId, setEditingCharId] = useState(null);
   const [creatingChar, setCreatingChar] = useState(false);
   // Drawer state is only meaningful below md; above it the sidebar is static.
-  const [navOpen, setNavOpen] = useState(false);
+  // On a phone with no chat open, the drawer *is* the home screen: starting it
+  // closed left an empty "pick a character" page with the list one tap away.
+  const [navOpen, setNavOpen] = useState(true);
+  useEffect(() => {
+    if (activeId === null) setNavOpen(true);
+  }, [activeId]);
 
   const refresh = useCallback(async () => {
     const [c, s, p] = await Promise.all([
