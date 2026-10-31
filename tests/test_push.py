@@ -236,3 +236,21 @@ def test_the_contact_is_one_apple_accepts(client):
     assert sub == settings.push_contact
     assert sub.startswith(("mailto:", "https://"))
     assert not sub.rstrip("/").endswith((".invalid", ".test", ".localhost", ".local"))
+
+
+def test_the_page_is_never_served_stale(tmp_path, monkeypatch):
+    """index.html names the hashed bundle; a cached copy pins a browser to the old UI."""
+    import importlib
+
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "index.html").write_text("<html></html>")
+    from app.config import settings
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+    import app.main as main
+    main = importlib.reload(main)
+    from fastapi.testclient import TestClient
+    with TestClient(main.app) as c:
+        for path in ("/", "/some/client/route"):
+            assert c.get(path).headers.get("cache-control") == "no-cache", path
+    monkeypatch.undo()
+    importlib.reload(main)

@@ -105,6 +105,11 @@ app.include_router(bundle.router, prefix=API)
 # --- Static UI (built by the Docker web stage into /app/static) ---
 # Not in every platform's table; a manifest served as octet-stream can fail to install.
 mimetypes.add_type("application/manifest+json", ".webmanifest")
+# The page itself must be re-checked on every load: it names the hashed bundle,
+# so a cached copy keeps a phone on the old UI after an update -- seen on the
+# test box, where the browser kept serving the previous bundle after Update Stack.
+# The hashed assets under /assets are safe to cache; this is what points at them.
+_NO_CACHE = {"Cache-Control": "no-cache"}
 _static = settings.static_dir
 _has_ui = os.path.isdir(_static) and os.path.isfile(os.path.join(_static, "index.html"))
 
@@ -117,7 +122,7 @@ if _has_ui:
 
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:
-        return FileResponse(os.path.join(_static, "index.html"))
+        return FileResponse(os.path.join(_static, "index.html"), headers=_NO_CACHE)
 
     @app.get("/{path:path}", include_in_schema=False)
     def spa_fallback(path: str):
@@ -132,7 +137,7 @@ if _has_ui:
             # can run a stale one for a day after an update.
             headers = {"Cache-Control": "no-cache"} if path == "sw.js" else None
             return FileResponse(candidate, headers=headers)
-        return FileResponse(os.path.join(_static, "index.html"))
+        return FileResponse(os.path.join(_static, "index.html"), headers=_NO_CACHE)
 
 else:
 
