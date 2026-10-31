@@ -35,3 +35,20 @@ body {
   animation: blink 1s steps(1) infinite;
   @apply text-accent;
 }
+
+/* iOS Safari zooms the page in on any focused field under 16px and never zooms
+   back out -- seen live: the chat stuck enlarged, cut off on both sides. 16px
+   on phones only; desktop keeps the denser sizes. */
+@media (max-width: 767px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* Nothing in the app should ever scroll sideways on a phone. */
+html,
+body {
+  overflow-x: hidden;
+}

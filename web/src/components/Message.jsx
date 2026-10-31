@@ -188,7 +188,7 @@ export default function Message({
           </div>
         ) : (
           <div
-            className={`inline-block text-left rounded-2xl px-4 py-2.5 whitespace-pre-wrap leading-relaxed ${
+            className={`inline-block max-w-full text-left rounded-2xl px-3.5 sm:px-4 py-2.5 whitespace-pre-wrap break-words leading-relaxed ${
               isUser
                 ? "bg-accent/20 border border-accent/30"
                 : "bg-ink-850 border border-ink-700"

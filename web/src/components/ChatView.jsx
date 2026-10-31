@@ -99,9 +99,25 @@ export default function ChatView({
     else setSession(null);
   }, [sessionId]);
 
+  // Follow new text only while the reader is at the bottom, and jump rather
+  // than animate: a smooth scroll restarted on every token stutters, and
+  // pulling someone down while they reread an earlier message is worse.
+  const scrollRef = useRef(null);
+  const stickRef = useRef(true);
+  function onScroll() {
+    const el = scrollRef.current;
+    if (el) stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+  }
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = scrollRef.current;
+    if (el && stickRef.current) el.scrollTop = el.scrollHeight;
   }, [session?.messages?.length, streamText]);
+  // A newly opened chat starts at its latest message.
+  useEffect(() => {
+    stickRef.current = true;
+  }, [sessionId]);
+
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const charName = session?.character_name;
   const cast = session?.cast || [];
@@ -161,13 +177,19 @@ export default function ChatView({
           setMemoryState({ kind: "recall_failed", message: evt.message });
       },
       onDone: async () => {
-        setBusy(false);
-        setStreamText("");
         abortRef.current = null;
+        // Swap the draft for the saved reply in one render. Clearing the draft
+        // first left a frame with the reply missing: the page shrank, the
+        // scroll snapped, then jumped back when the reply reappeared.
         try {
-          setSession(await api.session(sessionId));
+          const fresh = await api.session(sessionId);
+          setSession(fresh);
+          setStreamText("");
+          setBusy(false);
           onDirty?.();
         } catch (e) {
+          setStreamText("");
+          setBusy(false);
           setError(e.message);
         }
       },
@@ -242,7 +264,7 @@ export default function ChatView({
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
-      <header className="px-5 py-3 border-b border-ink-800 flex items-center gap-3">
+      <header className="px-3 sm:px-5 py-3 border-b border-ink-800 flex items-center gap-2 sm:gap-3 relative">
         {/* The sidebar is off-canvas below md, so this is the only way back to
             the chat list on a phone. */}
         <button
@@ -254,7 +276,7 @@ export default function ChatView({
             <path d="M3 6h18M3 12h18M3 18h18" />
           </svg>
         </button>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           {renaming ? (
             <input
               value={titleDraft}
@@ -274,12 +296,12 @@ export default function ChatView({
                 setRenaming(true);
               }}
               title="Rename chat"
-              className="font-medium truncate hover:text-accent transition text-left"
+              className="font-medium truncate max-w-full block hover:text-accent transition text-left"
             >
               {session?.title ?? "…"}
             </button>
           )}
-          <div className="text-xs text-slate-500 flex items-center gap-1">
+          <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-1 gap-y-1 mt-0.5">
             as
             <select
               value={session?.persona_id ?? ""}
@@ -343,7 +365,43 @@ export default function ChatView({
             )}
           </div>
         </div>
-        <div className="ml-auto flex items-center gap-1.5 sm:gap-2 shrink-0">
+        {/* Phones: the four actions don't fit beside the title, so they fold
+            into a menu. Wider screens keep them as buttons. */}
+        <div className="sm:hidden shrink-0 self-start">
+          <button
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-label="Chat actions"
+            className="px-2.5 py-1.5 rounded-lg border border-ink-700 text-slate-300 hover:bg-ink-850"
+          >
+            ⋯
+          </button>
+          {menuOpen && (
+            <>
+              <div className="fixed inset-0 z-20" onClick={() => setMenuOpen(false)} />
+              <div className="absolute right-3 top-full mt-1 z-30 w-44 rounded-lg border border-ink-700 bg-ink-900 shadow-xl py-1 text-sm">
+                {[
+                  ["Regenerate", regenerate, busy],
+                  ["Memory", onOpenMemory],
+                  ["Journal", onOpenJournal],
+                  ["Settings", onOpenSettings],
+                ].map(([label, fn, disabled]) => (
+                  <button
+                    key={label}
+                    disabled={disabled}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      fn?.();
+                    }}
+                    className="block w-full text-left px-3 py-2 hover:bg-ink-850 disabled:opacity-40"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        <div className="ml-auto hidden sm:flex items-center gap-2 shrink-0">
           <button
             onClick={regenerate}
             disabled={busy}
@@ -381,7 +439,11 @@ export default function ChatView({
         />
       )}
 
-      <div className="flex-1 overflow-y-auto scroll-thin px-5 py-6 space-y-5">
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className="flex-1 overflow-y-auto overflow-x-hidden scroll-thin px-3 sm:px-5 py-6 space-y-5"
+      >
         {session?.messages?.map((m, i) => (
           <Message
             key={m.id}
