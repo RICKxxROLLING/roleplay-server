@@ -379,24 +379,34 @@ export default function ChatView({
             <>
               <div className="fixed inset-0 z-20" onClick={() => setMenuOpen(false)} />
               <div className="absolute right-3 top-full mt-1 z-30 w-44 rounded-lg border border-ink-700 bg-ink-900 shadow-xl py-1 text-sm">
-                {[
-                  ["Regenerate", regenerate, busy],
-                  ["Memory", onOpenMemory],
-                  ["Journal", onOpenJournal],
-                  ["Settings", onOpenSettings],
-                ].map(([label, fn, disabled]) => (
-                  <button
-                    key={label}
-                    disabled={disabled}
-                    onClick={() => {
-                      setMenuOpen(false);
-                      fn?.();
-                    }}
-                    className="block w-full text-left px-3 py-2 hover:bg-ink-850 disabled:opacity-40"
-                  >
-                    {label}
-                  </button>
-                ))}
+                {/* Written out rather than mapped over an array of handlers: the
+                    hooks linter reads a handler held in a render-time array as a
+                    ref access, since regenerate closes over one. */}
+                <button
+                  disabled={busy}
+                  onClick={() => { setMenuOpen(false); regenerate(); }}
+                  className="block w-full text-left px-3 py-2 hover:bg-ink-850 disabled:opacity-40"
+                >
+                  Regenerate
+                </button>
+                <button
+                  onClick={() => { setMenuOpen(false); onOpenMemory?.(); }}
+                  className="block w-full text-left px-3 py-2 hover:bg-ink-850"
+                >
+                  Memory
+                </button>
+                <button
+                  onClick={() => { setMenuOpen(false); onOpenJournal?.(); }}
+                  className="block w-full text-left px-3 py-2 hover:bg-ink-850"
+                >
+                  Journal
+                </button>
+                <button
+                  onClick={() => { setMenuOpen(false); onOpenSettings?.(); }}
+                  className="block w-full text-left px-3 py-2 hover:bg-ink-850"
+                >
+                  Settings
+                </button>
               </div>
             </>
           )}
