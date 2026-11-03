@@ -89,6 +89,8 @@ export const api = {
   deleteSession: (id) => j(`/sessions/${id}`, { method: "DELETE" }),
   inspectPrompt: (id) => j(`/sessions/${id}/prompt`),
   journal: (id) => j(`/sessions/${id}/journal`),
+  setStanding: (id, charId, scores) =>
+    j(`/sessions/${id}/standing/${charId}`, { method: "PUT", body: JSON.stringify(scores) }),
   forgetJournal: (id, charId) => j(`/sessions/${id}/journal/${charId}`, { method: "DELETE" }),
   writeFirst: (id, force = false) =>
     j(`/sessions/${id}/write-first`, { method: "POST", body: JSON.stringify({ force }) }),

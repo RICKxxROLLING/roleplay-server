@@ -64,6 +64,7 @@ app/
     lorebook.py         keyword matching, budget eviction
     scene.py            location / time / weather / present, updated after each reply
     thoughts.py         the character's private journal and view of the user, after each reply
+    trust.py            trust, affection and respect: scored by the model, capped by the server
     rag.py              message embedding, cosine search, budget eviction
   chat/orchestrator.py  per-turn flow, typed stream events
   chat/guard.py         strips narration of the user's actions before a reply is stored
@@ -358,6 +359,18 @@ pull the same way: Dina's library raid kept resurfacing beside the stove.
 **A swipe must exclude its reply from retrieval, not only from history.** Retrieval skips what is
 already in the prompt, and a swipe takes the replaced reply out first, so that reply became a
 recall candidate and the model copied it back word for word. Seen live.
+
+**Earned trust: the model proposes, the server caps (`memory/trust.py`).** Trust, affection and
+respect, 0-100, per character per chat, scored after each exchange (~1 s). Gains cap at +2 and
+shrink as a score rises, a +1 counts half, losses land in full up to -5. Prototyped on Stheno.
+Shown the character's reply, the pass credited the user with what the reply invented, so quiet
+lines earned as much as real help: it now sees only the user's line and what it answered. Numbers
+first made it contradict itself (+2 for an insult, reason "insult"), so the reason comes first.
+Rules alone left "I lied. So what?" at +2; worked examples fixed it, and small models follow
+examples. On 12 lines unlike those examples: helpful 12/12 positive, harmful 12/12 negative, none
+opposite; neutral lines mostly drew +1, which is why +1 counts half. Starting scores come from
+the card (capped at 70, editable), and are noisy: Isaac's trust in a stranger seeded at 70.
+Swipes don't re-score, and only the speaker is scored in a group.
 
 **A character's thoughts are two outputs: a journal for the owner, a view for the prompt
 (`memory/thoughts.py`).** After each reply a short pass (~2 s on the 2080) writes a journal

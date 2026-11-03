@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     thoughts_enabled: bool = True
     # Ask replies to stay in the present moment (prompt/builder.py, PACING_DIRECTIVE).
     slow_pacing: bool = True
+    # Trust, affection and respect, moved by what the user does (memory/trust.py).
+    trust_enabled: bool = True
     # Strip sentences narrating the user's own actions before a reply is
     # stored. On by default: prompting alone measured 4-9 such turns in 16 on
     # an 8B, and each one stored teaches the next. See chat/guard.py.

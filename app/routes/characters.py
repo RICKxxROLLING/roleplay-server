@@ -227,9 +227,10 @@ def delete_character(char_id: int, db: DbSession = Depends(get_db)) -> dict:
     # Leaves any group chat it was in; its old lines there keep their text and
     # read as "Someone" (chat/group.py).
     db.query(SessionMember).filter(SessionMember.character_id == c.id).delete()
-    from ..db.models import CharacterThought
+    from ..db.models import CharacterThought, Standing
 
     db.query(CharacterThought).filter(CharacterThought.character_id == c.id).delete()
+    db.query(Standing).filter(Standing.character_id == c.id).delete()
     db.delete(c)
     db.commit()
     return {"ok": True}

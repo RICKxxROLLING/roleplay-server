@@ -17,7 +17,7 @@ from ..config import settings
 from ..db.models import Character, ChatSession, Message
 from ..llm import GenerationParams, get_client
 from ..memory import memory_manager, rag
-from ..memory import thoughts
+from ..memory import thoughts, trust
 from ..memory.scene import blank as blank_scene, update_scene
 from ..prompt import build_prompt, tokens
 from ..prompt.builder import PACING_MAX_NEW_TOKENS
@@ -94,9 +94,17 @@ async def build_turn_prompt(
         texting=session.mode == "texting",
         mode_note=texting.mode_note(session, exclude_ids),
         slow_pacing=settings.slow_pacing,
+        standing=_standing(db, session, speaker, card, persona),
         private_view=thoughts.latest_view(db, session.id, speaker.id, exclude_ids)
         if settings.thoughts_enabled and db is not None else "",
     )
+
+
+def _standing(db, session, speaker, card, persona) -> str:
+    if not settings.trust_enabled or db is None:
+        return ""
+    scores = trust.get_scores(db, session.id, speaker.id)
+    return trust.standing_line(scores, card.name, persona.name if persona else "You") if scores else ""
 
 
 def _params(built_stop: list[str], overrides: dict | None) -> GenerationParams:
@@ -388,6 +396,21 @@ async def stream_reply(
                 db, session, speaker, saved, "" if initiative else user_text,
                 session.persona.name if session.persona else "You",
             )
+        except Exception:
+            pass
+
+    # --- Earned trust: what the user just did, judged on the user's line alone ---
+    # Not on a swipe: re-rolling a reply is not something the user did to the character.
+    # Not when the character wrote first or spoke unprompted: there is no new line to judge.
+    if settings.trust_enabled and swipe_of is None and not initiative:
+        try:
+            msgs = session.messages
+            if len(msgs) >= 2 and msgs[-2].role == "user":
+                await trust.after_exchange(
+                    db, session, speaker, card, msgs[-2].content,
+                    msgs[-3].content if len(msgs) >= 3 else "",
+                    session.persona.name if session.persona else "You",
+                )
         except Exception:
             pass
 

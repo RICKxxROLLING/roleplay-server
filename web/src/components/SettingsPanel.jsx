@@ -201,6 +201,19 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
               </span>
             </label>
 
+            <label className="flex items-center gap-2.5 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={s.trust_enabled}
+                onChange={(e) => update("trust_enabled", e.target.checked)}
+                className="accent-accent w-4 h-4"
+              />
+              Earned trust
+              <span className="text-xs text-slate-600">
+                trust, affection and respect shape how they treat you · about 1 s
+              </span>
+            </label>
+
             <AutonomySettings s={s} update={update} />
 
             <label className="flex items-center gap-2.5 text-sm cursor-pointer">

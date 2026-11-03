@@ -1,0 +1,185 @@
+"""Earned trust: the model proposes, the server caps, and closeness has to be earned."""
+from __future__ import annotations
+
+import datetime as dt
+
+from conftest import sse_events
+
+from app.db import SessionLocal
+from app.db.models import ChatSession, Message
+from app.memory import trust
+
+SIDE = ("memory log", "fact sheet", "track the scene", "private journal", "you are scoring")
+
+
+def chat_prompts(llm):
+    return [p for p in llm.prompts if not any(t in p.lower() for t in SIDE)]
+
+
+def say(client, sid, text):
+    return sse_events(client.post(f"/api/sessions/{sid}/messages", json={"content": text}))
+
+
+def standing(client, sid):
+    return client.get(f"/api/sessions/{sid}/journal").json()[0]["standing"]
+
+
+# --- the server's half -------------------------------------------------------------
+
+def test_gains_are_capped_and_shrink_as_a_score_rises():
+    low = trust.apply_change({"trust": 30, "affection": 30, "respect": 30}, {"trust": 50, "affection": 0, "respect": 0})
+    assert low["trust"] == 31.4  # capped to +2, worth 1.4 at 30
+    high = trust.apply_change({"trust": 80, "affection": 30, "respect": 30}, {"trust": 2, "affection": 0, "respect": 0})
+    assert high["trust"] == 80.4
+
+
+def test_a_small_gain_counts_half():
+    out = trust.apply_change({"trust": 50, "affection": 50, "respect": 50}, {"trust": 1, "affection": 2, "respect": 0})
+    assert out["trust"] == 50.25 and out["affection"] == 51.0
+
+
+def test_losses_land_in_full_up_to_their_cap():
+    out = trust.apply_change({"trust": 80, "affection": 80, "respect": 2}, {"trust": -3, "affection": -50, "respect": -5})
+    assert out == {"trust": 77.0, "affection": 75.0, "respect": 0.0}
+
+
+def test_trust_is_slow_to_earn_and_quick_to_lose():
+    s = {"trust": 30.0, "affection": 30.0, "respect": 30.0}
+    for _ in range(10):
+        s = trust.apply_change(s, {"trust": 2, "affection": 0, "respect": 0})
+    earned = s["trust"] - 30
+    for _ in range(3):
+        s = trust.apply_change(s, {"trust": -3, "affection": 0, "respect": 0})
+    assert earned < 13 and s["trust"] < 30 + earned - 8
+
+
+def test_parse_needs_all_three_numbers():
+    ok = trust.parse_change(" helped out\nTrust: +2\nAffection: 1\nRespect: -1")
+    assert ok == {"reason": "helped out", "trust": 2, "affection": 1, "respect": -1}
+    assert trust.parse_change(" helped\nTrust: 2\nAffection: 1") is None
+    assert trust.parse_change(" helped\nTrust: a lot\nAffection: 1\nRespect: 1") is None
+
+
+# --- thresholds ----------------------------------------------------------------------
+
+def line(t, a, r):
+    return trust.standing_line({"trust": t, "affection": a, "respect": r}, "Dina", "Riley")
+
+
+def test_secrets_have_to_be_earned():
+    assert "does not trust Riley" in line(10, 30, 30)
+    assert "keeps secrets and old wounds private" in line(40, 30, 30)
+    assert "may share secrets" in line(60, 30, 30)
+
+
+def test_romance_needs_both_affection_and_trust():
+    assert "romantic" not in line(40, 80, 30)
+    assert "romantic" not in line(60, 60, 30)
+    assert "romantic" in line(60, 75, 30)
+
+
+def test_cold_characters_write_less_often():
+    assert trust.gap_factor({"affection": 80}) == 0.75
+    assert trust.gap_factor({"affection": 40}) == 1.0
+    assert trust.gap_factor({"affection": 10}) == 2.0
+    assert trust.gap_factor(None) == 1.0
+
+
+# --- in a chat -------------------------------------------------------------------------
+
+def test_first_exchange_seeds_then_scores(client, session, llm):
+    llm.seed_reply = " childhood friends\nTrust: 60\nAffection: 65\nRespect: 55"
+    llm.trust_reply = " fixed the latch\nTrust: 2\nAffection: 0\nRespect: 0"
+    say(client, session, "I fixed your latch.")
+    s = standing(client, session)
+    assert s["trust"] == 60.8 and s["affection"] == 65 and s["last_reason"] == "fixed the latch"
+
+
+def test_a_seed_cannot_start_at_the_top(client, session, llm):
+    llm.seed_reply = " soulmates\nTrust: 100\nAffection: 100\nRespect: 100"
+    say(client, session, "Hi.")
+    assert standing(client, session)["trust"] == 70
+
+
+def test_scoring_sees_the_users_line_and_what_it_answered_not_the_reply(client, session, llm):
+    llm.replies = ["*She kept her promise and fixed the roof herself.*"]
+    say(client, session, "Hello there.")
+    p = llm.trust_calls[-1]
+    assert "Hello there." in p and "You are late" in p and "fixed the roof" not in p
+
+
+def test_the_standing_reaches_the_next_prompt(client, session, llm):
+    say(client, session, "Hi.")
+    say(client, session, "Hi again.")
+    assert "keeps secrets and old wounds private" in chat_prompts(llm)[-1]
+
+
+def test_a_swipe_does_not_score_again(client, session, llm):
+    say(client, session, "Hi.")
+    n = len(llm.trust_calls)
+    sse_events(client.post(f"/api/sessions/{session}/regenerate"))
+    assert len(llm.trust_calls) == n
+
+
+def test_off_means_no_pass_and_no_line(client, session, llm):
+    client.patch("/api/settings", json={"trust_enabled": False})
+    say(client, session, "Hi.")
+    say(client, session, "Hi again.")
+    assert llm.trust_calls == [] and standing(client, session) is None
+    assert "keeps secrets" not in chat_prompts(llm)[-1]
+
+
+def test_a_misfire_changes_nothing(client, session, llm):
+    say(client, session, "Hi.")
+    before = standing(client, session)
+    llm.trust_reply = " I cannot score this"
+    say(client, session, "Hi again.")
+    assert standing(client, session)["trust"] == before["trust"]
+
+
+def test_set_by_hand(client, session, llm, imported):
+    r = client.put(f"/api/sessions/{session}/standing/{imported}", json={"trust": 80, "affection": 75, "respect": 50})
+    assert r.status_code == 200 and standing(client, session)["trust"] == 80
+    assert client.put(f"/api/sessions/{session}/standing/{imported}", json={"trust": 180, "affection": 1, "respect": 1}).status_code == 422
+    say(client, session, "Hi.")
+    assert "romantic" in chat_prompts(llm)[-1]
+
+
+def test_group_members_stand_separately(client, imported, llm):
+    tommy = client.post("/api/characters", json={"name": "Tommy", "first_mes": "Hey."}).json()["id"]
+    sid = client.post("/api/sessions", json={"character_id": imported, "member_ids": [tommy]}).json()["id"]
+    llm.trust_reply = " helped\nTrust: 2\nAffection: 0\nRespect: 0"
+    say(client, sid, "Tommy, I fixed your rifle.")
+    by = {j["name"]: j["standing"] for j in client.get(f"/api/sessions/{sid}/journal").json()}
+    assert by["Tommy"]["trust"] == 31.4 and by["Seraphine"] is None
+
+
+def test_being_left_on_read_costs_affection_once(client, session, llm, monkeypatch):
+    import asyncio
+
+    from app import push
+    from app.chat import autonomy
+
+    async def no_ping(db):
+        return 0
+
+    monkeypatch.setattr(push, "ping_all", no_ping)
+    say(client, session, "Hi.")
+    start = standing(client, session)["affection"]
+    with SessionLocal() as db:
+        s = db.get(ChatSession, session)
+        for _ in range(2):
+            db.add(Message(session_id=session, role="assistant", content="Hey?", initiated=True))
+        db.commit()
+        llm.replies = ["You there?"]
+        asyncio.run(autonomy.write_first(db, s, "", dt.datetime.now(dt.timezone.utc)))
+    assert standing(client, session)["affection"] == start - 1
+
+
+def test_deleting_the_chat_deletes_its_standing(client, session, llm):
+    from app.db.models import Standing
+
+    say(client, session, "Hi.")
+    client.delete(f"/api/sessions/{session}")
+    with SessionLocal() as db:
+        assert db.query(Standing).count() == 0

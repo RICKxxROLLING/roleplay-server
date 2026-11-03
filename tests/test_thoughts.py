@@ -5,7 +5,7 @@ from conftest import sse_events
 
 from app.memory.thoughts import parse_thought
 
-SIDE = ("memory log", "fact sheet", "track the scene", "private journal")
+SIDE = ("memory log", "fact sheet", "track the scene", "private journal", "you are scoring")
 
 
 def chat_prompts(llm):

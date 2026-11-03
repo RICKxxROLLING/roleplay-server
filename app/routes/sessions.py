@@ -5,7 +5,7 @@ from typing import AsyncIterator, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DbSession
 
 from ..cards.models import CharacterCard
@@ -610,9 +610,10 @@ def delete_session(session_id: int, db: DbSession = Depends(get_db)) -> dict:
         raise HTTPException(404, "Session not found")
     # Waiting notifications about it would open a chat that no longer exists.
     db.query(Notification).filter(Notification.session_id == session_id).delete()
-    from ..db.models import CharacterThought
+    from ..db.models import CharacterThought, Standing
 
     db.query(CharacterThought).filter(CharacterThought.session_id == session_id).delete()
+    db.query(Standing).filter(Standing.session_id == session_id).delete()
     db.delete(s)
     db.commit()
     return {"ok": True}
@@ -646,7 +647,7 @@ def patch_scene(session_id: int, body: ScenePatch, db: DbSession = Depends(get_d
 def journal(session_id: int, db: DbSession = Depends(get_db)) -> list[dict]:
     """Each character's private journal in this chat, newest first, with their
     current view of the user on top (memory/thoughts.py). Never shown mid-chat."""
-    from ..db.models import CharacterThought
+    from ..db.models import CharacterThought, Standing
 
     s = db.get(ChatSession, session_id)
     if not s:
@@ -656,9 +657,12 @@ def journal(session_id: int, db: DbSession = Depends(get_db)) -> list[dict]:
         rows = (db.query(CharacterThought)
                 .filter(CharacterThought.session_id == s.id, CharacterThought.character_id == c.id)
                 .order_by(CharacterThought.id.desc()).all())
+        standing = db.get(Standing, (s.id, c.id))
         out.append({
             "character_id": c.id,
             "name": c.name,
+            "standing": {"trust": standing.trust, "affection": standing.affection,
+                         "respect": standing.respect, "last_reason": standing.last_reason} if standing else None,
             "view": rows[0].view if rows else "",
             "entries": [{"id": t.id, "journal": t.journal, "view": t.view, "message_id": t.message_id,
                          "created_at": t.created_at.isoformat() if t.created_at else None} for t in rows],
@@ -677,3 +681,22 @@ def forget_journal(session_id: int, character_id: int, db: DbSession = Depends(g
          .delete())
     db.commit()
     return {"forgotten": n}
+
+
+class StandingPatch(BaseModel):
+    trust: float = Field(ge=0, le=100)
+    affection: float = Field(ge=0, le=100)
+    respect: float = Field(ge=0, le=100)
+
+
+@router.put("/{session_id}/standing/{character_id}")
+def set_standing(session_id: int, character_id: int, body: StandingPatch, db: DbSession = Depends(get_db)) -> dict:
+    """Set where a character stands by hand: the model's reading is a suggestion."""
+    from ..memory import trust
+
+    s = db.get(ChatSession, session_id)
+    if not s or not group.by_id(s, character_id):
+        raise HTTPException(404, "That character is not in this chat")
+    trust.save_scores(db, session_id, character_id, body.model_dump(), "set by hand")
+    return trust.get_scores(db, session_id, character_id)
+

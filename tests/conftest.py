@@ -138,6 +138,10 @@ class MockLLM(LLMClient):
         self.scene_calls: list[str] = []
         self.draft_calls: list[str] = []
         self.thought_calls: list[str] = []
+        self.trust_calls: list[str] = []
+        # What the scoring pass answers, after the prefilled "Reason:".
+        self.trust_reply = " nothing much\nTrust: 0\nAffection: 0\nRespect: 0"
+        self.seed_reply = " they just met\nTrust: 30\nAffection: 30\nRespect: 30"
         # A card draft as the model writes it, after the prefilled "Name:".
         self.draft_reply = DRAFT_REPLY
         self.draft_replies: list[str] = []
@@ -146,6 +150,10 @@ class MockLLM(LLMClient):
 
     async def generate_stream(self, prompt, params):
         self.prompts.append(prompt)
+        if "you are scoring" in prompt.lower():
+            self.trust_calls.append(prompt)
+            yield self.seed_reply if "from 0 to 100" in prompt else self.trust_reply
+            return
         if "writing in your own private journal" in prompt.lower():
             self.thought_calls.append(prompt)
             name = prompt.split("You are ", 1)[1].split(",", 1)[0]
@@ -226,10 +234,11 @@ def llm(monkeypatch):
     import app.memory.scene as scene
     import app.memory.summarizer as summarizer
     import app.memory.thoughts as thoughts_mod
+    import app.memory.trust as trust_mod
     import app.routes.system as system
 
     mock = MockLLM()
-    for module in (autonomy, creator, orch, scene, summarizer, system, thoughts_mod):
+    for module in (autonomy, creator, orch, scene, summarizer, system, thoughts_mod, trust_mod):
         monkeypatch.setattr(module, "get_client", lambda: mock)
     return mock
 

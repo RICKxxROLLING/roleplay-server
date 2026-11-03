@@ -273,3 +273,17 @@ class CharacterThought(Base):
     view: Mapped[str] = mapped_column(Text)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
 
+
+class Standing(Base):
+    """How a character stands with the user in one chat (memory/trust.py)."""
+
+    __tablename__ = "standings"
+
+    session_id: Mapped[int] = mapped_column(ForeignKey("sessions.id"), primary_key=True)
+    character_id: Mapped[int] = mapped_column(ForeignKey("characters.id"), primary_key=True)
+    trust: Mapped[float] = mapped_column(default=30.0)
+    affection: Mapped[float] = mapped_column(default=30.0)
+    respect: Mapped[float] = mapped_column(default=30.0)
+    #: What last moved a score, for the Journal panel.
+    last_reason: Mapped[str] = mapped_column(Text, default="")
+

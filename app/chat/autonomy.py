@@ -92,7 +92,20 @@ def sent_today(session: ChatSession, local: dt.datetime) -> int:
 def gap_needed(session: ChatSession) -> dt.timedelta:
     """The minimum quiet before writing, doubling per unanswered message: a
     character who has written twice without reply waits four times as long."""
-    return dt.timedelta(minutes=settings.autonomy_min_gap_minutes * 2 ** unanswered(session))
+    return dt.timedelta(minutes=settings.autonomy_min_gap_minutes * 2 ** unanswered(session)
+                        * _rhythm(session))
+
+
+def _rhythm(session: ChatSession) -> float:
+    """Earned trust: someone fond of the user writes sooner, someone cold later."""
+    if not settings.trust_enabled:
+        return 1.0
+    from sqlalchemy.orm import object_session
+
+    from ..memory import trust
+
+    db = object_session(session)
+    return trust.gap_factor(trust.get_scores(db, session.id, session.character_id)) if db else 1.0
 
 
 def eligible(session: ChatSession, now: dt.datetime | None = None) -> str | None:
@@ -258,6 +271,15 @@ async def write_first(db: DbSession, session: ChatSession, reason: str = "",
     last = session.messages[-1] if session.messages else None
     if last is None or last.id == before or last.role != "assistant":
         return None
+    # Being left on read costs something, once, when the character gives up waiting.
+    if settings.trust_enabled and suspended(session):
+        from ..memory import trust
+
+        scores = trust.get_scores(db, session.id, speaker.id)
+        if scores:
+            trust.save_scores(db, session.id, speaker.id,
+                              trust.apply_change(scores, {"trust": 0, "affection": -1, "respect": 0}),
+                              "messages left unanswered")
     push.notify(db, speaker.name, _preview(last.content), session_id=session.id)
     await push.ping_all(db)
     return last

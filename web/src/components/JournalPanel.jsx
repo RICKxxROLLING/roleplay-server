@@ -9,6 +9,51 @@ import { Modal, Button, Empty } from "./ui";
  * place it appears. The "view" on top is the one line later prompts read; the
  * entries are the character's own words and stay out of the prompt.
  */
+/**
+ * Trust, affection and respect (app/memory/trust.py). The model proposes changes and
+ * the server caps them, but these are editable: its reading is only a suggestion.
+ */
+function Standing({ who, sessionId, onSaved }) {
+  const [draft, setDraft] = useState(who.standing);
+  useEffect(() => setDraft(who.standing), [who]);
+  if (!who.standing) {
+    return (
+      <p className="text-xs text-slate-600 mb-4">
+        How {who.name} feels about you forms after your next message.
+      </p>
+    );
+  }
+  const save = async (next) => {
+    await api.setStanding(sessionId, who.character_id, {
+      trust: next.trust, affection: next.affection, respect: next.respect,
+    });
+    onSaved?.();
+  };
+  return (
+    <div className="mb-4 space-y-1.5">
+      {["trust", "affection", "respect"].map((k) => (
+        <label key={k} className="flex items-center gap-2 text-xs text-slate-400">
+          <span className="w-16 capitalize">{k}</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={draft?.[k] ?? 0}
+            onChange={(e) => setDraft({ ...draft, [k]: Number(e.target.value) })}
+            onPointerUp={() => save(draft)}
+            onKeyUp={() => save(draft)}
+            className="flex-1 accent-accent"
+          />
+          <span className="w-7 text-right tabular-nums text-slate-300">{Math.round(draft?.[k] ?? 0)}</span>
+        </label>
+      ))}
+      {who.standing.last_reason && (
+        <p className="text-[11px] text-slate-600">Last change: {who.standing.last_reason}</p>
+      )}
+    </div>
+  );
+}
+
 export default function JournalPanel({ open, onClose, sessionId }) {
   const [data, setData] = useState(null);
   const [tab, setTab] = useState(0);
@@ -63,6 +108,7 @@ export default function JournalPanel({ open, onClose, sessionId }) {
 
           {who && (
             <>
+              <Standing who={who} sessionId={sessionId} onSaved={load} />
               <div className="text-xs uppercase tracking-wider text-slate-600 mb-1">
                 What {who.name} thinks of you now
               </div>
