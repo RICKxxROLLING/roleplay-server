@@ -72,6 +72,11 @@ def render(scene: dict | None) -> str:
     return "\n".join(f"{f.capitalize()}: {scene.get(f, 'unknown')}" for f in FIELDS)
 
 
+# The form's own wording coming back as an answer. Seen live: a Joel chat's location
+# became "the place at the end of the exchange", which the next prompt then read back.
+_TEMPLATE_ECHOES = ("at the end of the exchange", "outdoor conditions if", "everyone in the scene")
+
+
 def parse_scene(raw: str) -> dict | None:
     """All four fields, each short and quote-free, or None to keep the old scene."""
     text = "Location:" + raw
@@ -83,6 +88,8 @@ def parse_scene(raw: str) -> dict | None:
         if m and m.group(1).lower() not in found:
             value = m.group(2).strip().strip(".")
             if not value or len(value) > _MAX_FIELD or '"' in value or "*" in value:
+                return None
+            if any(echo in value.lower() for echo in _TEMPLATE_ECHOES):
                 return None
             found[m.group(1).lower()] = value
     return found if set(found) == set(FIELDS) else None

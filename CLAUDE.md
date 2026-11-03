@@ -344,11 +344,15 @@ chars. One card and a small sample. Off for texting and writing first. Live, the
 replies mid-sentence (offline it had shown none), so capped replies are trimmed back to their
 last whole sentence. The tracker also caused jumps: it recorded "the stables" from a mention and
 Joel's next reply walked into them. A location now changes only when narration or the user moves
-someone (`scene.moved`; speech doesn't count), and the first scene is read from the greeting.
+someone (`scene.moved`; speech doesn't count), and the first scene is read from the greeting. A reply that echoes
+the form ("the place at the end of the exchange") is rejected, keeping the old scene.
 Live after those: 12 quiet turns each, 0/24 cut off. Joel held the workshop for ten turns and
 stayed on the chair he was building. Dina still drifted outdoors from turn 6 (a road trip, then
 camp). Known limit: both chats had invented characters walk in (Asher, Marcus), which suits the
-narration style's "always something new"; a calmer style has not been shown to stop it. Greetings that plant a task
+narration style's "always something new". Then 96 live replies, Dina and Joel, style as the
+only change: pushing on 9/48 with "something new to react to", 3/48 with "small ambient details
+drift through the background"; places per chat 3.5 vs 2.5; 736 vs 701 chars. Walk-ins were too
+rare in that run to compare. The style is a per-server setting, so the owner applies it. Greetings that plant a task
 pull the same way: Dina's library raid kept resurfacing beside the stove.
 
 **A swipe must exclude its reply from retrieval, not only from history.** Retrieval skips what is

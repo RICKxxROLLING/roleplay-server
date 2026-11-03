@@ -98,3 +98,20 @@ def test_parse_needs_all_four_short_fields():
                   "weather": "light snow", "present": "Dina, Riley"}
     assert parse_scene(" the porch\nTime: night") is None
     assert parse_scene(" the porch\nTime: night\nWeather: " + "x" * 120 + "\nPresent: Dina") is None
+
+
+def test_the_forms_own_wording_is_not_a_scene():
+    """Seen live: "the place at the end of the exchange" stored as the location."""
+    good = " the workshop\nTime: night\nWeather: indoors\nPresent: Joel, Riley"
+    assert parse_scene(good)["location"] == "the workshop"
+    assert parse_scene(" the place at the end of the exchange\nTime: night\nWeather: indoors\nPresent: Joel") is None
+    assert parse_scene(" the workshop\nTime: time of day at the end of the exchange\nWeather: indoors\nPresent: Joel") is None
+    assert parse_scene(" the workshop\nTime: night\nWeather: indoors\nPresent: everyone in the scene at the end") is None
+
+
+def test_an_echoed_form_keeps_the_old_scene(client, session, llm):
+    chat(client, session)
+    llm.scene_reply = " the place at the end of the exchange\nTime: night\nWeather: indoors\nPresent: Seraphine"
+    llm.replies = ["*She walks to the window.*"]
+    sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": "Hm."}))
+    assert client.get(f"/api/sessions/{session}").json()["scene"]["location"] == "the flooded archive"
