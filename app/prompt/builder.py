@@ -64,6 +64,18 @@ TAIL_REMINDER = (
 # long block here would crowd the card's own post_history_instructions.
 STYLE_REMINDER = "Follow the narration style described above."
 
+# Appended like the guard, so cards with their own system_prompt get it too. Owner
+# report: characters kept pushing to the next event. "Advance the scene" in
+# DEFAULT_SYSTEM asks for exactly that. Measured on Stheno (Dina, Ellie, Joel, Abby):
+# replies pushing on 26/64 -> 16/64, moves or time skips over 8-turn chats 6/32 -> 4/32.
+# Said as what to do, not what to avoid (see TAIL_REMINDER).
+PACING_DIRECTIVE = (
+    "Stay inside the present moment with {{user}}. Let {{char}} respond to what {{user}} just "
+    "said or did and linger there: what {{char}} notices, feels, remembers and says. Scenes "
+    "unfold slowly, one small beat at a time, and {{user}} decides when they move on."
+)
+PACING_TAIL = "This moment has all the time it needs: one small beat, right here, right now."
+
 # Texting mode (chat/texting.py): the chat reimagined as a phone conversation.
 # Replaces the prose directives rather than adding to them -- a card's
 # system_prompt and the narration style both ask for prose, and a prompt asking
@@ -183,6 +195,7 @@ def build_prompt(
     mode_note: str = "",
     texting_examples: bool = True,
     private_view: str = "",
+    slow_pacing: bool = False,
 ) -> BuiltPrompt:
     """`history` is [(role, content), ...] oldest-first, excluding the pending reply.
 
@@ -202,7 +215,9 @@ def build_prompt(
     system = substitute(
         TEXTING_SYSTEM if texting else (card.system_prompt or DEFAULT_SYSTEM), char, user_name
     )
-    head_parts = [system, substitute(IMPERSONATION_GUARD, char, user_name), style]
+    pacing = slow_pacing and not texting and not initiative
+    head_parts = [system, substitute(IMPERSONATION_GUARD, char, user_name),
+                  substitute(PACING_DIRECTIVE, char, user_name) if pacing else "", style]
 
     if user_persona:
         head_parts.append(f"{user_name}'s persona: {substitute(user_persona, char, user_name)}")
@@ -305,6 +320,7 @@ def build_prompt(
         substitute(initiative or time_note, char, user_name),
         # The first reply after a switch between story and texting: where they are now.
         substitute(mode_note, char, user_name),
+        PACING_TAIL if pacing else "",
         substitute(TEXTING_TAIL if texting else TAIL_REMINDER, char, user_name),
     ]
     tail = fmt.tail.format(text="\n".join(p for p in tail_parts if p))

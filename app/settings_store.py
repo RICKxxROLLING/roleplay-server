@@ -43,6 +43,7 @@ PERSISTABLE: dict[str, type] = {
     "facts_enabled": bool,
     "scene_enabled": bool,
     "thoughts_enabled": bool,
+    "slow_pacing": bool,
     "timezone": str,
     "autonomy_quiet_start": str,
     "autonomy_quiet_end": str,

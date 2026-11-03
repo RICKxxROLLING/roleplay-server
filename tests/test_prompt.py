@@ -250,3 +250,15 @@ def test_ratios_are_per_model():
 
     tokens.observe("llama-ish", chars=4850 * 10, tokens=10000 // 1)
     assert tokens.chars_per_token("other")[1] is False
+
+
+def test_pacing_directive_stays_out_of_texting_and_writing_first():
+    from app.prompt.builder import PACING_TAIL
+
+    c = card(system_prompt="A card's own system prompt.")
+    hi = [("user", "Hi")]
+    on = build_prompt(card=c, history=hi, slow_pacing=True).text
+    assert "Stay inside the present moment" in on and PACING_TAIL in on
+    assert "Stay inside" not in build_prompt(card=c, history=hi).text
+    assert "Stay inside" not in build_prompt(card=c, history=hi, slow_pacing=True, texting=True).text
+    assert "Stay inside" not in build_prompt(card=c, history=hi, slow_pacing=True, initiative="Writes first.").text

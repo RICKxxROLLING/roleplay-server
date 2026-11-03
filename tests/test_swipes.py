@@ -81,3 +81,20 @@ def test_swipes_are_capped(client, session, llm):
     last = messages(client, session)[-1]
     assert last["swipes"] == MAX_SWIPES
     assert last["swipe_index"] == MAX_SWIPES - 1
+
+
+def test_a_swipe_cannot_recall_the_reply_it_replaces(client, session, llm, embedder):
+    """Retrieval skips what is already in the prompt, and a swipe takes the replaced
+    reply out of the prompt -- so it became a recall candidate, and the model copied
+    it back word for word. Seen live: a first regenerate nearly identical to the original."""
+    from conftest import enable_retrieval, sse_events
+
+    enable_retrieval(client)
+    llm.replies = ["The brass ledger is hidden under the loose floorboard by the stove"]
+    sse_events(client.post(f"/api/sessions/{session}/messages",
+                           json={"content": "Where is the brass ledger hidden, under the floorboard by the stove?"}))
+    llm.prompts.clear()
+    llm.replies = ["Somewhere else entirely"]
+    sse_events(client.post(f"/api/sessions/{session}/regenerate"))
+    chat = [p for p in llm.prompts if "track the scene" not in p.lower() and "private journal" not in p.lower()]
+    assert chat and "loose floorboard" not in chat[0]

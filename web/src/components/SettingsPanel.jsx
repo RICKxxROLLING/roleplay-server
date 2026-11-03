@@ -188,6 +188,19 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
               </span>
             </label>
 
+            <label className="flex items-center gap-2.5 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={s.slow_pacing}
+                onChange={(e) => update("slow_pacing", e.target.checked)}
+                className="accent-accent w-4 h-4"
+              />
+              Live in the moment
+              <span className="text-xs text-slate-600">
+                slower scenes; you decide when they move on
+              </span>
+            </label>
+
             <AutonomySettings s={s} update={update} />
 
             <label className="flex items-center gap-2.5 text-sm cursor-pointer">

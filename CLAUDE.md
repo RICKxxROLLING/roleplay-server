@@ -330,6 +330,19 @@ parchment); "brief, the world's own medium, straight to the point" gave two shor
 texts. Ordinary replies also get "It is now ...; N hours have passed" after an hour's silence,
 so a character doesn't greet a midnight return with "good morning".
 
+**Pacing is a directive appended like the guard, on by default (`slow_pacing`).** Owner report
+after days of real use: characters rush to the next event. "Advance the scene" in
+`DEFAULT_SYSTEM` and the narration style's "always something new" both ask for it. Measured on
+Stheno, quiet scenes with Dina, Ellie, Joel and Abby: replies pushing on 26/64 now, 16/64 with
+the directive, 20/64 adding a calmer narration style -- so the style stays as it is. Moves or
+time skips over 8-turn chats 6/32 vs 4/32; replies 834 vs 729 chars. A modest effect by phrase
+matching, on quiet scenes only. Off for texting and writing first. Greetings that plant a task
+pull the same way: Dina's library raid kept resurfacing beside the stove.
+
+**A swipe must exclude its reply from retrieval, not only from history.** Retrieval skips what is
+already in the prompt, and a swipe takes the replaced reply out first, so that reply became a
+recall candidate and the model copied it back word for word. Seen live.
+
 **A character's thoughts are two outputs: a journal for the owner, a view for the prompt
 (`memory/thoughts.py`).** After each reply a short pass (~2 s on the 2080) writes a journal
 entry in the character's own voice -- shown only in the Journal panel -- and a one-line,

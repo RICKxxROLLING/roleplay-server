@@ -153,7 +153,7 @@ class MemoryManager:
             # it would only buy a duplicate; a pin is already in the prompt too.
             result = await rag.retrieve(
                 db, session, history,
-                exclude_ids={m.id for m in msgs} | {m.id for m in pins},
+                exclude_ids={m.id for m in msgs} | {m.id for m in pins} | set(exclude_ids or ()),
             )
             by_id = {m.id: m for m in session.messages}
             ctx.retrieved = rag.render(

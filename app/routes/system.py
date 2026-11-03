@@ -128,6 +128,7 @@ class SettingsPatch(BaseModel):
     scene_enabled: bool | None = None
 
     thoughts_enabled: bool | None = None
+    slow_pacing: bool | None = None
 
     # Characters writing first. Times are "HH:MM" in the owner's zone.
     timezone: str | None = Field(None, max_length=64)

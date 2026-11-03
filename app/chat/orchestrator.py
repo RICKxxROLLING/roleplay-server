@@ -91,6 +91,7 @@ async def build_turn_prompt(
         time_note="" if initiative or exclude_ids else autonomy.time_line(session),
         texting=session.mode == "texting",
         mode_note=texting.mode_note(session, exclude_ids),
+        slow_pacing=settings.slow_pacing,
         private_view=thoughts.latest_view(db, session.id, speaker.id, exclude_ids)
         if settings.thoughts_enabled and db is not None else "",
     )
