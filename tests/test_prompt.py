@@ -262,3 +262,23 @@ def test_pacing_directive_stays_out_of_texting_and_writing_first():
     assert "Stay inside" not in build_prompt(card=c, history=hi).text
     assert "Stay inside" not in build_prompt(card=c, history=hi, slow_pacing=True, texting=True).text
     assert "Stay inside" not in build_prompt(card=c, history=hi, slow_pacing=True, initiative="Writes first.").text
+
+
+def test_slow_pacing_caps_story_replies_unless_asked_otherwise(client, session, llm, monkeypatch):
+    seen = []
+    original = llm.generate_stream
+
+    def recording(prompt, params):
+        seen.append(params.max_new_tokens)
+        return original(prompt, params)
+
+    monkeypatch.setattr(llm, "generate_stream", recording)
+    client.post(f"/api/sessions/{session}/messages", json={"content": "Hi."})
+    assert seen[0] == 220
+    seen.clear()
+    client.post(f"/api/sessions/{session}/messages", json={"content": "Hi.", "max_new_tokens": 300})
+    assert seen[0] == 300
+    client.patch("/api/settings", json={"slow_pacing": False})
+    seen.clear()
+    client.post(f"/api/sessions/{session}/messages", json={"content": "Hi."})
+    assert seen[0] == 400

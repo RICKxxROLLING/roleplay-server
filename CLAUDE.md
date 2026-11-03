@@ -336,7 +336,11 @@ after days of real use: characters rush to the next event. "Advance the scene" i
 Stheno, quiet scenes with Dina, Ellie, Joel and Abby: replies pushing on 26/64 now, 16/64 with
 the directive, 20/64 adding a calmer narration style -- so the style stays as it is. Moves or
 time skips over 8-turn chats 6/32 vs 4/32; replies 834 vs 729 chars. A modest effect by phrase
-matching, on quiet scenes only. Off for texting and writing first. Greetings that plant a task
+matching, on quiet scenes only, and it did not hold live: a 12-turn stove chat still pushed on
+4/12 and moved 3/12. Turning the scene tracker off did not help (pushes 6 and 2, moves 3 and 4),
+though it does hop to places merely mentioned. So `slow_pacing` also caps story replies at
+`PACING_MAX_NEW_TOKENS`: over 24 replies moves fell 5 to 1, pushes 6 to 4, length 976 to 712
+chars, none cut mid-sentence. One card and a small sample. Off for texting and writing first. Greetings that plant a task
 pull the same way: Dina's library raid kept resurfacing beside the stove.
 
 **A swipe must exclude its reply from retrieval, not only from history.** Retrieval skips what is

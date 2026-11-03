@@ -19,6 +19,7 @@ from ..memory import memory_manager, rag
 from ..memory import thoughts
 from ..memory.scene import blank as blank_scene, update_scene
 from ..prompt import build_prompt, tokens
+from ..prompt.builder import PACING_MAX_NEW_TOKENS
 from . import autonomy, group, texting
 from .guard import (
     first_person_narration,
@@ -216,6 +217,8 @@ async def stream_reply(
     is_texting = session.mode == "texting"
     if is_texting and "max_new_tokens" not in (overrides or {}):
         overrides = {**(overrides or {}), "max_new_tokens": texting.MAX_NEW_TOKENS}
+    elif settings.slow_pacing and not initiative and "max_new_tokens" not in (overrides or {}):
+        overrides = {**(overrides or {}), "max_new_tokens": min(settings.max_new_tokens, PACING_MAX_NEW_TOKENS)}
     if swipe_of is not None:
         speaker = group.by_id(session, group.speaker_id(session, swipe_of)) or session.character
     elif speaker is None:

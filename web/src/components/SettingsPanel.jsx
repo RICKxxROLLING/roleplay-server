@@ -197,7 +197,7 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
               />
               Live in the moment
               <span className="text-xs text-slate-600">
-                slower scenes; you decide when they move on
+                slower scenes and shorter replies; you decide when they move on
               </span>
             </label>
 

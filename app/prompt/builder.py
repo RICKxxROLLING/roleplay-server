@@ -74,6 +74,10 @@ PACING_DIRECTIVE = (
     "said or did and linger there: what {{char}} notices, feels, remembers and says. Scenes "
     "unfold slowly, one small beat at a time, and {{user}} decides when they move on."
 )
+# The directive alone did not hold over long chats; replies of ~1,000 characters had
+# room to finish a moment and start the next. Same 12 quiet turns, Dina, 24 replies:
+# moves or time skips 5 at 512 tokens, 1 at 220; pushing on 6 vs 4; 976 vs 712 chars.
+PACING_MAX_NEW_TOKENS = 220
 PACING_TAIL = "This moment has all the time it needs: one small beat, right here, right now."
 
 # Texting mode (chat/texting.py): the chat reimagined as a phone conversation.

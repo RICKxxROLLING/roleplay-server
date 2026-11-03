@@ -137,7 +137,7 @@ def test_texts_are_short_and_story_is_not(client, session, llm, monkeypatch):
     texting(client, session)
     say(client, session, "hey")                     # texting
     story_cap, text_cap = seen[0], [n for n in seen[1:] if n == texting_mod.MAX_NEW_TOKENS]
-    assert story_cap == 400 and text_cap
+    assert story_cap == 220 and text_cap  # story: slow_pacing is on by default
     assert TO_STORY.startswith("{{char}} and {{user}} are together")
 
 
