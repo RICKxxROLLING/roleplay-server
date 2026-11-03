@@ -340,7 +340,11 @@ matching, on quiet scenes only, and it did not hold live: a 12-turn stove chat s
 4/12 and moved 3/12. Turning the scene tracker off did not help (pushes 6 and 2, moves 3 and 4),
 though it does hop to places merely mentioned. So `slow_pacing` also caps story replies at
 `PACING_MAX_NEW_TOKENS`: over 24 replies moves fell 5 to 1, pushes 6 to 4, length 976 to 712
-chars, none cut mid-sentence. One card and a small sample. Off for texting and writing first. Greetings that plant a task
+chars. One card and a small sample. Off for texting and writing first. Live, the cap cut 11/24
+replies mid-sentence (offline it had shown none), so capped replies are trimmed back to their
+last whole sentence. The tracker also caused jumps: it recorded "the stables" from a mention and
+Joel's next reply walked into them. A location now changes only when narration or the user moves
+someone (`scene.moved`; speech doesn't count), and the first scene is read from the greeting. Greetings that plant a task
 pull the same way: Dina's library raid kept resurfacing beside the stove.
 
 **A swipe must exclude its reply from retrieval, not only from history.** Retrieval skips what is

@@ -7,6 +7,7 @@ a few seconds and would otherwise look like a hung stream.
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import AsyncIterator
 
 from sqlalchemy.orm import Session as DbSession
@@ -118,6 +119,25 @@ def _without_label(text: str, card: CharacterCard) -> str:
     reply = text.strip()
     prefix = f"{card.name}:"
     return reply[len(prefix) :].strip() if reply.startswith(prefix) else reply
+
+
+def _whole_sentences(text: str) -> str:
+    """Trim a reply the token cap cut off back to its last complete sentence. Live,
+    11 of 24 replies at the pacing cap stopped mid-sentence. A reply with no
+    complete sentence is kept as it is, and open asterisks or quotes are closed
+    by cutting to before them."""
+    text = text.rstrip()
+    if not text or text[-1] in '.!?…"”*':
+        return text
+    ends = [m.end() for m in re.finditer(r'[.!?…]["”*]*(?=\s)', text)]
+    if not ends:
+        return text
+    kept = text[: ends[-1]].rstrip()
+    if kept.count("*") % 2:
+        kept += "*"
+    if kept.count('"') % 2:
+        kept += '"'
+    return kept
 
 
 def _gutted(raw: str, kept: str) -> bool:
@@ -279,6 +299,8 @@ async def stream_reply(
             tokens.observe(settings.model, len(built.text), client.last_prompt_tokens)
 
             raw = _without_label("".join(collected), card)
+            if settings.slow_pacing and not is_texting:
+                raw = _whole_sentences(raw)
             # Before persisting: once one reply narrating the user is in
             # history, the model copies it -- see chat/guard.py.
             reply, removed = _guarded(raw, session, card)
@@ -336,6 +358,13 @@ async def stream_reply(
     if settings.scene_enabled and not is_texting:
         try:
             base = session.scene_prev if swipe_of is not None else session.scene
+            if base is None or base.get("location") in (None, "", "unknown"):
+                # Start from where the greeting puts them, so the first reply's
+                # talk of elsewhere isn't taken for where they are.
+                first = session.messages[0] if session.messages else None
+                if first is not None and first.role == "assistant" and len(session.messages) > 1:
+                    base = await update_scene(base, "", first.content, card,
+                                              session.persona.name if session.persona else "You")
             if base is None:
                 base = blank_scene(", ".join(c.name for c in group.cast(session)),
                                    session.persona.name if session.persona else "You")

@@ -100,6 +100,25 @@ def build_scene_prompt(scene: dict, user_text: str, reply: str, char: str, user:
     return fmt.user.format(text=body) + fmt.joiner + fmt.response_open + "Location:"
 
 
+# A place only changes when somebody goes somewhere. Seen live: Joel's reply mentioned
+# work at the stables, the tracker recorded "the stables", and his next reply opened by
+# walking into them -- the tail reads this field back, so a misread becomes a teleport.
+# Dina went from the rug by the stove to a lookout tower she was only describing.
+_MOVEMENT = re.compile(
+    r"\b(walk(s|ed|ing)?|head(s|ed|ing)? (to|toward|towards|out|back|home|inside|outside|over|up|down)|"
+    r"step(s|ped|ping)? (out|in|inside|outside|into|through)|arriv(e|es|ed|ing)|enter(s|ed|ing)?|"
+    r"leav(e|es|ing)|left the|r(i|o)de(s)?|riding|follow(s|ed|ing)?|climb(s|ed|ing)?|"
+    r"(go|goes|going|went) (to|inside|outside|out|back|home)|back (home|at|in|to)|"
+    r"later|the next (morning|day)|that (evening|night)|meanwhile)\b", re.I)
+_QUOTED = re.compile(r'"[^"\n]*"|“[^”\n]*”')
+
+
+def moved(user_text: str, reply: str) -> bool:
+    """Whether the exchange moves anyone. Speech doesn't count: talking about a
+    place, or a walk, is not going there."""
+    return bool(_MOVEMENT.search(_QUOTED.sub(" ", f"{user_text}\n{reply}")))
+
+
 async def update_scene(
     scene: dict | None, user_text: str, reply: str, card: CharacterCard, user_name: str
 ) -> dict:
@@ -114,4 +133,9 @@ async def update_scene(
     raw = await get_client().generate(
         build_scene_prompt(base, user_text, reply, char, user_name), params
     )
-    return parse_scene(raw) or base
+    new = parse_scene(raw)
+    if not new:
+        return base
+    if base.get("location") not in (None, "", "unknown") and not moved(user_text, reply):
+        new["location"] = base["location"]
+    return new

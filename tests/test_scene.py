@@ -42,11 +42,45 @@ def test_a_misfire_keeps_the_old_scene(client, session, llm):
 
 
 def test_a_swipe_starts_from_the_scene_before_the_reply_it_replaces(client, session, llm):
-    chat(client, session)  # scene moves from blank to the archive
+    chat(client, session)  # the scene before this reply comes from the greeting
+    client.patch(f"/api/sessions/{session}/scene", json={"location": "the roof"})
     sse_events(client.post(f"/api/sessions/{session}/regenerate"))
     previous = llm.scene_calls[-1].split("PREVIOUS SCENE")[1]
-    assert "Location: unknown" in previous
-    assert "the flooded archive" not in previous
+    assert "the flooded archive" in previous
+    assert "the roof" not in previous
+
+
+def test_location_changes_only_when_someone_moves():
+    from app.memory.scene import moved
+
+    assert moved("*I walk over to the stables.*", "He nods.")
+    assert moved("Hi.", "*She steps outside into the snow.*")
+    assert moved("Hi.", "*The next morning she is up early.*")
+    # Mentioning a place, or talking about going somewhere, moves nobody.
+    assert not moved("Tell me about the stables.", '*She smiles.* "I walked there once, and the lookout tower too."')
+    assert not moved("*I top up your cocoa.*", "*She takes the mug by the stove.*")
+
+
+def test_a_mentioned_place_does_not_replace_the_location(client, session, llm):
+    chat(client, session)
+    llm.scene_reply = " the lookout tower\nTime: night\nWeather: indoors\nPresent: Seraphine, You"
+    llm.replies = ['*She sips her cocoa.* "That lookout tower needs better lights."']
+    sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": "*I watch the stove.*"}))
+    scene = client.get(f"/api/sessions/{session}").json()["scene"]
+    assert scene["location"] == "the flooded archive" and scene["time"] == "night"
+    llm.replies = ["*She walks to the lookout tower.*"]
+    sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": "Hm."}))
+    assert client.get(f"/api/sessions/{session}").json()["scene"]["location"] == "the lookout tower"
+
+
+def test_replies_cut_by_the_cap_end_on_a_whole_sentence():
+    from app.chat.orchestrator import _whole_sentences
+
+    assert _whole_sentences("She smiled. Then she looked at the") == "She smiled."
+    assert _whole_sentences("*She smiled. Then she looked at the") == "*She smiled.*"
+    assert _whole_sentences('"Well. I never really thought') == '"Well."'
+    assert _whole_sentences("All done.") == "All done."
+    assert _whole_sentences("no sentence end here") == "no sentence end here"
 
 
 def test_the_scene_is_editable(client, session, llm):
