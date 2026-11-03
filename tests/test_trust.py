@@ -77,11 +77,16 @@ def romance_line(t, a, r):
 
 
 def test_romance_needs_the_card_to_opt_in_and_both_scores():
-    assert "romantic" not in line(90, 90, 90)  # no opt-in: fond, however high
-    assert "fond" in line(90, 90, 90)
-    assert "romantic" not in romance_line(40, 80, 30)
-    assert "romantic" not in romance_line(60, 60, 30)
-    assert "romantic" in romance_line(60, 75, 30)
+    # No opt-in: says no at every level of affection, however high.
+    for t, a in ((90, 90), (40, 40), (10, 10)):
+        assert "kindly says no" in line(t, a, 30)
+    assert "may let romantic" not in line(90, 90, 90)
+    # Opted in: nothing tells the character to refuse, and high scores open the door.
+    for t, a in ((90, 90), (40, 40), (10, 10)):
+        assert "kindly says no" not in romance_line(t, a, 30)
+    assert "may let romantic" not in romance_line(40, 80, 30)
+    assert "may let romantic" not in romance_line(60, 60, 30)
+    assert "may let romantic" in romance_line(60, 75, 30)
 
 
 MINORS = [
@@ -204,7 +209,7 @@ def test_set_by_hand(client, session, llm, imported):
     assert r.status_code == 200 and standing(client, session)["trust"] == 80
     assert client.put(f"/api/sessions/{session}/standing/{imported}", json={"trust": 180, "affection": 1, "respect": 1}).status_code == 422
     say(client, session, "Hi.")
-    assert "fond of them" in chat_prompts(llm)[-1]
+    assert "the way family does" in chat_prompts(llm)[-1]
 
 
 def test_group_members_stand_separately(client, imported, llm):
@@ -245,3 +250,9 @@ def test_deleting_the_chat_deletes_its_standing(client, session, llm):
     client.delete(f"/api/sessions/{session}")
     with SessionLocal() as db:
         assert db.query(Standing).count() == 0
+
+
+def test_a_minors_line_has_no_romantic_words_at_any_score():
+    for t, a in ((100, 100), (40, 40), (10, 10)):
+        got = trust.standing_line({"trust": t, "affection": a, "respect": 30}, "Lev", "Riley", minor=True)
+        assert "romantic" not in got and "kiss" not in got and "family" not in got

@@ -382,6 +382,14 @@ she was mostly guarded (1 of 4 agreed); at high scores all 4 agreed, with or wit
 tag. So the scores gate closeness, but the tag only stops the character initiating or being
 written as romantic: "as a close friend" does not make an 8B refuse a direct ask. Two of those 20
 replies also slipped into first person and survived.
+So an untagged character now says no outright, at every level of affection. Offline, 20 direct asks
+per wording, Dina and Jesse at high scores: "as a close friend" 1 refusal, "only as a friend, and
+kindly says no" ~15, "the way family does, so a kiss would feel wrong" ~19, a scripted reply ~18,
+but the script came back word for word. The chosen line at high, middle and low scores, same two
+cards: no acceptance in 54 asks, judged on the first 380 characters of each reply, though some said
+"not yet" and a few deflected; no refusal or romance in 36 ordinary lines. A minor's line stays free
+of romantic words, covered by `minor_line`. There is no line before a character's first scores
+exist, so the first reply of a chat isn't covered, nor is anything with earned trust switched off.
 
 **A character's thoughts are two outputs: a journal for the owner, a view for the prompt
 (`memory/thoughts.py`).** After each reply a short pass (~2 s on the 2080) writes a journal

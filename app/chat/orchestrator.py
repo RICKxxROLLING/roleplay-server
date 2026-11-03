@@ -107,7 +107,7 @@ def _standing(db, session, speaker, card, persona) -> str:
     if not settings.trust_enabled or db is None:
         return minor
     scores = trust.get_scores(db, session.id, speaker.id)
-    line = trust.standing_line(scores, card.name, user, trust.romance_allowed(card)) if scores else ""
+    line = trust.standing_line(scores, card.name, user, trust.romance_allowed(card), trust.is_minor(card)) if scores else ""
     return " ".join(p for p in (line, minor) if p)
 
 

@@ -193,11 +193,16 @@ def romance_allowed(card) -> bool:
     return "romance" in [t.strip().lower() for t in (card.tags or [])] and not is_minor(card)
 
 
-def standing_line(scores: dict, char: str, user: str, romance: bool = False) -> str:
+def standing_line(scores: dict, char: str, user: str, romance: bool = False, minor: bool = False) -> str:
     """How the numbers shape the character, for the prompt. Thresholds are what make
     closeness earned: secrets stay out of reach until the scores allow it. Romance also
-    needs the card to opt in (`romance_allowed`); otherwise fondness stays fondness."""
+    needs the card to opt in (`romance_allowed`); without that the character says no.
+    A minor's line stays free of romantic words: `minor_line` covers it, unprompted."""
     t, a, r = (float(scores.get(f, START[f])) for f in FIELDS)
+    # "As a close friend" didn't stop anything: 1 refusal in 20 direct asks. Giving the
+    # reason and the answer did, 19 in 20, in the character's own words. A scripted reply
+    # did nearly as well, but came back word for word.
+    says_no = "" if romance or minor else f", so a kiss or anything romantic would feel wrong and {char} kindly says no"
     parts = []
     if t < 25:
         parts.append(f"{char} does not trust {user} and keeps anything personal private")
@@ -206,13 +211,15 @@ def standing_line(scores: dict, char: str, user: str, romance: bool = False) -> 
     else:
         parts.append(f"{char} trusts {user} and may share secrets and old wounds")
     if a < 25:
-        parts.append("is cool and distant")
+        parts.append("is cool and distant" + says_no)
     elif a < 70 or t < 50:
-        parts.append("is warm only as a friend would be")
+        parts.append("is warm only as a friend would be" + says_no)
     elif romance:
         parts.append("may let romantic feelings show if the moment calls for it")
-    else:
+    elif minor:
         parts.append("is openly fond of them, as a close friend")
+    else:
+        parts.append(f"loves {user} the way family does" + says_no)
     if r < 25:
         parts.append(f"doubts {user}'s judgment")
     elif r >= 60:
