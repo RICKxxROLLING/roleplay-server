@@ -287,9 +287,6 @@ def build_prompt(
     view = substitute(private_view.strip(), char, user_name)
     view_block = f"What {char} privately thinks of {user_name}, unknown to {user_name}: {view}" if view else ""
     used += estimate_tokens(view_block)
-    # Earned trust (memory/trust.py): how far the character will open up right now.
-    standing_block = substitute(standing.strip(), char, user_name)
-    used += estimate_tokens(standing_block)
 
     # --- Pinned moments: chosen by the user, so they sit above recall ---
     pinned = [t for t in (pinned or []) if t.strip()]
@@ -328,6 +325,10 @@ def build_prompt(
         substitute(initiative or time_note, char, user_name),
         # The first reply after a switch between story and texting: where they are now.
         substitute(mode_note, char, user_name),
+        # Earned trust (memory/trust.py). In the tail because it did nothing further up:
+        # asked for a secret at trust 10, Dina opened up 5/5 with this in the head, and
+        # stayed wary in all 5 with it here (only 1 opened up), against 5/5 at trust 80.
+        substitute(standing, char, user_name),
         PACING_TAIL if pacing else "",
         substitute(TEXTING_TAIL if texting else TAIL_REMINDER, char, user_name),
     ]
@@ -353,7 +354,7 @@ def build_prompt(
     # Everything above the history is one preamble: for Alpaca that renders
     # exactly as before, and chat formats need it inside a single system turn.
     preamble = "\n\n".join(
-        b for b in (head, example, summary_block, facts_block, view_block, standing_block, pinned_block,
+        b for b in (head, example, summary_block, facts_block, view_block, pinned_block,
                     retrieved_block) if b
     )
     sections = [fmt.system.format(text=preamble)]

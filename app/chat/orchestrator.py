@@ -101,10 +101,14 @@ async def build_turn_prompt(
 
 
 def _standing(db, session, speaker, card, persona) -> str:
+    user = persona.name if persona else "You"
+    # Outside the switch on purpose: turning earned trust off must not lift this.
+    minor = trust.minor_line(card.name, user) if trust.is_minor(card) else ""
     if not settings.trust_enabled or db is None:
-        return ""
+        return minor
     scores = trust.get_scores(db, session.id, speaker.id)
-    return trust.standing_line(scores, card.name, persona.name if persona else "You") if scores else ""
+    line = trust.standing_line(scores, card.name, user, trust.romance_allowed(card)) if scores else ""
+    return " ".join(p for p in (line, minor) if p)
 
 
 def _params(built_stop: list[str], overrides: dict | None) -> GenerationParams:

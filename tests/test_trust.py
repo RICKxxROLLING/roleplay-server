@@ -72,10 +72,72 @@ def test_secrets_have_to_be_earned():
     assert "may share secrets" in line(60, 30, 30)
 
 
-def test_romance_needs_both_affection_and_trust():
-    assert "romantic" not in line(40, 80, 30)
-    assert "romantic" not in line(60, 60, 30)
-    assert "romantic" in line(60, 75, 30)
+def romance_line(t, a, r):
+    return trust.standing_line({"trust": t, "affection": a, "respect": r}, "Dina", "Riley", romance=True)
+
+
+def test_romance_needs_the_card_to_opt_in_and_both_scores():
+    assert "romantic" not in line(90, 90, 90)  # no opt-in: fond, however high
+    assert "fond" in line(90, 90, 90)
+    assert "romantic" not in romance_line(40, 80, 30)
+    assert "romantic" not in romance_line(60, 60, 30)
+    assert "romantic" in romance_line(60, 75, 30)
+
+
+MINORS = [
+    "{{char}} is a Seraphite boy of about thirteen, slight and sharp-eyed.",
+    "{{char}} is in her late teens, a young fighter.",
+    "{{char}} is 16 years old and new in town.",
+    "{{char}} is a sixteen-year-old apprentice.",
+    "{{char}} is a teenager who works the docks.",
+    "{{char}} is a young girl who lives by the harbor.",
+    "A shy kid, {{char}} is about fifteen.",
+]
+ADULTS = [
+    "{{char}} is in his fifties, a broad Texan who lost his son.",
+    "{{char}} is in her early twenties. She grew up in Jackson after arriving there as a kid.",
+    "{{char}} has two children and worked here for seventeen years.",
+    "{{char}} is about twenty, born after the outbreak.",
+]
+
+
+def test_cards_written_as_minors_are_recognised():
+    from conftest import make_card
+
+    for text in MINORS:
+        assert trust.is_minor(make_card(description=text)), text
+    for text in ADULTS:
+        assert not trust.is_minor(make_card(description=text)), text
+
+
+def test_a_minor_cannot_unlock_romance_even_with_the_tag():
+    from conftest import make_card
+
+    assert trust.romance_allowed(make_card(description=ADULTS[1], tags=["Romance "]))
+    assert not trust.romance_allowed(make_card(description=ADULTS[1], tags=["jackson"]))
+    assert not trust.romance_allowed(make_card(description=MINORS[0], tags=["romance"]))
+
+
+def test_a_minor_stays_platonic_at_any_score_with_trust_on_or_off(client, llm):
+    kid = client.post("/api/characters", json={
+        "name": "Lev", "first_mes": "Hi.", "tags": ["romance"],
+        "description": "{{char}} is a boy of about thirteen who climbs everything."}).json()["id"]
+    sid = client.post("/api/sessions", json={"character_id": kid}).json()["id"]
+    client.put(f"/api/sessions/{sid}/standing/{kid}", json={"trust": 100, "affection": 100, "respect": 100})
+    say(client, sid, "Hi.")
+    p = chat_prompts(llm)[-1]
+    assert "stays platonic" in p and "romantic" not in p
+    client.patch("/api/settings", json={"trust_enabled": False})
+    say(client, sid, "Hi again.")
+    p = chat_prompts(llm)[-1]
+    assert "stays platonic" in p and "romantic" not in p
+
+
+def test_the_standing_sits_in_the_tail(client, session, llm):
+    say(client, session, "Hi.")
+    say(client, session, "Hi again.")
+    p = chat_prompts(llm)[-1]
+    assert p.index("Hi again.") < p.index("keeps secrets and old wounds private")
 
 
 def test_cold_characters_write_less_often():
@@ -142,7 +204,7 @@ def test_set_by_hand(client, session, llm, imported):
     assert r.status_code == 200 and standing(client, session)["trust"] == 80
     assert client.put(f"/api/sessions/{session}/standing/{imported}", json={"trust": 180, "affection": 1, "respect": 1}).status_code == 422
     say(client, session, "Hi.")
-    assert "romantic" in chat_prompts(llm)[-1]
+    assert "fond of them" in chat_prompts(llm)[-1]
 
 
 def test_group_members_stand_separately(client, imported, llm):

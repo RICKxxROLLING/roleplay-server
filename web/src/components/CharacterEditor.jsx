@@ -120,6 +120,14 @@ export default function CharacterEditor({ open, onClose, characterId, onChanged 
             <Input value={form.name || ""} onChange={(e) => set("name", e.target.value)} />
           </Field>
 
+          <Field label="Tags" hint="comma separated; a romance tag lets earned trust unlock romance for an adult character">
+            <Input
+              value={(form.tags || []).join(", ")}
+              onChange={(e) => set("tags", e.target.value.split(",").map((t) => t.trimStart()))}
+              onBlur={() => set("tags", (form.tags || []).map((t) => t.trim()).filter(Boolean))}
+            />
+          </Field>
+
           <Field label="World" hint="shared setting and lore; manage them under Worlds">
             <select
               value={worldId ?? ""}

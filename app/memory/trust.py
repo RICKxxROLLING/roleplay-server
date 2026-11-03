@@ -164,9 +164,39 @@ async def seed(card, summary: str, user: str) -> dict:
 # --- what the scores do -------------------------------------------------------------
 
 
-def standing_line(scores: dict, char: str, user: str) -> str:
+#: Worded for a character described as under 18. Errs towards matching: a false match
+#: only keeps an adult's romance off, and the line can be fixed by rewording the card.
+_MINOR = re.compile(
+    r"\b(?:1[0-7]|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen)[- ]years?[- ]old\b"
+    r"|\b(?:aged?|is)\s+(?:about |around |only |nearly |just )?"
+    r"(?:1[0-7]|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen)\b"
+    r"|\bof about (?:1[0-7]|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen)\b"
+    r"|\b(?:in (?:her|his|their) )?(?:early |mid |late |mid-|late-)teens\b"
+    r"|\bin (?:her|his|their) teens\b"
+    r"|\bis an? (?:\w+ ){0,3}(?:child|kid|boy|girl|teen|teenager|minor|schoolgirl|schoolboy)\b",
+    re.I,
+)
+
+
+def is_minor(card) -> bool:
+    """Whether the card describes its character as under 18."""
+    return bool(_MINOR.search(" ".join(p for p in (card.description, card.personality) if p)))
+
+
+def minor_line(char: str, user: str) -> str:
+    return (f"{char} is a minor. Everything between {char} and {user} stays platonic, "
+            f"the way it would be with a trusted older friend.")
+
+
+def romance_allowed(card) -> bool:
+    """Opt-in per card, with a `romance` tag, and never for a minor."""
+    return "romance" in [t.strip().lower() for t in (card.tags or [])] and not is_minor(card)
+
+
+def standing_line(scores: dict, char: str, user: str, romance: bool = False) -> str:
     """How the numbers shape the character, for the prompt. Thresholds are what make
-    closeness earned: secrets and romance are out of reach until the scores allow it."""
+    closeness earned: secrets stay out of reach until the scores allow it. Romance also
+    needs the card to opt in (`romance_allowed`); otherwise fondness stays fondness."""
     t, a, r = (float(scores.get(f, START[f])) for f in FIELDS)
     parts = []
     if t < 25:
@@ -179,8 +209,10 @@ def standing_line(scores: dict, char: str, user: str) -> str:
         parts.append("is cool and distant")
     elif a < 70 or t < 50:
         parts.append("is warm only as a friend would be")
-    else:
+    elif romance:
         parts.append("may let romantic feelings show if the moment calls for it")
+    else:
+        parts.append("is openly fond of them, as a close friend")
     if r < 25:
         parts.append(f"doubts {user}'s judgment")
     elif r >= 60:

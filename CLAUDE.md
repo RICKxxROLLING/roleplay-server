@@ -371,6 +371,11 @@ examples. On 12 lines unlike those examples: helpful 12/12 positive, harmful 12/
 opposite; neutral lines mostly drew +1, which is why +1 counts half. Starting scores come from
 the card (capped at 70, editable), and are noisy: Isaac's trust in a stranger seeded at 70.
 Swipes don't re-score, and only the speaker is scored in a group.
+The standing line sits in the tail: asked for a secret at trust 10, Dina opened up 5/5 with it in
+the head, and stayed wary 5/5 (1 opened up) in the tail, against 5/5 sharing at trust 80. Romance
+is opt-in with a card's `romance` tag and never unlocks for a card written as a minor
+(`trust.is_minor`), whose prompts also state it stays platonic, even with earned trust switched
+off. Age is read from card text, so a card that doesn't state one isn't caught.
 
 **A character's thoughts are two outputs: a journal for the owner, a view for the prompt
 (`memory/thoughts.py`).** After each reply a short pass (~2 s on the 2080) writes a journal
