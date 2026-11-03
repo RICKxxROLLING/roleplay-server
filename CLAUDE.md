@@ -376,6 +376,12 @@ the head, and stayed wary 5/5 (1 opened up) in the tail, against 5/5 sharing at 
 is opt-in with a card's `romance` tag and never unlocks for a card written as a minor
 (`trust.is_minor`), whose prompts also state it stays platonic, even with earned trust switched
 off. Age is read from card text, so a card that doesn't state one isn't caught.
+Live through the app, same Dina, 4 swipes each. Asked for a secret: at trust 10 about half still
+shared something small, weaker than offline; at trust 80 all 4 did. Asked for a kiss at low scores
+she was mostly guarded (1 of 4 agreed); at high scores all 4 agreed, with or without the `romance`
+tag. So the scores gate closeness, but the tag only stops the character initiating or being
+written as romantic: "as a close friend" does not make an 8B refuse a direct ask. Two of those 20
+replies also slipped into first person and survived.
 
 **A character's thoughts are two outputs: a journal for the owner, a view for the prompt
 (`memory/thoughts.py`).** After each reply a short pass (~2 s on the 2080) writes a journal
