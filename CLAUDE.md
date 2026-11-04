@@ -413,8 +413,10 @@ line is an event, and "Something happens" asks for one by hand. Live, 15 quiet t
 off: Dina's places 7 vs 5, Joel's 2 vs 3, one chat each, so no sign of more drift, though no proof
 either. Replies noticed the line far more than offline, 5 of 7: posted right before the reply, it is
 the last thing they read. Mostly gently (the stew, the cold), but "a lone figure, hood up, rifle slung
-low" sent Dina investigating, so those words are refused too. Known limit: visitors are invented
-names, and can clash with a card ("Sarah" tending Joel's garden).
+low" sent Dina investigating, so those words are refused too. An event falling back to its first
+sentence, with four tries, posted 30/36 on fresh chats, but pressing the button five times running
+in one chat still found nothing 5 times in 15, cause not yet looked into. Known limits: visitors are
+invented names and can clash with a card ("Sarah" tending Joel's garden); most arrive by knocking.
 
 **A character's thoughts are two outputs: a journal for the owner, a view for the prompt
 (`memory/thoughts.py`).** After each reply a short pass (~2 s on the 2080) writes a journal
