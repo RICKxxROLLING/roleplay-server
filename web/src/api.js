@@ -87,6 +87,18 @@ export const api = {
     j("/sessions", { method: "POST", body: JSON.stringify(body) }),
   updateSession: (id, patch) =>
     j(`/sessions/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  importChat: (data) => j("/sessions/import", { method: "POST", body: JSON.stringify(data) }),
+  exportChat: async (id) => {
+    const res = await fetch(`${API}/sessions/${id}/export`);
+    if (!res.ok) throw new Error(res.statusText);
+    const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") || "")?.[1] || "chat.json";
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  },
   deleteSession: (id) => j(`/sessions/${id}`, { method: "DELETE" }),
   inspectPrompt: (id) => j(`/sessions/${id}/prompt`),
   journal: (id) => j(`/sessions/${id}/journal`),

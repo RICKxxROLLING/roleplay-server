@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import AsyncIterator, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DbSession
 
 from ..cards.models import CharacterCard
-from ..chat import build_turn_prompt, group, stream_reply
+from ..chat import build_turn_prompt, group, stream_reply, transfer
 from ..config import settings
 from ..db import Character, ChatSession, Message, Persona, SessionLocal, SessionMember, get_db
 from ..db.models import Notification
@@ -107,6 +108,27 @@ def create_session(body: SessionIn, db: DbSession = Depends(get_db)) -> dict:
         db.refresh(s)
 
     return {"id": s.id, "title": s.title, "messages": [_serialise(m, s) for m in s.messages]}
+
+
+@router.post("/import")
+def import_chat(body: transfer.ChatFile, db: DbSession = Depends(get_db)) -> dict:
+    """A new chat from an exported file (chat/transfer.py). Changes nothing already here."""
+    try:
+        return transfer.import_chat(db, body)
+    except transfer.ImportRefused as exc:
+        db.rollback()
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/{session_id}/export")
+def export_chat(session_id: int, db: DbSession = Depends(get_db)) -> JSONResponse:
+    """The whole chat as a file to keep or carry to another install."""
+    s = db.get(ChatSession, session_id)
+    if not s:
+        raise HTTPException(404, "Session not found")
+    name = re.sub(r"[^A-Za-z0-9 _-]+", "", s.title).strip().replace(" ", "-")[:60] or "chat"
+    return JSONResponse(transfer.export_chat(db, s),
+                        headers={"Content-Disposition": f'attachment; filename="{name}.chat.json"'})
 
 
 def _members(db: DbSession, owner_id: int, ids: list[int]) -> list[Character]:

@@ -28,6 +28,20 @@ export default function Sidebar({
         // A bundle (worlds + characters, app/routes/bundle.py) or a single
         // V1/V2 card exported as JSON.
         const data = JSON.parse(await file.text());
+        // A chat exported from any install (app/chat/transfer.py): always a new chat.
+        if (data.format === "roleplay-chat") {
+          const r = await api.importChat(data);
+          const added = [
+            r.characters_created.length && `added ${r.characters_created.join(", ")}`,
+            r.persona_created && `added persona ${r.persona_created}`,
+            r.worlds_created.length && `added world ${r.worlds_created.join(", ")}`,
+          ].filter(Boolean);
+          alert(`Imported "${r.title}": ${r.messages} messages${added.length ? `; ${added.join("; ")}` : ""}.`);
+          await onImported?.();
+          onOpenSession(r.id);
+          onClose?.();
+          return;
+        }
         const bundle = data.format === "roleplay-bundle"
           ? data
           : { format: "roleplay-bundle", version: 1, characters: [{ card: data }] };
@@ -108,7 +122,7 @@ export default function Sidebar({
           onClick={() => fileRef.current?.click()}
           className="w-full text-sm rounded-lg bg-accent/20 border border-accent/30 py-2 hover:bg-accent/30 transition"
         >
-          Import character card
+          Import card or chat
         </button>
         <button
           onClick={onNewCharacter}

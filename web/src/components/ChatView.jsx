@@ -108,6 +108,14 @@ export default function ChatView({
     }
   }
 
+  async function exportChat() {
+    try {
+      await api.exportChat(sessionId);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   // "Message me now": one message, skipping the timing rules and the
   // would-they pass. Streams nothing -- the reply arrives on reload.
   const [nudging, setNudging] = useState(false);
@@ -489,6 +497,12 @@ export default function ChatView({
                   Journal
                 </button>
                 <button
+                  onClick={() => { setMenuOpen(false); exportChat(); }}
+                  className="block w-full text-left px-3 py-2 hover:bg-ink-850"
+                >
+                  Export chat
+                </button>
+                <button
                   onClick={() => { setMenuOpen(false); onOpenSettings?.(); }}
                   className="block w-full text-left px-3 py-2 hover:bg-ink-850"
                 >
@@ -518,6 +532,13 @@ export default function ChatView({
             className="text-xs sm:text-sm px-2 sm:px-3 py-1.5 rounded-lg border border-ink-700 hover:bg-ink-850"
           >
             Journal
+          </button>
+          <button
+            onClick={exportChat}
+            title="Save this chat as a file, to keep or import on another install"
+            className="text-xs sm:text-sm px-2 sm:px-3 py-1.5 rounded-lg border border-ink-700 hover:bg-ink-850"
+          >
+            Export
           </button>
           <button
             onClick={onOpenSettings}
