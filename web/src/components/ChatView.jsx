@@ -64,6 +64,69 @@ export default function ChatView({
     }
   }
 
+  // Speaking instead of typing. The words land in the box to check before sending. Browsers
+  // only offer the microphone over HTTPS, so a plain LAN address can't use it.
+  const [mic, setMic] = useState(null); // null | "recording" | "hearing"
+  const recorder = useRef(null);
+  const micTimer = useRef(null);
+  async function startListening() {
+    setError(null);
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setError("This browser can't use the microphone here. It needs an HTTPS address, like your public one.");
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setError("The microphone is blocked. Allow it for this site in your browser, then try again.");
+      return;
+    }
+    const rec = new MediaRecorder(stream);
+    const chunks = [];
+    rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    rec.onstop = async () => {
+      clearTimeout(micTimer.current);
+      stream.getTracks().forEach((t) => t.stop());
+      recorder.current = null;
+      setMic("hearing");
+      try {
+        const text = await api.transcribe(sessionId, new Blob(chunks, { type: rec.mimeType }));
+        if (text) setDraft((d) => (d.trim() ? `${d.trimEnd()} ${text}` : text));
+        else setError("Didn't catch anything. Try again a little closer to the mic.");
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        setMic(null);
+      }
+    };
+    recorder.current = rec;
+    rec.start();
+    setMic("recording");
+    // A forgotten mic shouldn't record all night.
+    micTimer.current = setTimeout(() => recorder.current?.stop(), 2 * 60 * 1000);
+  }
+  // Leaving the chat stops the microphone.
+  useEffect(() => () => {
+    clearTimeout(micTimer.current);
+    const rec = recorder.current;
+    if (rec) {
+      rec.onstop = null;
+      rec.stream.getTracks().forEach((t) => t.stop());
+      rec.stop();
+      recorder.current = null;
+    }
+  }, [sessionId]);
+
+  async function setChoiceMode(on) {
+    try {
+      await api.updateSession(sessionId, { choice_mode: on });
+      await reload();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   async function setNarrator(on) {
     try {
       await api.updateSession(sessionId, { narrator: on });
@@ -194,6 +257,40 @@ export default function ChatView({
 
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // Choose your own adventure: asked for once the reply is in, so it never holds one up,
+  // and dropped if the chat has moved on by the time they arrive.
+  const [choices, setChoices] = useState([]);
+  const [choosing, setChoosing] = useState(false);
+  const lastMessage = session?.messages?.[session.messages.length - 1];
+  const choiceKey =
+    session?.choice_mode && !busy && lastMessage && lastMessage.role !== "user"
+      ? `${sessionId}:${lastMessage.id}:${lastMessage.content}`
+      : null;
+  const choiceRun = useRef(0);
+  async function fetchChoices(refresh) {
+    const run = ++choiceRun.current;
+    setChoices([]);
+    setChoosing(true);
+    try {
+      const r = await api.choices(sessionId, refresh);
+      if (run === choiceRun.current) setChoices(r.choices);
+    } catch (e) {
+      if (run === choiceRun.current) setError(e.message);
+    } finally {
+      if (run === choiceRun.current) setChoosing(false);
+    }
+  }
+  useEffect(() => {
+    if (choiceKey) {
+      fetchChoices(false);
+    } else {
+      choiceRun.current++;
+      setChoices([]);
+      setChoosing(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [choiceKey]);
+
   const charName = session?.character_name;
   const cast = session?.cast || [];
   const isGroup = cast.length > 1;
@@ -290,15 +387,16 @@ export default function ChatView({
   }
 
   /** `speakerId` (group chats) picks who answers; unset lets the server choose. */
-  async function send(speakerId) {
-    const content = draft.trim();
+  async function send(speakerId, chosen) {
+    const content = (chosen ?? draft).trim();
     if (busy) return;
     if (!content) {
       // Nothing typed: that character simply speaks next.
       if (speakerId) runStream(`/sessions/${sessionId}/respond`, { character_id: speakerId });
       return;
     }
-    setDraft("");
+    // A choice leaves anything half typed where it is.
+    if (chosen === undefined) setDraft("");
     // Optimistic echo so the user's turn appears instantly.
     setSession((s) => ({
       ...s,
@@ -477,6 +575,18 @@ export default function ChatView({
                     className="accent-accent w-3 h-3"
                   />
                   read aloud
+                </label>
+                <label
+                  className="flex items-center gap-1 cursor-pointer hover:text-slate-300"
+                  title="Choose your own adventure: three things you could do next, above the type box"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!session?.choice_mode}
+                    onChange={(e) => setChoiceMode(e.target.checked)}
+                    className="accent-accent w-3 h-3"
+                  />
+                  choices
                 </label>
                 <button
                   onClick={somethingHappens}
@@ -689,6 +799,25 @@ export default function ChatView({
       </div>
 
       <div className="border-t border-ink-800 p-4">
+        {session?.choice_mode && !busy && (choosing || choices.length > 0) && (
+          <div className="mb-2 space-y-1.5">
+            {choosing && <p className="text-[11px] text-slate-500">Thinking of choices…</p>}
+            {choices.map((c, i) => (
+              <button
+                key={i}
+                onClick={() => send(undefined, c)}
+                className="block w-full text-left text-sm rounded-xl border border-ink-700 px-3 py-2 hover:border-accent/50 hover:bg-accent/10 break-words"
+              >
+                {c.replace(/\*/g, "")}
+              </button>
+            ))}
+            {!choosing && (
+              <button onClick={() => fetchChoices(true)} className="text-[11px] text-slate-500 hover:text-slate-300">
+                other choices
+              </button>
+            )}
+          </div>
+        )}
         {arrivals === "list" && (
           <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
             <span>Who arrives?</span>
@@ -771,6 +900,19 @@ export default function ChatView({
               +
             </button>
           )}
+          <button
+            onClick={() => (mic === "recording" ? recorder.current?.stop() : startListening())}
+            disabled={mic === "hearing"}
+            title={mic === "recording" ? "Stop and turn this into text" : "Speak instead of typing"}
+            aria-label={mic === "recording" ? "Stop recording" : "Speak instead of typing"}
+            className={`px-3 py-2.5 rounded-xl border text-sm disabled:opacity-40 ${
+              mic === "recording"
+                ? "border-rose-500/60 bg-rose-500/20 text-rose-200"
+                : "border-ink-700 text-slate-400 hover:bg-ink-850"
+            }`}
+          >
+            {mic === "recording" ? "Stop" : mic === "hearing" ? "…" : "Mic"}
+          </button>
           {busy ? (
             <button
               onClick={stop}

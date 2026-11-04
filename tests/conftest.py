@@ -151,6 +151,8 @@ class MockLLM(LLMClient):
         self.trust_calls: list[str] = []
         self.narrator_calls: list[str] = []
         self.tie_calls: list[str] = []
+        self.choice_calls: list[str] = []
+        self.choices_reply = ' "Tell me more."\n2. I look around the room.\n3. I ask about the road north.'
         self.rhythm_calls: list[str] = []
         self.rhythm_replies: list[str] = []
         self.rhythm_reply = (" Patrols by night and sleeps late.\nWakes: 10:00 AM\nSleeps: 3:00 AM\n"
@@ -186,6 +188,10 @@ class MockLLM(LLMClient):
             n = len(self.thought_calls)
             yield (f" The archive was quiet, and that conversation stayed with me longer than it should. "
                    f"Entry {n}.\nView: Privately, {name} is starting to trust them, a little ({n}).")
+            return
+        if "to choose from:" in prompt:
+            self.choice_calls.append(prompt)
+            yield self.choices_reply
             return
         if "Reaches out:" in prompt:
             self.rhythm_calls.append(prompt)
@@ -265,6 +271,7 @@ def llm(monkeypatch):
     import app.cards.creator as creator
     import app.cards.people as people_mod
     import app.chat.autonomy as autonomy
+    import app.chat.choices as choices_mod
     import app.chat.narrator as narrator_mod
     import app.chat.orchestrator as orch
     import app.chat.rhythm as rhythm_mod
@@ -275,7 +282,7 @@ def llm(monkeypatch):
     import app.routes.system as system
 
     mock = MockLLM()
-    for module in (autonomy, creator, narrator_mod, orch, people_mod, rhythm_mod, scene, summarizer, system, thoughts_mod, trust_mod):
+    for module in (autonomy, choices_mod, creator, narrator_mod, orch, people_mod, rhythm_mod, scene, summarizer, system, thoughts_mod, trust_mod):
         monkeypatch.setattr(module, "get_client", lambda: mock)
     return mock
 

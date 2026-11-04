@@ -140,6 +140,10 @@ class ChatSession(Base):
     autonomous: Mapped[bool] = mapped_column(default=False)
     # Short lines about the world around the scene (chat/narrator.py).
     narrator: Mapped[bool] = mapped_column(default=False)
+    # Choose your own adventure (chat/choices.py): generated choices above the type box,
+    # and the latest set, kept against the message it answers.
+    choice_mode: Mapped[bool] = mapped_column(default=False)
+    choices: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # "story" or "texting" (chat/texting.py): the same chat as prose, or as a text thread.
     mode: Mapped[str] = mapped_column(String(20), default="story")
     next_check_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)

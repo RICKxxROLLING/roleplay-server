@@ -106,6 +106,16 @@ export const api = {
   setStanding: (id, charId, scores) =>
     j(`/sessions/${id}/standing/${charId}`, { method: "PUT", body: JSON.stringify(scores) }),
   forgetJournal: (id, charId) => j(`/sessions/${id}/journal/${charId}`, { method: "DELETE" }),
+  transcribe: async (id, blob) => {
+    const fd = new FormData();
+    fd.append("file", blob, "speech");
+    const res = await fetch(`${API}/sessions/${id}/transcribe`, { method: "POST", body: fd });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.detail ?? res.statusText);
+    return body.text;
+  },
+  choices: (id, refresh = false) =>
+    j(`/sessions/${id}/choices`, { method: "POST", body: JSON.stringify({ refresh }) }),
   bringGuest: (id, characterId) =>
     j(`/sessions/${id}/guest`, { method: "POST", body: JSON.stringify({ character_id: characterId }) }),
   narrate: (id, event = true) =>

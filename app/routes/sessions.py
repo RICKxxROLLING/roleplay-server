@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import tempfile
 from typing import AsyncIterator, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DbSession
@@ -378,6 +380,8 @@ class SessionPatch(BaseModel):
     mode: Literal["story", "texting"] | None = None
     #: Short lines about the world around the scene (chat/narrator.py).
     narrator: bool | None = None
+    #: Generated choices above the type box (chat/choices.py).
+    choice_mode: bool | None = None
 
 
 @router.patch("/{session_id}")
@@ -408,6 +412,8 @@ def update_session(
         s.mode = body.mode
     if body.narrator is not None:
         s.narrator = body.narrator
+    if body.choice_mode is not None:
+        s.choice_mode = body.choice_mode
 
     db.commit()
     db.refresh(s)
@@ -420,6 +426,7 @@ def _autonomy_status(s: ChatSession) -> dict:
     return {
         "mode": s.mode or "story",
         "narrator": bool(s.narrator),
+        "choice_mode": bool(s.choice_mode),
         "autonomous": bool(s.autonomous),
         "unanswered": autonomy.unanswered(s),
         "suspended": autonomy.suspended(s),
@@ -488,6 +495,46 @@ async def speak_message(session_id: int, message_id: int, db: DbSession = Depend
     except voices.VoiceUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
     return FileResponse(path, media_type="audio/wav")
+
+
+@router.post("/{session_id}/transcribe")
+async def transcribe(session_id: int, file: UploadFile = File(...), db: DbSession = Depends(get_db)) -> dict:
+    """The words in a recording, for the type box (chat/listen.py). Nothing is kept."""
+    from ..chat import listen
+
+    s = db.get(ChatSession, session_id)
+    if not s:
+        raise HTTPException(404, "Session not found")
+    data = await file.read(listen.MAX_BYTES + 1)
+    if not data:
+        raise HTTPException(400, "That recording is empty")
+    if len(data) > listen.MAX_BYTES:
+        raise HTTPException(413, "That recording is too long")
+    # A name of our choosing: the upload's own never reaches the disk.
+    with tempfile.NamedTemporaryFile(prefix="heard-", suffix=".audio", delete=False) as fh:
+        fh.write(data)
+    try:
+        return {"text": await listen.hear(fh.name, listen.hint_for(s))}
+    except listen.ListenUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    finally:
+        os.remove(fh.name)
+
+
+class ChoicesIn(BaseModel):
+    #: Ask for a different set rather than the ones already offered.
+    refresh: bool = False
+
+
+@router.post("/{session_id}/choices")
+async def offer_choices(session_id: int, body: ChoicesIn, db: DbSession = Depends(get_db)) -> dict:
+    """Three things the user could do next (chat/choices.py). Empty is a fine answer."""
+    from ..chat import choices
+
+    s = db.get(ChatSession, session_id)
+    if not s:
+        raise HTTPException(404, "Session not found")
+    return {"choices": await choices.offer(db, s, body.refresh)}
 
 
 class GuestIn(BaseModel):

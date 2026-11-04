@@ -17,6 +17,10 @@ dependencies = [
     "tzdata>=2024.1",
     # Reading messages aloud on the CPU (chat/voices.py). GPL-3, used unmodified.
     "piper-tts>=1.3",
+    # Speaking instead of typing, on the CPU (chat/listen.py). av 16 and up dropped an
+    # argument faster-whisper 1.2 passes when it opens a recording.
+    "faster-whisper>=1.2,<1.3",
+    "av<16",
 ]
 
 [project.optional-dependencies]

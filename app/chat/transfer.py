@@ -103,6 +103,7 @@ class ChatFile(BaseModel):
     character: str
     mode: Literal["story", "texting"] = "story"
     narrator: bool = False
+    choice_mode: bool = False
     summary: str = ""
     facts: str = ""
     scene: dict[str, Any] | None = None
@@ -146,6 +147,7 @@ def export_chat(db: DbSession, s: ChatSession) -> dict:
     out = ChatFile(
         format=FORMAT, version=VERSION, exported_at=dt.datetime.now(dt.timezone.utc),
         title=s.title, created_at=s.created_at, character=s.character.name, mode=s.mode, narrator=bool(s.narrator),
+        choice_mode=bool(s.choice_mode),
         summary=s.summary or "", facts=s.facts or "", scene=s.scene, scene_prev=s.scene_prev,
         folded=sum(m.id <= (s.summarized_upto_id or 0) for m in s.messages),
         persona=PersonaOut(name=s.persona.name, description=s.persona.description or "") if s.persona else None,
@@ -280,7 +282,7 @@ def import_chat(db: DbSession, data: ChatFile) -> dict:
         title=f"{data.title} (imported)" if data.title in taken else data.title,
         character_id=owner.id, persona_id=persona.id if persona else None,
         summary=data.summary, facts=data.facts, scene=data.scene, scene_prev=data.scene_prev,
-        mode=data.mode, narrator=data.narrator, autonomous=False, created_at=_naive(data.created_at),
+        mode=data.mode, narrator=data.narrator, choice_mode=data.choice_mode, autonomous=False, created_at=_naive(data.created_at),
     )
     db.add(s)
     db.flush()
