@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, streamTurn, stripSpeakerPrefix } from "../api";
 import Message from "./Message";
+import PersonDrafter from "./PersonDrafter";
 
 export default function ChatView({
   sessionId,
@@ -84,6 +85,26 @@ export default function ChatView({
       setError(e.message);
     } finally {
       setNarrating(false);
+    }
+  }
+
+  // "Someone arrives": a person of this world joins the scene, announced by the
+  // narrator, and speaks first. The list is whoever of the world isn't here yet.
+  const [arrivals, setArrivals] = useState(null); // null | "list" | "new"
+  const [arriving, setArriving] = useState(false);
+  async function bringIn(person) {
+    setArrivals(null);
+    setArriving(true);
+    setError(null);
+    try {
+      const r = await api.bringGuest(sessionId, person.id);
+      setSession((s) => ({ ...s, cast: r.cast, messages: [...s.messages, r.message] }));
+      onDirty?.();
+      runStream(`/sessions/${sessionId}/respond`, { character_id: person.id });
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setArriving(false);
     }
   }
 
@@ -417,6 +438,16 @@ export default function ChatView({
                 >
                   {narrating ? "· thinking…" : "· something happens"}
                 </button>
+                {session?.world_id && (
+                  <button
+                    onClick={() => setArrivals(arrivals ? null : "list")}
+                    disabled={busy || arriving}
+                    className="hover:text-slate-300 disabled:opacity-40"
+                    title="Someone from this world joins the scene"
+                  >
+                    {arriving ? "· on their way…" : "· someone arrives"}
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -597,6 +628,48 @@ export default function ChatView({
       </div>
 
       <div className="border-t border-ink-800 p-4">
+        {arrivals === "list" && (
+          <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+            <span>Who arrives?</span>
+            {characters
+              .filter(
+                (c) =>
+                  c.world_id === session?.world_id &&
+                  !cast.some((m) => m.id === c.id)
+              )
+              .sort((a, b) => Number(b.extra) - Number(a.extra))
+              .map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => bringIn(c)}
+                  className="px-2.5 py-1 rounded-full border border-ink-700 text-slate-300 hover:border-accent/50 hover:bg-accent/10"
+                >
+                  {c.name}
+                </button>
+              ))}
+            <button
+              onClick={() => setArrivals("new")}
+              className="px-2.5 py-1 rounded-full border border-accent/40 text-slate-200 hover:bg-accent/10"
+            >
+              someone new
+            </button>
+            <button onClick={() => setArrivals(null)} className="ml-auto hover:text-slate-300">close</button>
+          </div>
+        )}
+        {arrivals === "new" && (
+          <div className="mb-2 max-h-[60vh] overflow-y-auto scroll-thin border border-ink-800 rounded-lg p-3 bg-ink-900/40">
+            <PersonDrafter
+              worldId={session?.world_id}
+              inChat
+              onKept={(person, how) => {
+                onDirty?.();
+                if (how === "guest") bringIn(person);
+                else setArrivals(null);
+              }}
+              onCancel={() => setArrivals(null)}
+            />
+          </div>
+        )}
         {(isGroup || castOpen) && (
           <CastBar
             cast={cast}
@@ -693,7 +766,7 @@ function CastBar({ cast, characters, ownerId, busy, hasDraft, open, setOpen, onA
         <div className="flex flex-wrap items-center gap-1.5 mt-2">
           <span>In the scene</span>
           {characters
-            .filter((c) => c.id !== ownerId)
+            .filter((c) => c.id !== ownerId && (!c.extra || memberIds.includes(c.id)))
             .map((c) => (
               <button
                 key={c.id}

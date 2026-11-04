@@ -42,6 +42,7 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     ("sessions", "next_check_at", "DATETIME"),
     ("sessions", "mode", "VARCHAR(20) NOT NULL DEFAULT 'story'"),
     ("messages", "texted", "BOOLEAN NOT NULL DEFAULT 0"),
+    ("characters", "extra", "BOOLEAN NOT NULL DEFAULT 0"),
 ]
 
 

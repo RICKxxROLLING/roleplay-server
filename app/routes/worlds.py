@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DbSession
 
+from ..cards import people
 from ..cards.models import LoreEntry
 from ..db import Character, World, get_db
+from ..db.models import Persona
 
 router = APIRouter(prefix="/worlds", tags=["worlds"])
 
@@ -30,7 +35,7 @@ def _out(w: World) -> dict:
         "name": w.name,
         "description": w.description,
         "entries": w.entries or [],
-        "characters": [{"id": c.id, "name": c.name} for c in w.characters],
+        "characters": [{"id": c.id, "name": c.name, "extra": bool(c.extra)} for c in w.characters],
     }
 
 
@@ -88,6 +93,33 @@ def delete_world(world_id: int, db: DbSession = Depends(get_db)) -> dict:
     db.delete(w)
     db.commit()
     return {"ok": True}
+
+
+class PersonIn(BaseModel):
+    #: Optional steer in the owner's words: "a midwife who hates horses".
+    hint: str = ""
+
+
+@router.post("/{world_id}/people/draft")
+def draft_person(world_id: int, body: PersonIn, db: DbSession = Depends(get_db)) -> StreamingResponse:
+    """Stream a new person for this world (cards/people.py). Nothing is saved: the owner
+    keeps them through the ordinary character endpoint, or discards them."""
+    w = db.get(World, world_id)
+    if not w:
+        raise HTTPException(404, "World not found")
+    personas = [p.name for p in db.query(Persona).all()]
+    taken = {c.name for c in db.query(Character).all()} | set(personas)
+
+    async def gen():
+        try:
+            async for event in people.stream_person(w, taken=taken, user_names=personas, hint=body.hint):
+                yield f"data: {json.dumps(event)}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'message': f'{type(exc).__name__}: {exc}'})}\n\n"
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 class Membership(BaseModel):

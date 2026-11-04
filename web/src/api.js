@@ -92,6 +92,8 @@ export const api = {
   setStanding: (id, charId, scores) =>
     j(`/sessions/${id}/standing/${charId}`, { method: "PUT", body: JSON.stringify(scores) }),
   forgetJournal: (id, charId) => j(`/sessions/${id}/journal/${charId}`, { method: "DELETE" }),
+  bringGuest: (id, characterId) =>
+    j(`/sessions/${id}/guest`, { method: "POST", body: JSON.stringify({ character_id: characterId }) }),
   narrate: (id, event = true) =>
     j(`/sessions/${id}/narrate`, { method: "POST", body: JSON.stringify({ event }) }),
   writeFirst: (id, force = false) =>

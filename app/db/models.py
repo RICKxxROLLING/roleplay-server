@@ -42,6 +42,9 @@ class Character(Base):
     # The shared world this character lives in, if any. Its lore is matched
     # alongside the card's own; the card keeps its book either way.
     world_id: Mapped[int | None] = mapped_column(ForeignKey("worlds.id"), nullable=True)
+    # Someone who lives in the world without being on the main list: the narrator's
+    # visitors, and guests the owner brings into a chat (cards/people.py).
+    extra: Mapped[bool] = mapped_column(default=False)
 
     sessions: Mapped[list["ChatSession"]] = relationship(
         back_populates="character", cascade="all, delete-orphan"

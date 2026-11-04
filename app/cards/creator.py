@@ -123,18 +123,18 @@ def parse_draft(raw: str) -> Draft:
     return draft
 
 
-def _setting(world) -> str:
+def _setting(world, people: bool = True) -> str:
     if world is None:
         return ""
-    people = ", ".join(c.name for c in world.characters)
+    cast = ", ".join(c.name for c in world.characters) if people else ""
     lore = ", ".join(e.get("name") or ", ".join(e.get("keys") or []) for e in (world.entries or []))
     parts = [f"\nIt is set in {world.name}: {(world.description or '').strip()}"]
     if lore:
         parts.append(f"Known in this world: {lore}.")
-    if people:
+    if cast:
         # Seen on Stheno: with the cast listed and nothing more, the opening
         # scene greeted Tommy -- the user had become one of them.
-        parts.append(f"Other people there, who the character may know: {people}. "
+        parts.append(f"Other people there, who the character may know: {cast}. "
                      "{{user}} is none of them; they are someone new to this card.")
     return "\n".join(parts) + "\n"
 
@@ -146,22 +146,24 @@ def _existing(card: CharacterCard | None) -> str:
     return EXPAND_EXISTING.format(card="\n".join(shown))
 
 
-def build_draft_prompt(brief: str, world=None, existing: CharacterCard | None = None) -> str:
+def build_draft_prompt(brief: str, world=None, existing: CharacterCard | None = None, name: str = "") -> str:
+    """`name` fixes the name and leaves the cast out of it: see cards/people.py."""
     fmt = get_format(settings.prompt_format)
     style = settings.narration_style.strip()
     body = CREATE_PROMPT.format(
         brief=brief.strip() or (existing.name if existing else ""),
-        setting=_setting(world),
+        setting=_setting(world, people=not name),
         existing=_existing(existing),
         style=f"\n\nThe server's narration style, which the first message should follow:\n{style}"
         if style else "",
     )
-    prefill = "Name:" if existing is None else f"Name: {existing.name}\nDescription:"
+    given = existing.name if existing is not None else name
+    prefill = f"Name: {given}\nDescription:" if given else "Name:"
     return fmt.user.format(text=body) + fmt.joiner + fmt.response_open + prefill
 
 
 async def stream_draft(
-    brief: str, world=None, existing: CharacterCard | None = None
+    brief: str, world=None, existing: CharacterCard | None = None, name: str = ""
 ) -> AsyncIterator[dict]:
     """Token events, then one `draft` event with the parsed fields."""
     params = GenerationParams(
@@ -169,8 +171,9 @@ async def stream_draft(
         repeat_last_n=1024, context_tokens=settings.context_tokens, max_new_tokens=1400,
         stop=list(get_format(settings.prompt_format).stops),
     )
-    prompt = build_draft_prompt(brief, world, existing)
-    prefix = "" if existing is None else f"{existing.name}\nDescription:"
+    prompt = build_draft_prompt(brief, world, existing, name)
+    given = existing.name if existing is not None else name
+    prefix = f"{given}\nDescription:" if given else ""
     pieces: list[str] = []
     async for piece in get_client().generate_stream(prompt, params):
         pieces.append(piece)

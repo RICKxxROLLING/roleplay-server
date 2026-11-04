@@ -70,6 +70,9 @@ class CharacterIn(BaseModel):
     tags: list[str] = []
 
     character_book: list[LoreEntry] = []
+    world_id: int | None = None
+    #: Lives in the world without joining the main list. Needs a world.
+    extra: bool = False
 
 
 @router.post("")
@@ -87,9 +90,15 @@ def create_character(body: CharacterIn, db: DbSession = Depends(get_db)) -> dict
 
     # Round-trip through the schema so a hand-written character can't be created
     # in a shape the importer would have rejected.
-    card = CharacterCard.model_validate({**body.model_dump(), "name": name})
+    if body.world_id is not None and not db.get(World, body.world_id):
+        raise HTTPException(404, "World not found")
+    if body.extra and body.world_id is None:
+        raise HTTPException(400, "An extra lives in a world")
+    fields = body.model_dump(exclude={"world_id", "extra"})
+    card = CharacterCard.model_validate({**fields, "name": name})
 
-    char = Character(name=card.name, card=card.model_dump(), avatar_path=None)
+    char = Character(name=card.name, card=card.model_dump(), avatar_path=None,
+                     world_id=body.world_id, extra=body.extra)
     db.add(char)
     db.commit()
     db.refresh(char)
@@ -151,6 +160,7 @@ def list_characters(db: DbSession = Depends(get_db)) -> list[dict]:
             "tags": (c.card or {}).get("tags", []),
             "description": ((c.card or {}).get("description") or "")[:280],
             "world_id": c.world_id,
+            "extra": bool(c.extra),
         }
         for c in rows
     ]
@@ -161,7 +171,7 @@ def get_character(char_id: int, db: DbSession = Depends(get_db)) -> dict:
     c = db.get(Character, char_id)
     if not c:
         raise HTTPException(404, "Character not found")
-    return {"id": c.id, "name": c.name, "card": c.card, "world_id": c.world_id}
+    return {"id": c.id, "name": c.name, "card": c.card, "world_id": c.world_id, "extra": bool(c.extra)}
 
 
 class CardPatch(BaseModel):
@@ -182,6 +192,8 @@ class CardPatch(BaseModel):
     lorebook_scan_depth: int | None = None
     lorebook_token_budget: int | None = None
     lorebook_recursive: bool | None = None
+    #: False moves an extra onto the main list; not part of the card.
+    extra: bool | None = None
 
 
 @router.patch("/{char_id}")
@@ -193,6 +205,12 @@ def update_character(
         raise HTTPException(404, "Character not found")
 
     patch = body.model_dump(exclude_none=True)
+    extra = patch.pop("extra", None)
+    if extra is not None:
+        if extra and c.world_id is None:
+            raise HTTPException(400, "An extra lives in a world")
+        c.extra = extra
+        db.commit()
     if not patch:
         return {"id": c.id, "name": c.name, "card": c.card}
 

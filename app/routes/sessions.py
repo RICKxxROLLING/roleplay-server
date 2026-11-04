@@ -170,6 +170,7 @@ def get_session(session_id: int, db: DbSession = Depends(get_db)) -> dict:
         "title": s.title,
         "character_id": s.character_id,
         "character_name": s.character.name if s.character else None,
+        "world_id": s.character.world_id if s.character else None,
         "persona_id": s.persona_id,
         "summary": s.summary,
         "scene": s.scene,
@@ -435,6 +436,32 @@ async def narrate(session_id: int, body: NarrateIn, db: DbSession = Depends(get_
     if line is None:
         raise HTTPException(502, "The narrator didn't come up with anything usable. Try again.")
     return _serialise(line, s)
+
+
+class GuestIn(BaseModel):
+    character_id: int
+
+
+@router.post("/{session_id}/guest")
+async def bring_guest(session_id: int, body: GuestIn, db: DbSession = Depends(get_db)) -> dict:
+    """Someone from this chat's world arrives and joins the scene, announced by the
+    narrator. They speak next through /respond."""
+    from ..chat import narrator
+
+    s = db.get(ChatSession, session_id)
+    if not s:
+        raise HTTPException(404, "Session not found")
+    if s.mode == "texting":
+        raise HTTPException(400, "Nobody arrives in a text thread")
+    person = db.get(Character, body.character_id)
+    if not person:
+        raise HTTPException(404, "Character not found")
+    if group.by_id(s, person.id):
+        raise HTTPException(400, f"{person.name} is already here")
+    if s.character is None or s.character.world_id is None or person.world_id != s.character.world_id:
+        raise HTTPException(400, f"{person.name} isn't from this chat's world")
+    line = await narrator.bring_in(db, s, person)
+    return {"message": _serialise(line, s), "cast": _cast(s)}
 
 
 class MessagePatch(BaseModel):

@@ -23,7 +23,7 @@ import random
 import re
 
 from ..config import settings
-from ..db.models import ChatSession, Message
+from ..db.models import Character, ChatSession, Message, SessionMember
 from ..llm import GenerationParams, get_client
 from ..prompt.formats import get_format
 from . import group
@@ -154,7 +154,19 @@ def _pick(session: ChatSession, count: int, event: bool) -> tuple[str, str]:
     return pool[count % len(pool)]
 
 
-def build_prompt(session: ChatSession, event: bool, subject: str, opener: str) -> str:
+def _world_extras(session: ChatSession) -> list[Character]:
+    """People of this chat's world who could stop by and aren't in the scene."""
+    world = session.character.world if session.character else None
+    here = {c.id for c in group.cast(session)}
+    return [c for c in (world.characters if world else []) if getattr(c, "extra", False) and c.id not in here]
+
+
+def _about(person: Character) -> str:
+    text = ((person.card or {}).get("description") or "").strip()
+    return f"About {person.name}: {text[:300]}" if text else ""
+
+
+def build_prompt(session: ChatSession, event: bool, subject: str, opener: str, about: str = "") -> str:
     fmt = get_format(settings.prompt_format)
     user = session.persona.name if session.persona else "You"
     people = " and ".join(c.name for c in group.cast(session)) or "the characters"
@@ -168,7 +180,8 @@ def build_prompt(session: ChatSession, event: bool, subject: str, opener: str) -
     )
     body = (EVENT_PROMPT if event else AMBIENT_PROMPT).format(
         people=people, user=user, subject=subject, where=where, transcript=transcript,
-        setting=f"Setting: {world.description[:900]}" if world and world.description else "",
+        setting=(f"Setting: {world.description[:900]}" if world and world.description else "")
+        + (f"\n{about}" if about else ""),
     )
     return fmt.user.format(text=body) + fmt.joiner + fmt.response_open + opener
 
@@ -180,7 +193,14 @@ async def write_line(session: ChatSession, event: bool | None = None) -> str:
     if event is None:
         event = count % EVENT_EVERY == EVENT_EVERY - 1
     subject, opener = _pick(session, count, event)
-    prompt = build_prompt(session, event, subject, opener)
+    # A kept extra is the visitor when there is one: a name the owner has seen and
+    # chosen, rather than another invented Sarah.
+    about = ""
+    extras = _world_extras(session) if event and subject.startswith("someone ") else []
+    if extras:
+        person = extras[count % len(extras)]
+        subject, about = person.name + subject[len("someone"):], _about(person)
+    prompt = build_prompt(session, event, subject, opener, about)
     params = GenerationParams(
         temperature=0.9, top_p=1, top_k=50, min_p=0.075, repeat_penalty=1.1,
         context_tokens=settings.context_tokens, max_new_tokens=70,
@@ -205,6 +225,36 @@ async def post_line(db, session: ChatSession, event: bool | None = None) -> Mess
     if not line:
         return None
     message = Message(session_id=session.id, role=ROLE, content=line)
+    db.add(message)
+    db.commit()
+    db.refresh(session)
+    return message
+
+
+async def bring_in(db, session: ChatSession, person: Character) -> Message:
+    """A guest arrives: a line from the narrator, and they join the scene. Always posts,
+    since the owner asked for this person by name and a plain line reads fine."""
+    fmt = get_format(settings.prompt_format)
+    user = session.persona.name if session.persona else "You"
+    names = [user, *(c.name for c in group.cast(session))]
+    names += [n.split()[0] for n in names if " " in n]
+    opener = "Before long,"
+    prompt = build_prompt(session, True, f"{person.name} comes by", opener, _about(person))
+    params = GenerationParams(
+        temperature=0.9, top_p=1, top_k=50, min_p=0.075, repeat_penalty=1.1,
+        context_tokens=settings.context_tokens, max_new_tokens=70, stop=list(fmt.stops),
+    )
+    first = person.name.split()[0]
+    line = ""
+    for _ in range(2):
+        line = judge(f"{opener}{await get_client().generate(prompt, params)}".rstrip(), names, event=True,
+                     scene_time=str((session.scene or {}).get("time") or ""))
+        if line and re.search(rf"(?<!\w){re.escape(first)}(?!\w)", line, re.I):
+            break
+        line = ""
+    position = max((m.position for m in session.members), default=-1) + 1
+    session.members.append(SessionMember(character_id=person.id, position=position))
+    message = Message(session_id=session.id, role=ROLE, content=line or f"{opener} {person.name} comes by.")
     db.add(message)
     db.commit()
     db.refresh(session)

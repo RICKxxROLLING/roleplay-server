@@ -150,6 +150,8 @@ class MockLLM(LLMClient):
         self.thought_calls: list[str] = []
         self.trust_calls: list[str] = []
         self.narrator_calls: list[str] = []
+        self.tie_calls: list[str] = []
+        self.tie_replies: list[str] = []
         # What the narrator pass writes after the opener the server chose.
         self.narrator_replies: list[str] = []
         self.narrator_reply = None
@@ -180,6 +182,10 @@ class MockLLM(LLMClient):
             n = len(self.thought_calls)
             yield (f" The archive was quiet, and that conversation stayed with me longer than it should. "
                    f"Entry {n}.\nView: Privately, {name} is starting to trust them, a little ({n}).")
+            return
+        if "know each other" in prompt:
+            self.tie_calls.append(prompt)
+            yield self.tie_replies.pop(0) if self.tie_replies else " the market, where they trade a few words most weeks."
             return
         if "you write character cards" in prompt.lower():
             self.draft_calls.append(prompt)
@@ -249,6 +255,7 @@ def _reset_state():
 def llm(monkeypatch):
     """Install the mock across every module that resolves a client."""
     import app.cards.creator as creator
+    import app.cards.people as people_mod
     import app.chat.autonomy as autonomy
     import app.chat.narrator as narrator_mod
     import app.chat.orchestrator as orch
@@ -259,7 +266,7 @@ def llm(monkeypatch):
     import app.routes.system as system
 
     mock = MockLLM()
-    for module in (autonomy, creator, narrator_mod, orch, scene, summarizer, system, thoughts_mod, trust_mod):
+    for module in (autonomy, creator, narrator_mod, orch, people_mod, scene, summarizer, system, thoughts_mod, trust_mod):
         monkeypatch.setattr(module, "get_client", lambda: mock)
     return mock
 

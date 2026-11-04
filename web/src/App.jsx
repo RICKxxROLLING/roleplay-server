@@ -98,13 +98,16 @@ export default function App() {
     refresh();
   }
 
+  // Extras live in their world's panel: the list is who you came to talk to.
+  const mainCast = characters.filter((c) => !c.extra);
+
   if (authed === null) return <div className="h-full bg-ink-950" />;
   if (!authed) return <LoginScreen onSignedIn={() => setAuthed(true)} />;
 
   return (
     <div className="h-full flex bg-ink-950">
       <Sidebar
-        characters={characters}
+        characters={mainCast}
         sessions={sessions}
         activeSessionId={activeId}
         health={health}
@@ -163,6 +166,10 @@ export default function App() {
         open={panel === "worlds"}
         onClose={() => setPanel(null)}
         onChanged={refresh}
+        onChat={(c) => {
+          setPanel(null);
+          setNewChatFor(c);
+        }}
       />
 
       <ModelManager
@@ -174,7 +181,7 @@ export default function App() {
       <NewChatDialog
         open={newChatFor !== null}
         character={newChatFor}
-        characters={characters}
+        characters={mainCast}
         personas={personas}
         onClose={() => setNewChatFor(null)}
         onCreated={async (id) => {

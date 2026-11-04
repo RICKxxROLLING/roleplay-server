@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { Modal, Field, Input, Textarea, Button, Empty } from "./ui";
 import LorebookEditor from "./LorebookEditor";
+import PersonDrafter from "./PersonDrafter";
 
 const BLANK = { name: "", description: "", entries: [] };
 
@@ -12,21 +13,52 @@ const BLANK = { name: "", description: "", entries: [] };
  * card's own -- keyword-triggered, under the chatting character's budget -- so
  * a world costs no context until something in the chat mentions it.
  */
-export default function WorldManager({ open, onClose, onChanged }) {
+export default function WorldManager({ open, onClose, onChanged, onChat }) {
   const [worlds, setWorlds] = useState([]);
   const [editing, setEditing] = useState(null); // id, "new", or null
   const [form, setForm] = useState(BLANK);
   const [note, setNote] = useState(null);
-
+  const [drafting, setDrafting] = useState(null); // world id
   const load = () => api.worlds().then(setWorlds).catch((e) => setNote(e.message));
 
   useEffect(() => {
     if (open) {
       load();
       setEditing(null);
+      setDrafting(null);
       setNote(null);
     }
   }, [open]);
+
+  async function kept(person, how) {
+    setDrafting(null);
+    await load();
+    onChanged?.();
+    if (how === "chat") onChat?.(person);
+    else setNote(`${person.name} is an extra now. The narrator may send them by.`);
+  }
+
+  async function promote(person) {
+    try {
+      await api.updateCharacter(person.id, { extra: false });
+      await load();
+      onChanged?.();
+      onChat?.(person);
+    } catch (e) {
+      setNote(e.message);
+    }
+  }
+
+  async function removeExtra(person) {
+    if (!confirm(`Delete ${person.name}?`)) return;
+    try {
+      await api.deleteCharacter(person.id);
+      await load();
+      onChanged?.();
+    } catch (e) {
+      setNote(e.message);
+    }
+  }
 
   function startEdit(w) {
     setEditing(w.id);
@@ -75,7 +107,9 @@ export default function WorldManager({ open, onClose, onChanged }) {
         world from the character editor.
       </p>
 
-      {editing !== null ? (
+      {drafting !== null ? (
+        <PersonDrafter worldId={drafting} onKept={kept} onCancel={() => setDrafting(null)} />
+      ) : editing !== null ? (
         <div>
           <Field label="Name">
             <Input
@@ -104,18 +138,33 @@ export default function WorldManager({ open, onClose, onChanged }) {
         <div>
           <div className="space-y-2 mb-4">
             {worlds.map((w) => (
-              <div key={w.id} className="flex items-center gap-3 border border-ink-800 rounded-lg px-3 py-2.5">
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm">{w.name}</div>
-                  <div className="text-xs text-slate-500 truncate">
-                    {(w.entries || []).length} entries ·{" "}
-                    {w.characters.length
-                      ? w.characters.map((c) => c.name).join(", ")
-                      : "no characters yet"}
+              <div key={w.id} className="border border-ink-800 rounded-lg px-3 py-2.5">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <div className="flex-1 min-w-[10rem]">
+                    <div className="text-sm">{w.name}</div>
+                    <div className="text-xs text-slate-500 truncate">
+                      {(w.entries || []).length} entries ·{" "}
+                      {w.characters.some((c) => !c.extra)
+                        ? w.characters.filter((c) => !c.extra).map((c) => c.name).join(", ")
+                        : "no characters yet"}
+                    </div>
                   </div>
+                  <Button onClick={() => setDrafting(w.id)}>New person</Button>
+                  <Button onClick={() => startEdit(w)}>Edit</Button>
+                  <Button variant="danger" onClick={() => remove(w)}>Delete</Button>
                 </div>
-                <Button onClick={() => startEdit(w)}>Edit</Button>
-                <Button variant="danger" onClick={() => remove(w)}>Delete</Button>
+                {w.characters.some((c) => c.extra) && (
+                  <div className="mt-2 pt-2 border-t border-ink-800 space-y-1">
+                    <div className="text-[11px] text-slate-500">Extras: the narrator may send them by</div>
+                    {w.characters.filter((c) => c.extra).map((c) => (
+                      <div key={c.id} className="flex items-center gap-3 text-xs">
+                        <span className="flex-1 min-w-0 truncate">{c.name}</span>
+                        <button onClick={() => promote(c)} className="text-slate-400 hover:text-slate-200">chat</button>
+                        <button onClick={() => removeExtra(c)} className="text-slate-500 hover:text-rose-400">delete</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
             {worlds.length === 0 && <Empty>No worlds yet.</Empty>}
