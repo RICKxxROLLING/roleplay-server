@@ -53,6 +53,7 @@ class PersonOut(BaseModel):
     world: str | None = None
     extra: bool = False
     rhythm: dict[str, Any] | None = None
+    voice: str | None = Field(None, max_length=80)
     #: In the scene now, rather than someone who spoke once and left.
     member: bool = False
     avatar: str | None = None
@@ -149,7 +150,7 @@ def export_chat(db: DbSession, s: ChatSession) -> dict:
         folded=sum(m.id <= (s.summarized_upto_id or 0) for m in s.messages),
         persona=PersonaOut(name=s.persona.name, description=s.persona.description or "") if s.persona else None,
         characters=[PersonOut(name=c.name, card=c.card or {}, world=c.world.name if c.world else None,
-                              extra=bool(c.extra), rhythm=c.rhythm, member=c.id in members,
+                              extra=bool(c.extra), rhythm=c.rhythm, voice=c.voice, member=c.id in members,
                               avatar=_avatar(c.avatar_path)) for c in people.values()],
         worlds=[WorldOut(name=w.name, description=w.description or "", entries=w.entries or []) for w in worlds.values()],
         messages=[LineOut(role=m.role, content=m.content, created_at=m.created_at, alternatives=m.alternatives,
@@ -257,7 +258,7 @@ def import_chat(db: DbSession, data: ChatFile) -> dict:
             raise ImportRefused(f"{p.name}'s card in the file is damaged.") from exc
         c = Character(name=card.name, card=card.model_dump(), avatar_path=_save_avatar(p.avatar),
                       world_id=world.id if world else None, extra=p.extra and world is not None,
-                      rhythm=_clean_rhythm(p.rhythm))
+                      rhythm=_clean_rhythm(p.rhythm), voice=p.voice)
         db.add(c)
         db.flush()
         people[key] = c

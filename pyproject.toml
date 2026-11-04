@@ -15,6 +15,8 @@ dependencies = [
     # Time-zone data for quiet hours, in case the image has no system zoneinfo.
     # Data only; nothing in it touches the network.
     "tzdata>=2024.1",
+    # Reading messages aloud on the CPU (chat/voices.py). GPL-3, used unmodified.
+    "piper-tts>=1.3",
 ]
 
 [project.optional-dependencies]

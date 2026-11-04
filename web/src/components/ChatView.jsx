@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, streamTurn, stripSpeakerPrefix } from "../api";
 import Message from "./Message";
 import PersonDrafter from "./PersonDrafter";
+import { play, speechPath, stopPlaying } from "../player";
 
 export default function ChatView({
   sessionId,
@@ -105,6 +106,24 @@ export default function ChatView({
       setError(e.message);
     } finally {
       setArriving(false);
+    }
+  }
+
+  // Remembered per device: it's about where you are, not about the chat.
+  const [readAloud, setReadAloud] = useState(() => {
+    try {
+      return localStorage.getItem("readAloud") === "1";
+    } catch {
+      return false;
+    }
+  });
+  function chooseReadAloud(on) {
+    setReadAloud(on);
+    if (!on) stopPlaying();
+    try {
+      localStorage.setItem("readAloud", on ? "1" : "0");
+    } catch {
+      /* private window: it just won't be remembered */
     }
   }
 
@@ -247,6 +266,8 @@ export default function ChatView({
           setStreamText("");
           setBusy(false);
           onDirty?.();
+          const last = fresh.messages[fresh.messages.length - 1];
+          if (readAloud && last?.role === "assistant") play(speechPath(sessionId, last.id));
         } catch (e) {
           setStreamText("");
           setBusy(false);
@@ -437,6 +458,18 @@ export default function ChatView({
                     className="accent-accent w-3 h-3"
                   />
                   narrator
+                </label>
+                <label
+                  className="flex items-center gap-1 cursor-pointer hover:text-slate-300"
+                  title="Read each new reply aloud, on this device"
+                >
+                  <input
+                    type="checkbox"
+                    checked={readAloud}
+                    onChange={(e) => chooseReadAloud(e.target.checked)}
+                    className="accent-accent w-3 h-3"
+                  />
+                  read aloud
                 </label>
                 <button
                   onClick={somethingHappens}

@@ -5,7 +5,7 @@ import re
 from typing import AsyncIterator, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DbSession
 
@@ -467,6 +467,27 @@ async def narrate(session_id: int, body: NarrateIn, db: DbSession = Depends(get_
     if line is None:
         raise HTTPException(502, "The narrator didn't come up with anything usable. Try again.")
     return _serialise(line, s)
+
+
+@router.get("/{session_id}/messages/{message_id}/speech")
+async def speak_message(session_id: int, message_id: int, db: DbSession = Depends(get_db)) -> FileResponse:
+    """A message read aloud (chat/voices.py). The first use of a voice downloads it."""
+    from ..chat import voices
+
+    s = db.get(ChatSession, session_id)
+    m = db.get(Message, message_id)
+    if not s or not m or m.session_id != session_id:
+        raise HTTPException(404, "Message not found")
+    if m.role == "user":
+        raise HTTPException(400, "Only characters and the narrator are read aloud")
+    parts = voices.message_segments(s, m)
+    if not parts:
+        raise HTTPException(404, "There's nothing to read in that message")
+    try:
+        path = await voices.render(parts)
+    except voices.VoiceUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    return FileResponse(path, media_type="audio/wav")
 
 
 class GuestIn(BaseModel):

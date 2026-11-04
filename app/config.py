@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     narrator_default: bool = True
     #: Roughly how many of the user's messages between narrator lines.
     narrator_every: int = 5
+    # Reading aloud (chat/voices.py). "dialogue", "story" (narration in the narrator's
+    # voice) or "everything" (the whole message in the character's).
+    voices_mode: str = "dialogue"
+    voices_speed: float = 1.0
+    voices_narrator: str = "en_GB-alan-medium"
     # Strip sentences narrating the user's own actions before a reply is
     # stored. On by default: prompting alone measured 4-9 such turns in 16 on
     # an 8B, and each one stored teaches the next. See chat/guard.py.

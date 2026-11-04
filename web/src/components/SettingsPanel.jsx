@@ -214,6 +214,29 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
               </span>
             </label>
 
+            <label className="flex flex-wrap items-center gap-2.5 text-sm">
+              Reading aloud
+              <select
+                value={s.voices_mode}
+                onChange={(e) => update("voices_mode", e.target.value)}
+                className="bg-ink-950 border border-ink-800 rounded-lg px-2 py-1 text-xs outline-none focus:border-accent/60"
+              >
+                <option value="dialogue">Only what they say</option>
+                <option value="story">Everything, narration in the narrator's voice</option>
+                <option value="everything">Everything, in their voice</option>
+              </select>
+              <select
+                value={s.voices_speed}
+                onChange={(e) => update("voices_speed", Number(e.target.value))}
+                className="bg-ink-950 border border-ink-800 rounded-lg px-2 py-1 text-xs outline-none focus:border-accent/60"
+              >
+                {[0.8, 0.9, 1, 1.1, 1.2, 1.35].map((n) => (
+                  <option key={n} value={n}>{n}x</option>
+                ))}
+              </select>
+              <span className="text-xs text-slate-600">on the CPU, so chat isn't slowed</span>
+            </label>
+
             <label className="flex items-center gap-2.5 text-sm cursor-pointer">
               <input
                 type="checkbox"

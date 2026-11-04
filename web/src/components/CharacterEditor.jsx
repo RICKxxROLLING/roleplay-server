@@ -3,6 +3,7 @@ import { api } from "../api";
 import { Modal, Field, Input, Textarea, Button } from "./ui";
 import LorebookEditor from "./LorebookEditor";
 import CardDrafter from "./CardDrafter";
+import { isPlaying, onPlayerChange, play, stopPlaying } from "../player";
 
 const FIELDS = [
   ["description", "Description", 5, "Who they are, appearance, history."],
@@ -95,6 +96,62 @@ function DailyRhythm({ characterId, initial }) {
   );
 }
 
+/** Who reads their lines. Saved as soon as it's chosen, since it isn't card text. */
+function VoicePicker({ characterId, voice, effective }) {
+  const [list, setList] = useState([]);
+  const [chosen, setChosen] = useState(voice || "");
+  const [shown, setShown] = useState(effective);
+  const [note, setNote] = useState(null);
+  const [, redraw] = useState(0);
+  useEffect(() => {
+    api.voices().then((r) => setList(r.voices)).catch(() => {});
+    return onPlayerChange(() => redraw((n) => n + 1));
+  }, []);
+  useEffect(() => {
+    setChosen(voice || "");
+    setShown(effective);
+  }, [voice, effective]);
+
+  async function choose(value) {
+    setChosen(value);
+    setNote(null);
+    try {
+      await api.updateCharacter(characterId, { voice: value });
+      const c = await api.character(characterId);
+      setShown(c.effective_voice);
+    } catch (e) {
+      setNote(e.message);
+    }
+  }
+
+  const previewPath = shown ? `/voices/${shown}/preview` : null;
+  const name = (v) => `${v.label}: ${v.gender}, ${v.accent}`;
+  const fallback = list.find((v) => v.id === shown);
+  return (
+    <Field label="Voice" hint="for reading aloud; a voice downloads about 63 MB the first time it's used">
+      <div className="flex gap-2">
+        <select
+          value={chosen}
+          onChange={(e) => choose(e.target.value)}
+          className="flex-1 min-w-0 bg-ink-950 border border-ink-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent/60"
+        >
+          <option value="">Automatic{!chosen && fallback ? ` (${fallback.label})` : ""}</option>
+          {list.map((v) => (
+            <option key={v.id} value={v.id}>{name(v)}</option>
+          ))}
+        </select>
+        <Button
+          disabled={!previewPath}
+          onClick={() => (isPlaying(previewPath) ? stopPlaying() : play(previewPath, setNote))}
+        >
+          {isPlaying(previewPath) ? "Stop" : "Listen"}
+        </Button>
+      </div>
+      {note && <p className="text-xs text-rose-400 mt-1">{note}</p>}
+    </Field>
+  );
+}
+
 export default function CharacterEditor({ open, onClose, characterId, onChanged }) {
   const [card, setCard] = useState(null);
   const [form, setForm] = useState({});
@@ -103,6 +160,7 @@ export default function CharacterEditor({ open, onClose, characterId, onChanged 
   const [worlds, setWorlds] = useState([]);
   const [worldId, setWorldId] = useState(null);
   const [day, setDay] = useState({});
+  const [voice, setVoice] = useState({ voice: null, effective: null });
 
   useEffect(() => {
     if (!open || !characterId) return;
@@ -114,6 +172,7 @@ export default function CharacterEditor({ open, onClose, characterId, onChanged 
         setForm(c.card);
         setWorldId(c.world_id ?? null);
         setDay(c.rhythm || {});
+        setVoice({ voice: c.voice, effective: c.effective_voice });
       })
       .catch((e) => setNote(e.message));
     api.worlds().then(setWorlds).catch(() => {});
@@ -223,6 +282,8 @@ export default function CharacterEditor({ open, onClose, characterId, onChanged 
               ))}
             </select>
           </Field>
+
+          <VoicePicker characterId={characterId} voice={voice.voice} effective={voice.effective} />
 
           <DailyRhythm characterId={characterId} initial={day} />
 

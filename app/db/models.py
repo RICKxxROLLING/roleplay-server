@@ -47,6 +47,8 @@ class Character(Base):
     extra: Mapped[bool] = mapped_column(default=False)
     # Their own day (chat/rhythm.py): wake, sleep, busy_from, busy_until, reach.
     rhythm: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # Who reads their lines (chat/voices.py). None picks one from the card.
+    voice: Mapped[str | None] = mapped_column(String(80), nullable=True)
 
     sessions: Mapped[list["ChatSession"]] = relationship(
         back_populates="character", cascade="all, delete-orphan"

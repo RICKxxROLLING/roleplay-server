@@ -132,6 +132,9 @@ class SettingsPatch(BaseModel):
     trust_enabled: bool | None = None
     narrator_default: bool | None = None
     narrator_every: int | None = None
+    voices_mode: Literal["dialogue", "story", "everything"] | None = None
+    voices_speed: float | None = Field(None, ge=0.7, le=1.5)
+    voices_narrator: str | None = Field(None, max_length=80)
 
     # Characters writing first. Times are "HH:MM" in the owner's zone.
     timezone: str | None = Field(None, max_length=64)

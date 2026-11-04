@@ -172,8 +172,10 @@ def get_character(char_id: int, db: DbSession = Depends(get_db)) -> dict:
     c = db.get(Character, char_id)
     if not c:
         raise HTTPException(404, "Character not found")
+    from ..chat import voices
+
     return {"id": c.id, "name": c.name, "card": c.card, "world_id": c.world_id, "extra": bool(c.extra),
-            "rhythm": c.rhythm or {}}
+            "rhythm": c.rhythm or {}, "voice": c.voice, "effective_voice": voices.voice_of(c)}
 
 
 @router.post("/{char_id}/rhythm/suggest")
@@ -223,6 +225,8 @@ class CardPatch(BaseModel):
     extra: bool | None = None
     #: Their own day (chat/rhythm.py); not part of the card. Empty clears it.
     rhythm: RhythmIn | None = None
+    #: A voice from chat/voices.py; not part of the card. Empty goes back to the default.
+    voice: str | None = None
 
 
 @router.patch("/{char_id}")
@@ -241,6 +245,14 @@ def update_character(
             if (a in day) != (b in day):
                 raise HTTPException(400, f"{a} and {b} go together")
         c.rhythm = day or None
+        db.commit()
+    if "voice" in patch:
+        from ..chat import voices
+
+        voice = patch.pop("voice")
+        if voice and voice not in voices.VOICES:
+            raise HTTPException(400, "No such voice")
+        c.voice = voice or None
         db.commit()
     extra = patch.pop("extra", None)
     if extra is not None:

@@ -1,5 +1,22 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api";
+import { isPlaying, onPlayerChange, play, speechPath, stopPlaying } from "../player";
+
+/** Read this message aloud, or stop it. The first use of a voice takes a moment to download. */
+function ListenButton({ sessionId, messageId, onError }) {
+  const path = speechPath(sessionId, messageId);
+  const [on, setOn] = useState(isPlaying(path));
+  useEffect(() => onPlayerChange(() => setOn(isPlaying(path))), [path]);
+  return (
+    <button
+      onClick={() => (on ? stopPlaying() : play(path, onError))}
+      className="hover:text-slate-300"
+      title="Read this aloud"
+    >
+      {on ? "stop" : "listen"}
+    </button>
+  );
+}
 
 /** Render *action text* as italic narration, the roleplay convention. */
 function RichText({ text }) {
@@ -23,6 +40,7 @@ function RichText({ text }) {
 function NarratorLine({ msg, sessionId, onChanged }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(msg.content);
+  const [note, setNote] = useState(null);
 
   async function save() {
     if (!draft.trim()) return;
@@ -61,6 +79,7 @@ function NarratorLine({ msg, sessionId, onChanged }) {
           <p className="text-sm italic text-slate-400 leading-relaxed break-words">{msg.content}</p>
           {typeof msg.id === "number" && (
             <span className="text-[11px] text-slate-600 inline-flex gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition">
+              <ListenButton sessionId={sessionId} messageId={msg.id} onError={setNote} />
               <button
                 onClick={() => {
                   setDraft(msg.content);
@@ -75,6 +94,7 @@ function NarratorLine({ msg, sessionId, onChanged }) {
               </button>
             </span>
           )}
+          {note && <p className="text-xs text-rose-400 mt-1">{note}</p>}
         </>
       )}
     </div>
@@ -185,6 +205,7 @@ function Turn({
           {/* Always visible on touch: there is no hover, so these were unreachable. */}
           {editable && !editing && (
             <span className="opacity-100 md:opacity-0 md:group-hover:opacity-100 flex gap-1.5 transition">
+              {!isUser && <ListenButton sessionId={sessionId} messageId={msg.id} onError={setNote} />}
               <button
                 onClick={() => {
                   setDraft(msg.content);
