@@ -181,14 +181,15 @@ def test_message_me_now_wakes_them(client, session, llm):
     assert got["sent"] is True
 
 
-def test_the_question_mentions_their_day(client, session, llm):
+def test_the_question_mentions_work_only_while_they_are_at_it(client, session, llm):
     make_chat(client, session)
-    set_day(session, wake="07:00", sleep="23:00", busy_from="20:00", busy_until="22:00")
+    set_day(session, wake="07:00", sleep="23:00", busy_from="08:00", busy_until="17:00")
     with SessionLocal() as db:
         s = db.get(ChatSession, session)
-        prompt = autonomy.build_decide_prompt(s, s.character, "Riley", NINE)
-    assert "usually gets up at 7:00 AM and goes to bed at 11:00 PM" in prompt
-    assert "tied up from 8:00 PM to 10:00 PM" in prompt
+        working = autonomy.build_decide_prompt(s, s.character, "Riley", NINE)
+        evening = autonomy.build_decide_prompt(s, s.character, "Riley", NINE + dt.timedelta(hours=10))
+    assert "tied up with work or duties until 5:00 PM" in working
+    assert "tied up" not in evening and "gets up" not in evening
 
 
 def test_in_a_group_only_someone_awake_is_chosen(client, session, llm):
@@ -212,6 +213,12 @@ def test_in_a_group_only_someone_awake_is_chosen(client, session, llm):
 
 def char_id(client, session):
     return client.get(f"/api/sessions/{session}").json()["character_id"]
+
+
+def test_a_suggested_often_is_left_as_usual(client, session, llm):
+    llm.rhythm_reply = "x\nWakes: 7 AM\nSleeps: 11 PM\nBusy from: 9 AM\nBusy until: 5 PM\nReaches out: often"
+    got = client.post(f"/api/characters/{char_id(client, session)}/rhythm/suggest").json()
+    assert "reach" not in got and got["wake"] == "07:00"
 
 
 def test_suggesting_saves_nothing(client, session, llm):

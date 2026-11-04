@@ -205,7 +205,7 @@ def build_decide_prompt(session: ChatSession, char, user: str, now: dt.datetime)
         tail=_excerpt(session, names, user),
         scene=f"\nWhere things stood:\n{render_scene(session.scene)}\n" if session.scene else "",
         personality=(card.personality or card.description or "")[:600].strip(),
-        day=f"{rhythm.day_line(char)}\n" if rhythm.day_line(char) else "",
+        day=f"{line}\n" if (line := rhythm.day_line(char, local_now(now))) else "",
     )
     fmt = get_format(settings.prompt_format)
     return fmt.user.format(text=body) + fmt.joiner + fmt.response_open + "Answer:"

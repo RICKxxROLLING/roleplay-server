@@ -120,6 +120,10 @@ async def suggest(char: Character) -> dict:
     best: dict = {}
     for _ in range(2):
         got = parse(await get_client().generate(prompt, params))
+        # Said of 19 people in 25 live, Joel's neighbours and hermits alike, so it says
+        # little; the owner can still choose it. "Rarely" and "sometimes" are earned.
+        if got.get("reach") == "often":
+            del got["reach"]
         if len(got) > len(best):
             best = got
         if "wake" in best and "busy_from" in best:
@@ -174,12 +178,11 @@ def jitter(session: ChatSession) -> float:
     return random.Random(f"{session.id}:{last}").uniform(0.8, 1.4)
 
 
-def day_line(char: Character) -> str:
-    """For the would-they-write question, so "at this hour" has something to go on."""
+def day_line(char: Character, local: dt.datetime) -> str:
+    """For the would-they-write question, only while they are tied up. Measured on Stheno,
+    12 asks per hour, one chat: their whole schedule in the prompt cut the yeses at every
+    hour, 9 to 4 even at a free 3 PM, since it read as a reason not to write."""
     r = char.rhythm or {}
-    parts = []
-    if r.get("wake") and r.get("sleep"):
-        parts.append(f"usually gets up at {clock_time(r['wake'])} and goes to bed at {clock_time(r['sleep'])}")
-    if r.get("busy_from") and r.get("busy_until"):
-        parts.append(f"is usually tied up from {clock_time(r['busy_from'])} to {clock_time(r['busy_until'])}")
-    return f"{char.name} {' and '.join(parts)}." if parts else ""
+    if r.get("busy_from") and r.get("busy_until") and _within(r["busy_from"], r["busy_until"], local):
+        return f"{char.name} is usually tied up with work or duties until {clock_time(r['busy_until'])}."
+    return ""
