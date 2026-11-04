@@ -390,6 +390,10 @@ cards: no acceptance in 54 asks, judged on the first 380 characters of each repl
 "not yet" and a few deflected; no refusal or romance in 36 ordinary lines. A minor's line stays free
 of romantic words, covered by `minor_line`. There is no line before a character's first scores
 exist, so the first reply of a chat isn't covered, nor is anything with earned trust switched off.
+Live through the app, full replies: 12/12 said no in fresh untagged chats (Dina high and middle,
+Jesse high), a few leaving it open ("maybe someday"); 4/4 agreed with the tag. A chat already
+romantic outweighs the line: with the tag removed after "I love you too", 2 of 4 still agreed, and
+the 2 refusals called it a friendship as if the rest hadn't happened. Tag a card before its romance.
 
 **A character's thoughts are two outputs: a journal for the owner, a view for the prompt
 (`memory/thoughts.py`).** After each reply a short pass (~2 s on the 2080) writes a journal
