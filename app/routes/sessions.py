@@ -111,13 +111,22 @@ def create_session(body: SessionIn, db: DbSession = Depends(get_db)) -> dict:
 
 
 @router.post("/import")
-def import_chat(body: transfer.ChatFile, db: DbSession = Depends(get_db)) -> dict:
+async def import_chat(body: transfer.ChatFile, db: DbSession = Depends(get_db)) -> dict:
     """A new chat from an exported file (chat/transfer.py). Changes nothing already here."""
     try:
-        return transfer.import_chat(db, body)
+        report = transfer.import_chat(db, body)
     except transfer.ImportRefused as exc:
         db.rollback()
         raise HTTPException(400, str(exc)) from exc
+    # So the first reply can recall as well as the original would have: without this,
+    # live, the prompt lost its "Relevant moments" until a turn had finished. 51 messages
+    # took 0.4 s. If embedding is down the chat is still here, and the next turn retries.
+    if settings.retrieval_enabled:
+        try:
+            await rag.index_session(db, db.get(ChatSession, report["id"]))
+        except Exception:
+            db.rollback()
+    return report
 
 
 @router.get("/{session_id}/export")

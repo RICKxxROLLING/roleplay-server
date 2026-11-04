@@ -544,7 +544,6 @@ Polish and reach, now that the hybrid memory design is complete:
 
 - **Cancelling generation server-side** — today Stop aborts the client only.
 - **Branching and swipes** — keep alternate timelines instead of destructive regenerate.
-- **Session export/import** — move a chat between installs.
 - **Semantic lorebook matching** — embed `character_book` entries so paraphrases fire them,
   alongside the keyword contract rather than replacing it. The V2 spec is keyword-based, so
   this has to be additive.

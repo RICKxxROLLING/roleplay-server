@@ -10,7 +10,7 @@ from app.chat import transfer
 from app.db import SessionLocal
 from app.db.models import (Character, CharacterThought, ChatSession, Message, MessageEmbedding, Persona,
                            SessionMember, Standing, World)
-from conftest import card_png
+from conftest import card_png, enable_retrieval
 
 
 def say(client, sid, text="Hello."):
@@ -163,6 +163,21 @@ def test_the_chat_carries_on_after_arriving(client, llm, lived_in):
     count = len(client.get(f"/api/sessions/{new}").json()["messages"])
     say(client, new, "We pick up where we left off.")
     assert len(client.get(f"/api/sessions/{new}").json()["messages"]) >= count + 2
+
+
+def test_recall_is_rebuilt_on_arrival(client, lived_in, embedder):
+    enable_retrieval(client)
+    new = bring_back(client, export(client, lived_in))["id"]
+    with SessionLocal() as db:
+        s = db.get(ChatSession, new)
+        assert db.query(MessageEmbedding).filter_by(session_id=new).count() == len(s.messages)
+
+
+def test_the_chat_still_arrives_if_embedding_is_down(client, lived_in, embedder):
+    enable_retrieval(client)
+    embedder.fail_with = RuntimeError("no embedding model")
+    new = bring_back(client, export(client, lived_in))["id"]
+    assert client.get(f"/api/sessions/{new}").status_code == 200
 
 
 def test_vectors_are_not_in_the_file(client, lived_in):
