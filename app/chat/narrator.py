@@ -32,19 +32,19 @@ ROLE = group.NARRATOR_ROLE
 #: Every how many lines an event comes up: two quiet lines, then one that asks for a response.
 EVENT_EVERY = 3
 #: Most lines are one try. A refused line costs ~1 s, and posting nothing is harmless.
-ATTEMPTS = 3
+ATTEMPTS = 4
 MAX_CHARS = 280
 
 AMBIENT = [
     ("the wind", "Outside,"), ("the light", "Outside,"), ("birds", "Outside,"),
     ("woodsmoke", "Not far off,"), ("a horse", "Not far off,"),
     ("a dog", "Somewhere nearby,"), ("water dripping", "Somewhere nearby,"),
-    ("a neighbor at a chore", "Across the way,"), ("someone walking past", "Across the way,"),
+    ("a neighbor at a chore", "Across the way,"), ("a neighbor carrying something home", "Across the way,"),
 ]
 EVENTS = [
     ("someone stops by with a small everyday request", "Before long,"),
-    ("a chore makes itself known: something needs a minute's attention", "Before long,"),
-    ("word arrives of some small piece of local news", "Before long,"),
+    ("a chore makes itself known: something needs a minute's attention", "A little later,"),
+    ("word arrives of some small piece of local news", "Around then,"),
 ]
 
 _HEAD = """You are the narrator of an ongoing story about {people} and {user}.
@@ -68,7 +68,10 @@ EVENT_PROMPT = _HEAD + (
 
 _ALARM = re.compile(
     r"\b(sudden\w*|eerie|ominous\w*|startl\w*|gun\w*|shots?|scream\w*|bang\w*|crash\w*|howl\w*|"
-    r"infected|shriek\w*|menac\w*|threat\w*|urgent\w*|frantic\w*|panic\w*)\b", re.I)
+    r"infected|shriek\w*|menac\w*|threat\w*|urgent\w*|frantic\w*|panic\w*|"
+    # Not alarming in themselves, but read as a plot hook. "A lone figure, hood up and
+    # rifle slung low" was meant as background; live, Dina set about investigating it.
+    r"figures?|silhouette\w*|rifles?|hood\w*|lurk\w*|stealth\w*|skulk\w*|sneak\w*)\b", re.I)
 _THEM = re.compile(r"\b(both|they|their|them)\b", re.I)
 #: A full stop after these doesn't end a sentence: "Across the way, Mrs." was seen live.
 _SENTENCE = re.compile(r"(?<!\bMrs)(?<!\bMr)(?<!\bMs)(?<!\bDr)(?<!\bSt)[.!?]+[\"”]?(?=\s|$)")
@@ -92,23 +95,30 @@ def judge(text: str, names: list[str], *, event: bool = False, scene_time: str =
     by the token cap reads worse than none. Names cover the user and the cast: a line
     with them in it is writing their actions for them."""
     ends = [m.end() for m in _SENTENCE.finditer(text)]
-    if not ends:
-        return ""
-    line = text[: ends[min(1 if event else 0, len(ends) - 1)]].strip()
+    # An event's second sentence is where it starts talking or writing the cast, and
+    # the first often stands well alone: live, 6 of 15 button presses found nothing.
+    for end in ([ends[1], ends[0]] if event and len(ends) > 1 else ends[:1]):
+        line = text[:end].strip()
+        if _acceptable(line, names, event, scene_time, recent):
+            return line
+    return ""
+
+
+def _acceptable(line: str, names: list[str], event: bool, scene_time: str, recent: list[str] | None) -> bool:
     if len(line) > MAX_CHARS or '"' in line or "”" in line or "*" in line or _ALARM.search(line):
-        return ""
+        return False
     if any(re.search(rf"(?<!\w){re.escape(n)}(?!\w)", line, re.I) for n in names if n):
-        return ""
+        return False
     if not event and _THEM.search(line):
-        return ""
+        return False
     if _wrong_time(line, scene_time):
-        return ""
+        return False
     mine = _words(line)
     for old in recent or ():
         seen = _words(old)
         if seen and len(mine & seen) / max(1, min(len(mine), len(seen))) > 0.6:
-            return ""
-    return line
+            return False
+    return True
 
 
 def _lines(session: ChatSession) -> list[Message]:

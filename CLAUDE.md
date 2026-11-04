@@ -409,8 +409,12 @@ and crows, so the world came back and the server picks the subject. `judge` refu
 cast or user by name, speech, cut-off sentences, the wrong time of day and near repeats, then
 retries; posting nothing is harmless. Effect on replies, 24 each: a quiet line was noticed once, so
 it costs the scene nothing; a visitor got a response every time, a chore about 2 in 3. So every third
-line is an event, and "Something happens" asks for one by hand. Known limit: visitors are invented
-names, and only 15/36 event lines passed on first try.
+line is an event, and "Something happens" asks for one by hand. Live, 15 quiet turns each, on vs
+off: Dina's places 7 vs 5, Joel's 2 vs 3, one chat each, so no sign of more drift, though no proof
+either. Replies noticed the line far more than offline, 5 of 7: posted right before the reply, it is
+the last thing they read. Mostly gently (the stew, the cold), but "a lone figure, hood up, rifle slung
+low" sent Dina investigating, so those words are refused too. Known limit: visitors are invented
+names, and can clash with a card ("Sarah" tending Joel's garden).
 
 **A character's thoughts are two outputs: a journal for the owner, a view for the prompt
 (`memory/thoughts.py`).** After each reply a short pass (~2 s on the 2080) writes a journal

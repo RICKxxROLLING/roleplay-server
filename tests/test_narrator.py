@@ -64,6 +64,17 @@ def test_keeps_one_sentence_of_background_and_two_of_an_event():
     assert narrator.judge(text, NAMES, event=True) == "Before long, Sam knocks. He wants a nail."
 
 
+def test_an_event_falls_back_to_its_first_sentence():
+    assert narrator.judge('Before long, Sam knocks. "Hey Dina, got a nail?"', NAMES, event=True) == "Before long, Sam knocks."
+    assert narrator.judge("Before long, Sam knocks. Dina looks up.", NAMES, event=True) == "Before long, Sam knocks."
+    assert narrator.judge("Before long, Dina looks up. Sam knocks.", NAMES, event=True) == ""
+
+
+def test_background_that_reads_as_a_plot_hook_is_refused():
+    assert narrator.judge("Across the way, a lone figure heads for the gate.", NAMES) == ""
+    assert narrator.judge("Across the way, a man with a rifle crosses the yard.", NAMES) == ""
+
+
 def test_an_abbreviation_does_not_end_the_sentence():
     assert narrator.judge("Across the way, Mrs.", NAMES) == ""
 
