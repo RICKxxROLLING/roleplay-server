@@ -14,6 +14,87 @@ const FIELDS = [
   ["post_history_instructions", "Post-history instructions", 3, "Injected just before the reply."],
 ];
 
+const DAY = [
+  ["wake", "Wakes"],
+  ["sleep", "Sleeps"],
+  ["busy_from", "Busy from"],
+  ["busy_until", "Busy until"],
+];
+
+/**
+ * Their own day, for chats where they write first (app/chat/rhythm.py). Saved on its
+ * own button, since it is not card text. Leave a pair empty and that part doesn't apply.
+ */
+function DailyRhythm({ characterId, initial }) {
+  const [day, setDay] = useState(initial);
+  const [note, setNote] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => setDay(initial), [initial]);
+  const set = (k, v) => setDay((d) => ({ ...d, [k]: v }));
+
+  async function suggest() {
+    setBusy(true);
+    setNote(null);
+    try {
+      const { reason, ...got } = await api.suggestRhythm(characterId);
+      setDay(got);
+      setNote(reason ? `${reason} Not saved yet.` : "Not saved yet.");
+    } catch (e) {
+      setNote(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function save() {
+    try {
+      const body = { wake: null, sleep: null, busy_from: null, busy_until: null, reach: null };
+      for (const [k, v] of Object.entries(day)) if (v) body[k] = v;
+      const r = await api.updateCharacter(characterId, { rhythm: body });
+      setDay(r.rhythm || {});
+      setNote("Saved.");
+    } catch (e) {
+      setNote(e.message);
+    }
+  }
+
+  return (
+    <Field label="Daily rhythm" hint="when they write first; your quiet hours still win">
+      <div className="grid grid-cols-2 gap-2">
+        {DAY.map(([k, label]) => (
+          <label key={k} className="text-xs text-slate-400">
+            {label}
+            <Input
+              type="time"
+              className="mt-1"
+              value={day[k] || ""}
+              onChange={(e) => set(k, e.target.value)}
+            />
+          </label>
+        ))}
+      </div>
+      <label className="block text-xs text-slate-400 mt-2">
+        Reaches out
+        <select
+          value={day.reach || ""}
+          onChange={(e) => set("reach", e.target.value)}
+          className="mt-1 w-full bg-ink-950 border border-ink-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent/60"
+        >
+          <option value="">Usual</option>
+          <option value="often">Often</option>
+          <option value="sometimes">Sometimes</option>
+          <option value="rarely">Rarely</option>
+        </select>
+      </label>
+      <div className="flex flex-wrap items-center gap-2 mt-2">
+        <Button onClick={suggest} disabled={busy}>{busy ? "Thinking…" : "Suggest from the card"}</Button>
+        <Button onClick={save} disabled={busy}>Save rhythm</Button>
+        {note && <span className="text-xs text-slate-500">{note}</span>}
+      </div>
+    </Field>
+  );
+}
+
 export default function CharacterEditor({ open, onClose, characterId, onChanged }) {
   const [card, setCard] = useState(null);
   const [form, setForm] = useState({});
@@ -21,6 +102,7 @@ export default function CharacterEditor({ open, onClose, characterId, onChanged 
   const [busy, setBusy] = useState(false);
   const [worlds, setWorlds] = useState([]);
   const [worldId, setWorldId] = useState(null);
+  const [day, setDay] = useState({});
 
   useEffect(() => {
     if (!open || !characterId) return;
@@ -31,6 +113,7 @@ export default function CharacterEditor({ open, onClose, characterId, onChanged 
         setCard(c.card);
         setForm(c.card);
         setWorldId(c.world_id ?? null);
+        setDay(c.rhythm || {});
       })
       .catch((e) => setNote(e.message));
     api.worlds().then(setWorlds).catch(() => {});
@@ -140,6 +223,8 @@ export default function CharacterEditor({ open, onClose, characterId, onChanged 
               ))}
             </select>
           </Field>
+
+          <DailyRhythm characterId={characterId} initial={day} />
 
           {FIELDS.map(([key, label, rows, hint]) => (
             <Field key={key} label={label} hint={hint}>

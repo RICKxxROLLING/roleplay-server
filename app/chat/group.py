@@ -86,15 +86,16 @@ def _mentions(text: str, name: str) -> bool:
     return any(re.search(rf"(?<!\w){re.escape(n)}(?!\w)", text, re.I) for n in names)
 
 
-def choose_speaker(session: ChatSession, user_text: str = "") -> Character:
+def choose_speaker(session: ChatSession, user_text: str = "", among: list[Character] | None = None) -> Character:
     """Who answers: the character the user's message names, else whoever has
     gone longest without speaking.
 
     Named first because addressing someone is the user's clearest signal; the
     rotation keeps a quiet member from never getting a turn. Ties in the
-    rotation go to cast order, so the session's own character opens.
+    rotation go to cast order, so the session's own character opens. `among`
+    narrows the choice to part of the cast.
     """
-    people = cast(session)
+    people = among or cast(session)
     if len(people) <= 1:
         return people[0] if people else session.character
     named = [c for c in people if _mentions(user_text, c.name)]

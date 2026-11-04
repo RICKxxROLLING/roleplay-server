@@ -45,6 +45,8 @@ class Character(Base):
     # Someone who lives in the world without being on the main list: the narrator's
     # visitors, and guests the owner brings into a chat (cards/people.py).
     extra: Mapped[bool] = mapped_column(default=False)
+    # Their own day (chat/rhythm.py): wake, sleep, busy_from, busy_until, reach.
+    rhythm: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     sessions: Mapped[list["ChatSession"]] = relationship(
         back_populates="character", cascade="all, delete-orphan"

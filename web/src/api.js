@@ -48,6 +48,7 @@ export const api = {
     j("/characters", { method: "POST", body: JSON.stringify(body) }),
   updateCharacter: (id, patch) =>
     j(`/characters/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  suggestRhythm: (id) => j(`/characters/${id}/rhythm/suggest`, { method: "POST" }),
   deleteCharacter: (id) => j(`/characters/${id}`, { method: "DELETE" }),
   avatarUrl: (id) => `${API}/characters/${id}/avatar`,
   importBundle: (bundle, replace) =>

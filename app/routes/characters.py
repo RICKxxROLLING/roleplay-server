@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DbSession
 
 from ..cards import CardImportError, creator, load_card
@@ -171,7 +172,33 @@ def get_character(char_id: int, db: DbSession = Depends(get_db)) -> dict:
     c = db.get(Character, char_id)
     if not c:
         raise HTTPException(404, "Character not found")
-    return {"id": c.id, "name": c.name, "card": c.card, "world_id": c.world_id, "extra": bool(c.extra)}
+    return {"id": c.id, "name": c.name, "card": c.card, "world_id": c.world_id, "extra": bool(c.extra),
+            "rhythm": c.rhythm or {}}
+
+
+@router.post("/{char_id}/rhythm/suggest")
+async def suggest_rhythm(char_id: int, db: DbSession = Depends(get_db)) -> dict:
+    """A daily rhythm read from the card, for the editor to show. Nothing is saved."""
+    from ..chat import rhythm
+
+    c = db.get(Character, char_id)
+    if not c:
+        raise HTTPException(404, "Character not found")
+    got = await rhythm.suggest(c)
+    if not got:
+        raise HTTPException(502, "The model didn't come up with anything usable. Try again.")
+    return got
+
+
+_TIME = r"^([01]\d|2[0-3]):[0-5]\d$"
+
+
+class RhythmIn(BaseModel):
+    wake: str | None = Field(None, pattern=_TIME)
+    sleep: str | None = Field(None, pattern=_TIME)
+    busy_from: str | None = Field(None, pattern=_TIME)
+    busy_until: str | None = Field(None, pattern=_TIME)
+    reach: Literal["often", "sometimes", "rarely"] | None = None
 
 
 class CardPatch(BaseModel):
@@ -194,6 +221,8 @@ class CardPatch(BaseModel):
     lorebook_recursive: bool | None = None
     #: False moves an extra onto the main list; not part of the card.
     extra: bool | None = None
+    #: Their own day (chat/rhythm.py); not part of the card. Empty clears it.
+    rhythm: RhythmIn | None = None
 
 
 @router.patch("/{char_id}")
@@ -205,6 +234,14 @@ def update_character(
         raise HTTPException(404, "Character not found")
 
     patch = body.model_dump(exclude_none=True)
+    # Set only as pairs: half a window means nothing to the scheduler.
+    if "rhythm" in patch:
+        day = {k: v for k, v in patch.pop("rhythm").items() if v}
+        for a, b in (("wake", "sleep"), ("busy_from", "busy_until")):
+            if (a in day) != (b in day):
+                raise HTTPException(400, f"{a} and {b} go together")
+        c.rhythm = day or None
+        db.commit()
     extra = patch.pop("extra", None)
     if extra is not None:
         if extra and c.world_id is None:
@@ -212,7 +249,7 @@ def update_character(
         c.extra = extra
         db.commit()
     if not patch:
-        return {"id": c.id, "name": c.name, "card": c.card}
+        return {"id": c.id, "name": c.name, "card": c.card, "rhythm": c.rhythm or {}}
 
     # Round-trip through the schema so an edit can't write a malformed card.
     merged = {**(c.card or {}), **patch}
@@ -224,7 +261,7 @@ def update_character(
     # what marks the column dirty.
     db.commit()
     db.refresh(c)
-    return {"id": c.id, "name": c.name, "card": c.card}
+    return {"id": c.id, "name": c.name, "card": c.card, "rhythm": c.rhythm or {}}
 
 
 @router.get("/{char_id}/avatar")

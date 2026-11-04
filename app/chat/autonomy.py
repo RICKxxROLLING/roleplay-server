@@ -4,9 +4,10 @@ A chat with `autonomous` on may get a message nobody asked for. The scheduler
 (`run_forever`) checks such chats every few minutes; each check is three
 filters, cheapest first:
 
-1. **Rules, no model** (`eligible`): quiet hours, a minimum gap that doubles with
-   every unanswered message, a daily cap, nothing already generating, and the
-   chat not suspended -- three unanswered messages and it waits for the user.
+1. **Rules, no model** (`eligible`): quiet hours, the character's own day
+   (chat/rhythm.py), a minimum gap that doubles with every unanswered message, a
+   daily cap, nothing already generating, and the chat not suspended -- three
+   unanswered messages and it waits for the user.
 2. **Would they?** (`decide`): a short generation asks whether this character,
    at this hour, after how the last exchange ended, would reach out -- and why.
    The reason is kept; it is what the message is about.
@@ -31,6 +32,7 @@ from ..config import settings
 from ..db.models import ChatSession, Message
 from ..llm import GenerationParams, get_client
 from ..prompt.formats import get_format
+from . import rhythm
 
 log = logging.getLogger(__name__)
 
@@ -93,7 +95,7 @@ def gap_needed(session: ChatSession) -> dt.timedelta:
     """The minimum quiet before writing, doubling per unanswered message: a
     character who has written twice without reply waits four times as long."""
     return dt.timedelta(minutes=settings.autonomy_min_gap_minutes * 2 ** unanswered(session)
-                        * _rhythm(session))
+                        * _rhythm(session) * rhythm.reach_factor(session.character))
 
 
 def _rhythm(session: ChatSession) -> float:
@@ -120,10 +122,12 @@ def eligible(session: ChatSession, now: dt.datetime | None = None) -> str | None
         return f"waiting for a reply after {unanswered(session)} messages"
     if in_quiet_hours(local):
         return "quiet hours"
+    if why := rhythm.why_not(session, local):
+        return why
     if sent_today(session, local) >= settings.autonomy_max_per_day:
         return "daily limit reached"
     since = now - _utc(session.messages[-1].created_at)
-    if since < gap_needed(session):
+    if since < gap_needed(session) * rhythm.jitter(session):
         return "too soon since the last message"
     if session.next_check_at and now < _utc(session.next_check_at):
         return "checked recently"
@@ -168,7 +172,7 @@ DECIDE_PROMPT = """{char} and {user} are in an ongoing story. It is now {now}, a
 {tail}
 {scene}
 {char}'s personality: {personality}
-
+{day}
 Would {char}, being who they are, reach out to {user} right now without being asked -- \
 send a message, or come find them? Think about unfinished business, a promise or plan, \
 their feelings about {user}, and what {char} would be doing at this hour. People don't \
@@ -201,6 +205,7 @@ def build_decide_prompt(session: ChatSession, char, user: str, now: dt.datetime)
         tail=_excerpt(session, names, user),
         scene=f"\nWhere things stood:\n{render_scene(session.scene)}\n" if session.scene else "",
         personality=(card.personality or card.description or "")[:600].strip(),
+        day=f"{rhythm.day_line(char)}\n" if rhythm.day_line(char) else "",
     )
     fmt = get_format(settings.prompt_format)
     return fmt.user.format(text=body) + fmt.joiner + fmt.response_open + "Answer:"
@@ -253,14 +258,14 @@ def _preview(text: str) -> str:
 
 
 async def write_first(db: DbSession, session: ChatSession, reason: str = "",
-                      now: dt.datetime | None = None) -> Message | None:
+                      now: dt.datetime | None = None, speaker=None) -> Message | None:
     """Generate, save and announce one message the character starts. None if
     nothing usable came back (the guard can empty a reply)."""
     from .. import push
     from . import group
     from .orchestrator import stream_reply
 
-    speaker = group.choose_speaker(session, "")
+    speaker = speaker or group.choose_speaker(session, "")
     user = session.persona.name if session.persona else "You"
     before = session.messages[-1].id if session.messages else 0
     line = initiative_line(speaker.name, user, reason, session, now)
@@ -296,7 +301,8 @@ async def check(db: DbSession, session: ChatSession, now: dt.datetime | None = N
         why_not = eligible(session, now)
         if why_not:
             return {"sent": False, "why": why_not}
-    speaker = group.choose_speaker(session, "")
+    # Whoever of the scene is up and free. The button asks by hand, so it wakes them.
+    speaker = group.choose_speaker(session, "", None if force else rhythm.free_cast(session, local_now(now)))
     user = session.persona.name if session.persona else "You"
     reason = ""
     if not force:
@@ -307,7 +313,7 @@ async def check(db: DbSession, session: ChatSession, now: dt.datetime | None = N
             session.next_check_at = now + dt.timedelta(minutes=wait)
             db.commit()
             return {"sent": False, "why": f"decided not to: {reason}" if reason else "decided not to"}
-    msg = await write_first(db, session, reason, now)
+    msg = await write_first(db, session, reason, now, speaker)
     session.next_check_at = None
     db.commit()
     if msg is None:
