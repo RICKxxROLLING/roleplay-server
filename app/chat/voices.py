@@ -67,6 +67,8 @@ DEFAULT_NARRATOR = "en_GB-alan-medium"
 
 _SHE = re.compile(r"\b(she|her|hers|herself)\b", re.I)
 _HE = re.compile(r"\b(he|him|his|himself)\b", re.I)
+_WOMAN = re.compile(r"\b(woman|girl|sister|mother|daughter|wife|aunt|widow)\b", re.I)
+_MAN = re.compile(r"\b(man|boy|brother|father|son|husband|uncle|widower)\b", re.I)
 _QUOTE = re.compile(r'"([^"]+)"|“([^”]+)”')
 _LOCK = threading.Lock()
 _loaded: OrderedDict[str, object] = OrderedDict()
@@ -100,6 +102,9 @@ def default_for(char: Character) -> str:
     owner's choice in the editor overrides it."""
     text = (char.card or {}).get("description") or ""
     she, he = len(_SHE.findall(text)), len(_HE.findall(text))
+    # A thin card may have no pronouns at all. Live: "Joel's brother" got a woman's voice.
+    if not she and not he:
+        she, he = len(_WOMAN.findall(text)), len(_MAN.findall(text))
     pool = [v.id for v in VOICES.values() if she == he or v.gender == ("woman" if she > he else "man")]
     return pool[char.id % len(pool)]
 

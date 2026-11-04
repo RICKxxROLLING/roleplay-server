@@ -85,6 +85,13 @@ def test_the_default_follows_the_pronouns_on_the_card():
         assert voices.VOICES[her].gender == "woman" and voices.VOICES[him].gender == "man"
 
 
+def test_a_thin_card_with_no_pronouns_goes_by_other_words():
+    for i in range(12):
+        him = voices.default_for(NS(id=i, card=card("{{char}} is Joel's brother, a gruff, fair leader.")))
+        her = voices.default_for(NS(id=i, card=card("{{char}} is the blacksmith's widow.")))
+        assert voices.VOICES[him].gender == "man" and voices.VOICES[her].gender == "woman"
+
+
 def test_characters_get_different_defaults():
     got = {voices.default_for(NS(id=i, card=card("She rides."))) for i in range(6)}
     assert len(got) > 3

@@ -27,6 +27,7 @@ export default function ChatView({
   const [streamSpeaker, setStreamSpeaker] = useState(null);
   const [castOpen, setCastOpen] = useState(false);
   const abortRef = useRef(null);
+  const lastRead = useRef(null);
   const bottomRef = useRef(null);
 
   const reload = () =>
@@ -267,7 +268,13 @@ export default function ChatView({
           setBusy(false);
           onDirty?.();
           const last = fresh.messages[fresh.messages.length - 1];
-          if (readAloud && last?.role === "assistant") play(speechPath(sessionId, last.id));
+          // onDone can fire twice for one reply (streamTurn), which restarted the reading.
+          // By words as well as id, so a swipe of the same message is read too.
+          const heard = last && `${last.id}:${last.content}`;
+          if (readAloud && last?.role === "assistant" && lastRead.current !== heard) {
+            lastRead.current = heard;
+            play(speechPath(sessionId, last.id));
+          }
         } catch (e) {
           setStreamText("");
           setBusy(false);
