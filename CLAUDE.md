@@ -71,6 +71,7 @@ app/
   chat/group.py         group chats: cast, speaker choice, per-speaker history roles
   chat/autonomy.py      characters writing first: rules, would-they pass, scheduler
   chat/texting.py       texting mode: the chat as a text thread, switching in and out
+  chat/narrator.py      short lines about the world around the scene, and small events
   db/                   SQLAlchemy models + additive migrations
   routes/               characters, personas, sessions, system, worlds
 web/src/components/     React UI
@@ -394,6 +395,22 @@ Live through the app, full replies: 12/12 said no in fresh untagged chats (Dina 
 Jesse high), a few leaving it open ("maybe someday"); 4/4 agreed with the tag. A chat already
 romantic outweighs the line: with the tag removed after "I love you too", 2 of 4 still agreed, and
 the 2 refusals called it a friendship as if the rest hadn't happened. Tag a card before its romance.
+
+**The narrator is mostly quiet, and the server writes half of each line (`chat/narrator.py`).** A
+message with role "narrator", posted just before the character's reply so the reply stays last and
+swipes still work; every prompt reads it as a labelled user-side line, like another group member.
+Per chat, on for new chats (`narrator_default`), and old chats stay off. Prototyped on Stheno over
+two live chats. Asked plainly for weather, sounds or passers-by, nearly every line was a threat
+("a sudden bang", gunfire, a figure at the door) that then wrote how the people reacted, which is
+the rushing the owner reported. World description and worked examples barely helped. Asking for
+something "quiet, small and ordinary" with the server opening the sentence ("Outside,") passed 83/96
+of `judge`, but forgot the world (jazz on the radio in a dead America) and half its lines were clocks
+and crows, so the world came back and the server picks the subject. `judge` refuses alarm words, the
+cast or user by name, speech, cut-off sentences, the wrong time of day and near repeats, then
+retries; posting nothing is harmless. Effect on replies, 24 each: a quiet line was noticed once, so
+it costs the scene nothing; a visitor got a response every time, a chore about 2 in 3. So every third
+line is an event, and "Something happens" asks for one by hand. Known limit: visitors are invented
+names, and only 15/36 event lines passed on first try.
 
 **A character's thoughts are two outputs: a journal for the owner, a view for the prompt
 (`memory/thoughts.py`).** After each reply a short pass (~2 s on the 2080) writes a journal

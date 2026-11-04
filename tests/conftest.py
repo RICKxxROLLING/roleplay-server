@@ -28,6 +28,8 @@ os.environ["RP_SUMMARY_TRIGGER_TOKENS"] = "300"
 os.environ["RP_KEEP_RECENT_MESSAGES"] = "4"
 # The writing-first loop would fire real checks on a timer; tests call it directly.
 os.environ["RP_AUTONOMY_SCHEDULER"] = "false"
+# Off so ordinary tests keep their message counts; test_narrator.py turns it on.
+os.environ["RP_NARRATOR_DEFAULT"] = "false"
 # Some CI images export a SOCKS proxy that httpx can't construct a client for.
 for var in ("ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy"):
     os.environ.pop(var, None)
@@ -118,6 +120,14 @@ Example dialogue: <START>
 <END>"""
 
 
+NARRATOR_LINES = [
+    " a dog barks twice and gives up.", " rain ticks against tin.", " pine smoke drifts over slowly.",
+    " somebody hums while hanging laundry.", " geese cross high overhead.", " a gate swings on old hinges.",
+    " Sam leaves eggs by the step.", " frost melts off fence rails.", " two mules plod toward market.",
+    " chickens argue beneath a wagon.", " a kettle sings next door.", " snow slides from low branches.",
+]
+
+
 class MockLLM(LLMClient):
     """Deterministic stand-in for a local model.
 
@@ -139,6 +149,10 @@ class MockLLM(LLMClient):
         self.draft_calls: list[str] = []
         self.thought_calls: list[str] = []
         self.trust_calls: list[str] = []
+        self.narrator_calls: list[str] = []
+        # What the narrator pass writes after the opener the server chose.
+        self.narrator_replies: list[str] = []
+        self.narrator_reply = None
         # What the scoring pass answers, after the prefilled "Reason:".
         self.trust_reply = " nothing much\nTrust: 0\nAffection: 0\nRespect: 0"
         self.seed_reply = " they just met\nTrust: 30\nAffection: 30\nRespect: 30"
@@ -150,6 +164,12 @@ class MockLLM(LLMClient):
 
     async def generate_stream(self, prompt, params):
         self.prompts.append(prompt)
+        if "you are the narrator" in prompt.lower():
+            self.narrator_calls.append(prompt)
+            # Distinct by default: the narrator refuses a line much like a recent one.
+            yield (self.narrator_replies.pop(0) if self.narrator_replies
+                   else self.narrator_reply or NARRATOR_LINES[len(self.narrator_calls) % len(NARRATOR_LINES)])
+            return
         if "you are scoring" in prompt.lower():
             self.trust_calls.append(prompt)
             yield self.seed_reply if "from 0 to 100" in prompt else self.trust_reply
@@ -230,6 +250,7 @@ def llm(monkeypatch):
     """Install the mock across every module that resolves a client."""
     import app.cards.creator as creator
     import app.chat.autonomy as autonomy
+    import app.chat.narrator as narrator_mod
     import app.chat.orchestrator as orch
     import app.memory.scene as scene
     import app.memory.summarizer as summarizer
@@ -238,7 +259,7 @@ def llm(monkeypatch):
     import app.routes.system as system
 
     mock = MockLLM()
-    for module in (autonomy, creator, orch, scene, summarizer, system, thoughts_mod, trust_mod):
+    for module in (autonomy, creator, narrator_mod, orch, scene, summarizer, system, thoughts_mod, trust_mod):
         monkeypatch.setattr(module, "get_client", lambda: mock)
     return mock
 

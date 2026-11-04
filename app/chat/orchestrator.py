@@ -21,7 +21,7 @@ from ..memory import thoughts, trust
 from ..memory.scene import blank as blank_scene, update_scene
 from ..prompt import build_prompt, tokens
 from ..prompt.builder import PACING_MAX_NEW_TOKENS
-from . import autonomy, group, texting
+from . import autonomy, group, narrator, texting
 from .guard import (
     first_person_narration,
     infer_pronoun,
@@ -258,6 +258,19 @@ async def stream_reply(
     if group.is_group(session):
         yield {"type": "speaker", "id": speaker.id, "name": speaker.name}
 
+    # Before the reply and not after, so the reply stays the chat's last message
+    # and can still be swiped, and the character can take the line up at once.
+    if swipe_of is None and not initiative and narrator.due(session):
+        autonomy.ACTIVE += 1
+        try:
+            line = await narrator.post_line(db, session)
+            if line is not None:
+                yield {"type": "narrator", "id": line.id, "content": line.content}
+        except Exception:
+            pass  # Best-effort, like the other side passes: the reply is what matters.
+        finally:
+            autonomy.ACTIVE -= 1
+
     card, ctx, built = await build_turn_prompt(
         session, overrides, db=db, exclude_ids={swipe_of.id} if swipe_of else None,
         speaker=speaker, initiative=initiative,
@@ -408,7 +421,8 @@ async def stream_reply(
     # Not when the character wrote first or spoke unprompted: there is no new line to judge.
     if settings.trust_enabled and swipe_of is None and not initiative:
         try:
-            msgs = session.messages
+            # Without the narrator: its line can sit between the user's and the reply.
+            msgs = [m for m in session.messages if m.role != narrator.ROLE]
             if len(msgs) >= 2 and msgs[-2].role == "user":
                 await trust.after_exchange(
                     db, session, speaker, card, msgs[-2].content,

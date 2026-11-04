@@ -209,6 +209,8 @@ def build_prompt(
     """
     fmt = prompt_format if isinstance(prompt_format, PromptFormat) else get_format(prompt_format)
     char = card.name or "Character"
+    # Anyone else with lines in the history: the narrator, or someone who left a group.
+    voices = dict.fromkeys(r[len("other:"):] for r, _ in history if r.startswith("other:"))
     budget = context_tokens - max_new_tokens - reserve_tokens
     # Server-wide house style. Like the guard it is appended rather than folded
     # into DEFAULT_SYSTEM, or every card with its own system_prompt would drop it.
@@ -370,7 +372,8 @@ def build_prompt(
         # Note: only the newline-anchored user label -- a bare "Name:" would
         # truncate legitimate prose like: she turned to Riley: "..."
         # In a group, the other characters' labels too: each speaks in its own turn.
-        stop=[fmt.stops[0], f"\n{user_name}:", *(f"\n{n}:" for n, _ in others),
+        stop=[fmt.stops[0], f"\n{user_name}:",
+              *(f"\n{n}:" for n in dict.fromkeys([*(n for n, _ in others), *voices]) if n != char),
               *fmt.stops[1:]],
         used_tokens=used,
         dropped_messages=dropped,

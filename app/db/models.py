@@ -131,6 +131,8 @@ class ChatSession(Base):
     # Characters writing first (chat/autonomy.py): off until the owner turns it on
     # per chat. `next_check_at` spaces out re-checks after a "no".
     autonomous: Mapped[bool] = mapped_column(default=False)
+    # Short lines about the world around the scene (chat/narrator.py).
+    narrator: Mapped[bool] = mapped_column(default=False)
     # "story" or "texting" (chat/texting.py): the same chat as prose, or as a text thread.
     mode: Mapped[str] = mapped_column(String(20), default="story")
     next_check_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
@@ -170,7 +172,7 @@ class Message(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     session_id: Mapped[int] = mapped_column(ForeignKey("sessions.id"), index=True)
-    role: Mapped[str] = mapped_column(String(20))  # "user" | "assistant"
+    role: Mapped[str] = mapped_column(String(20))  # "user" | "assistant" | "narrator"
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
     # Swipes. Every version a regenerate produced, oldest first; `content` is

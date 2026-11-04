@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     slow_pacing: bool = True
     # Trust, affection and respect, moved by what the user does (memory/trust.py).
     trust_enabled: bool = True
+    #: New chats start with the narrator on. Existing chats keep what they had.
+    narrator_default: bool = True
+    #: Roughly how many of the user's messages between narrator lines.
+    narrator_every: int = 5
     # Strip sentences narrating the user's own actions before a reply is
     # stored. On by default: prompting alone measured 4-9 such turns in 16 on
     # an 8B, and each one stored teaches the next. See chat/guard.py.

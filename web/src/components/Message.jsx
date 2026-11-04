@@ -19,7 +19,69 @@ function RichText({ text }) {
   );
 }
 
-export default function Message({
+/** The narrator (app/chat/narrator.py): part of the scene, nobody's turn. */
+function NarratorLine({ msg, sessionId, onChanged }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(msg.content);
+
+  async function save() {
+    if (!draft.trim()) return;
+    await api.editMessage(sessionId, msg.id, draft);
+    setEditing(false);
+    onChanged?.();
+  }
+
+  async function remove() {
+    await api.deleteMessage(sessionId, msg.id);
+    onChanged?.();
+  }
+
+  return (
+    <div className="group px-4 sm:px-12 text-center">
+      {editing ? (
+        <div className="text-left">
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={2}
+            autoFocus
+            className="w-full bg-ink-950 border border-ink-700 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent/60 resize-y"
+          />
+          <div className="flex gap-2 mt-1.5">
+            <button onClick={save} className="text-xs px-2.5 py-1 rounded-lg bg-accent/25 border border-accent/40 hover:bg-accent/35">
+              Save
+            </button>
+            <button onClick={() => setEditing(false)} className="text-xs px-2.5 py-1 rounded-lg border border-ink-700 hover:bg-ink-850">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <p className="text-sm italic text-slate-400 leading-relaxed break-words">{msg.content}</p>
+          {typeof msg.id === "number" && (
+            <span className="text-[11px] text-slate-600 inline-flex gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition">
+              <button
+                onClick={() => {
+                  setDraft(msg.content);
+                  setEditing(true);
+                }}
+                className="hover:text-slate-300"
+              >
+                edit
+              </button>
+              <button onClick={remove} className="hover:text-rose-400">
+                delete
+              </button>
+            </span>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function Turn({
   msg,
   charName,
   charId,
@@ -232,5 +294,14 @@ export default function Message({
         )}
       </div>
     </div>
+  );
+}
+
+export default function Message(props) {
+  // Two components: a narrator line has none of a turn's avatar, swipes or pins.
+  return props.msg.role === "narrator" ? (
+    <NarratorLine msg={props.msg} sessionId={props.sessionId} onChanged={props.onChanged} />
+  ) : (
+    <Turn {...props} />
   );
 }

@@ -20,6 +20,9 @@ from ..db.models import Character, ChatSession, Message
 
 #: Role prefix for another character's line in a speaker's history.
 OTHER = "other:"
+#: The narrator's messages (chat/narrator.py): written by nobody in the cast.
+NARRATOR_ROLE = "narrator"
+NARRATOR_NAME = "Narrator"
 
 
 def cast(session: ChatSession) -> list[Character]:
@@ -39,6 +42,8 @@ def speaker_id(session: ChatSession, message: Message) -> int:
 
 
 def speaker_name(session: ChatSession, message: Message, names: dict[int, str] | None = None) -> str:
+    if message.role == NARRATOR_ROLE:
+        return NARRATOR_NAME
     names = names if names is not None else {c.id: c.name for c in cast(session)}
     sid = speaker_id(session, message)
     if sid in names:
@@ -57,7 +62,9 @@ def history_roles(
     names = {c.id: c.name for c in cast(session)}
     out = []
     for m in messages:
-        if m.role == "user" or speaker_id(session, m) == me:
+        if m.role == NARRATOR_ROLE:
+            out.append((OTHER + NARRATOR_NAME, m.content))
+        elif m.role == "user" or speaker_id(session, m) == me:
             out.append((m.role, m.content))
         else:
             out.append((OTHER + speaker_name(session, m, names), m.content))

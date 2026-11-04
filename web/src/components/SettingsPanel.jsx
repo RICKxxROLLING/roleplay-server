@@ -204,6 +204,19 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
             <label className="flex items-center gap-2.5 text-sm cursor-pointer">
               <input
                 type="checkbox"
+                checked={s.narrator_default}
+                onChange={(e) => update("narrator_default", e.target.checked)}
+                className="accent-accent w-4 h-4"
+              />
+              Narrator in new chats
+              <span className="text-xs text-slate-600">
+                a short line about the world every few messages · about 2 s
+              </span>
+            </label>
+
+            <label className="flex items-center gap-2.5 text-sm cursor-pointer">
+              <input
+                type="checkbox"
                 checked={s.trust_enabled}
                 onChange={(e) => update("trust_enabled", e.target.checked)}
                 className="accent-accent w-4 h-4"

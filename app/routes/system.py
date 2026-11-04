@@ -130,6 +130,8 @@ class SettingsPatch(BaseModel):
     thoughts_enabled: bool | None = None
     slow_pacing: bool | None = None
     trust_enabled: bool | None = None
+    narrator_default: bool | None = None
+    narrator_every: int | None = None
 
     # Characters writing first. Times are "HH:MM" in the owner's zone.
     timezone: str | None = Field(None, max_length=64)

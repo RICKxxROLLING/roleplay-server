@@ -61,6 +61,32 @@ export default function ChatView({
     }
   }
 
+  async function setNarrator(on) {
+    try {
+      await api.updateSession(sessionId, { narrator: on });
+      await reload();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  // "Something happens": the narrator posts one small event, then the character
+  // answers it through the usual stream.
+  const [narrating, setNarrating] = useState(false);
+  async function somethingHappens() {
+    setNarrating(true);
+    setError(null);
+    try {
+      const line = await api.narrate(sessionId);
+      setSession((s) => ({ ...s, messages: [...s.messages, line] }));
+      runStream(`/sessions/${sessionId}/respond`, {});
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setNarrating(false);
+    }
+  }
+
   // "Message me now": one message, skipping the timing rules and the
   // would-they pass. Streams nothing -- the reply arrives on reload.
   const [nudging, setNudging] = useState(false);
@@ -153,6 +179,11 @@ export default function ChatView({
           setStreamSpeaker({ id: evt.id, name: evt.name });
         }
         if (evt.type === "scene") setSession((s) => (s ? { ...s, scene: evt.scene } : s));
+        // Posted before the reply starts, so it belongs above the draft.
+        if (evt.type === "narrator")
+          setSession((s) =>
+            s ? { ...s, messages: [...s.messages, { id: evt.id, role: "narrator", content: evt.content }] } : s
+          );
         // The server is regenerating; what streamed so far is discarded.
         if (evt.type === "redo") {
           acc = "";
@@ -362,6 +393,31 @@ export default function ChatView({
               >
                 {nudging ? "writing…" : "· message me now"}
               </button>
+            )}
+            {(session?.mode || "story") === "story" && (
+              <>
+                <span className="text-slate-700">·</span>
+                <label
+                  className="flex items-center gap-1 cursor-pointer hover:text-slate-300"
+                  title="Now and then, a short line about the world around the scene"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!session?.narrator}
+                    onChange={(e) => setNarrator(e.target.checked)}
+                    className="accent-accent w-3 h-3"
+                  />
+                  narrator
+                </label>
+                <button
+                  onClick={somethingHappens}
+                  disabled={busy || narrating}
+                  className="hover:text-slate-300 disabled:opacity-40"
+                  title="The narrator brings in something small, and they respond to it"
+                >
+                  {narrating ? "· thinking…" : "· something happens"}
+                </button>
+              </>
             )}
           </div>
         </div>

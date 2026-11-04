@@ -26,6 +26,8 @@ class SessionIn(BaseModel):
     greeting_index: int = 0  # 0 = first_mes, 1+ = alternate_greetings
     # Group chat: other characters in the scene. The greeting stays the main one's.
     member_ids: list[int] = []
+    #: Unset takes the server's default for new chats.
+    narrator: bool | None = None
 
 
 class MessageIn(BaseModel):
@@ -80,6 +82,7 @@ def create_session(body: SessionIn, db: DbSession = Depends(get_db)) -> dict:
         character_id=char.id,
         persona_id=persona.id if persona else None,
         title=body.title or f"Chat with {names}",
+        narrator=settings.narrator_default if body.narrator is None else body.narrator,
     )
     db.add(s)
     db.commit()
@@ -341,6 +344,8 @@ class SessionPatch(BaseModel):
     autonomous: bool | None = None
     #: "story" or "texting" (chat/texting.py).
     mode: Literal["story", "texting"] | None = None
+    #: Short lines about the world around the scene (chat/narrator.py).
+    narrator: bool | None = None
 
 
 @router.patch("/{session_id}")
@@ -369,6 +374,8 @@ def update_session(
         s.next_check_at = None
     if body.mode is not None:
         s.mode = body.mode
+    if body.narrator is not None:
+        s.narrator = body.narrator
 
     db.commit()
     db.refresh(s)
@@ -380,6 +387,7 @@ def _autonomy_status(s: ChatSession) -> dict:
 
     return {
         "mode": s.mode or "story",
+        "narrator": bool(s.narrator),
         "autonomous": bool(s.autonomous),
         "unanswered": autonomy.unanswered(s),
         "suspended": autonomy.suspended(s),
@@ -405,6 +413,28 @@ async def write_first(session_id: int, body: WriteFirstIn, db: DbSession = Depen
     if not s.messages:
         raise HTTPException(400, "Say something first")
     return await autonomy.check(db, s, force=body.force)
+
+
+class NarrateIn(BaseModel):
+    #: False asks for a quiet line of background instead of something happening.
+    event: bool = True
+
+
+@router.post("/{session_id}/narrate")
+async def narrate(session_id: int, body: NarrateIn, db: DbSession = Depends(get_db)) -> dict:
+    """Have something happen now: the "Something happens" button. Works with the
+    narrator off too, since the owner is asking for this one line by hand."""
+    from ..chat import narrator
+
+    s = db.get(ChatSession, session_id)
+    if not s:
+        raise HTTPException(404, "Session not found")
+    if s.mode == "texting":
+        raise HTTPException(400, "The narrator stays out of a text thread")
+    line = await narrator.post_line(db, s, body.event)
+    if line is None:
+        raise HTTPException(502, "The narrator didn't come up with anything usable. Try again.")
+    return _serialise(line, s)
 
 
 class MessagePatch(BaseModel):
