@@ -166,11 +166,23 @@ function useTip() {
 }
 
 /** Vertical bars on one axis, for counts over time. */
+/**
+ * The drawing is as wide as its box in pixels, so labels stay 11px on a phone and on a wide
+ * screen alike, and they thin out to roughly one per 56px.
+ */
 function Bars({ rows, labelEvery = 1, format = (l) => l, unit }) {
   const { box, show, hide, el } = useTip();
+  const [W, setW] = useState(600);
+  useEffect(() => {
+    const node = box.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const watch = new ResizeObserver(([e]) => setW(Math.max(200, Math.round(e.contentRect.width))));
+    watch.observe(node);
+    return () => watch.disconnect();
+  }, [box]);
+  labelEvery = Math.max(labelEvery, Math.ceil((rows.length * 56) / W));
   const max = Math.max(1, ...rows.map((r) => r.value));
-  const W = 600;
-  const H = 140;
+  const H = W < 400 ? 110 : 140;
   const slot = W / rows.length;
   const bar = Math.max(2, slot - 2);
   if (!rows.some((r) => r.value))
@@ -179,10 +191,11 @@ function Bars({ rows, labelEvery = 1, format = (l) => l, unit }) {
     <div ref={box} className="relative" onMouseLeave={hide}>
       <svg viewBox={`0 0 ${W} ${H + 22}`} className="w-full h-auto" role="img" aria-label={`Bar chart, peak ${max} ${unit}`}>
         <line x1="0" x2={W} y1={H} y2={H} stroke="#3A3227" strokeWidth="1" />
-        <text x={W} y="10" textAnchor="end" fontSize="11" fill="#ADA190">
+        {/* The peak, labelled at the left where no bar can sit under it. */}
+        <text x="0" y="10" fontSize="11" fill="#ADA190">
           {max}
         </text>
-        <line x1="0" x2={W - 24} y1="6" y2="6" stroke="#2E2820" strokeWidth="1" strokeDasharray="2 4" />
+        <line x1="28" x2={W} y1="6" y2="6" stroke="#2E2820" strokeWidth="1" strokeDasharray="2 4" />
         {rows.map((r, i) => {
           const h = (r.value / max) * (H - 8);
           return (
@@ -204,7 +217,13 @@ function Bars({ rows, labelEvery = 1, format = (l) => l, unit }) {
                 />
               )}
               {i % labelEvery === 0 && (
-                <text x={i * slot + slot / 2} y={H + 16} textAnchor="middle" fontSize="11" fill="#ADA190">
+                <text
+                  x={i === 0 ? 0 : i * slot + slot / 2}
+                  y={H + 16}
+                  textAnchor={i === 0 ? "start" : "middle"}
+                  fontSize="11"
+                  fill="#ADA190"
+                >
                   {format(r.label)}
                 </text>
               )}
