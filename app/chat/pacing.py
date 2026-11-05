@@ -47,7 +47,8 @@ _GOODBYE = re.compile(
     r"\b(sleep well|good\s?night|call it a night|turn in\b|see you (?:tomorrow|in the morning|around|later|'round)|"
     r"get some (?:rest|shut-?eye|sleep)|time for bed|best be (?:going|off)|i should (?:go|get going|head)|"
     r"(?:gotta|got to|have to) (?:go|run)\b|tomorrow'?s another day|let'?s (?:go|head|get moving|get going)|"
-    r"come on,? let'?s|time to (?:go|head)|best get back)", re.I)
+    r"come on,? let'?s|time to (?:go|head)|best get back|off you go|run along|see you (?:there|bright)|"
+    r"(?:well-deserved|some) rest\b|enough [\w ]{0,20}for today|i'?ll see you)", re.I)
 _TIME_WORDS = re.compile(
     r"\b(morning|afternoon|evening|night|tonight|dawn|dusk|noon|midday|midnight|sunrise|sunset|later|tomorrow|"
     r"next day|hours?|meanwhile)\b", re.I)

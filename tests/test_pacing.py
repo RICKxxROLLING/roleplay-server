@@ -58,6 +58,15 @@ def test_the_user_can_end_or_move_the_scene(user):
     assert hold(reply, user)[0] == reply
 
 
+@pytest.mark.parametrize("line", [
+    '"Now then, off you go."', '"See you there, Riley."', '"Now, get some well-deserved rest."',
+    '"That\'s enough history lessons for today."', '"I\'ll see you bright and early tomorrow then."',
+])
+def test_being_sent_away_counts_as_a_goodbye(line):
+    got, done = hold(f"*She looks up from the papers on her desk and studies you.* {line}")
+    assert done["exit"] == 1 and line not in got
+
+
 def test_a_cut_leaves_no_loose_quote_or_asterisk():
     got, _ = hold('*She watches.* "So," *she prompts, and then she walks away into the dark.*')
     assert got == "*She watches.*"
@@ -170,6 +179,15 @@ def test_texting_is_left_alone(client, llm, session):
     llm.replies = ["heading out now, she walks away lol"]
     say(client, session)
     assert "walks away" in last(client, session)
+
+
+def test_asking_about_going_somewhere_is_not_going():
+    from app.memory.scene import moved
+
+    assert not moved("What would you do if you could leave tomorrow?", '*He thinks.* "Stay, I guess."')
+    assert not moved("Should we head outside, or stay here?", '*He shrugs.* "Up to you."')
+    assert moved("Let's head outside.", '*He nods.* "Sure."')
+    assert moved("Fine. *I walk to the barn.*", '*He nods.* "Sure."')
 
 
 def set_scene(session, **fields):

@@ -123,7 +123,9 @@ _QUOTED = re.compile(r'"[^"\n]*"|“[^”\n]*”')
 def moved(user_text: str, reply: str) -> bool:
     """Whether the exchange moves anyone. Speech doesn't count: talking about a
     place, or a walk, is not going there."""
-    return bool(_MOVEMENT.search(_QUOTED.sub(" ", f"{user_text}\n{reply}")))
+    # Nor does asking: "What would you do if you could leave tomorrow?" put Joel in his cabin.
+    asked = re.sub(r"[^.!?*\n]*\?", " ", _QUOTED.sub(" ", user_text))
+    return bool(_MOVEMENT.search(asked + "\n" + _QUOTED.sub(" ", reply)))
 
 
 async def update_scene(
