@@ -116,6 +116,13 @@ export const api = {
   },
   choices: (id, refresh = false) =>
     j(`/sessions/${id}/choices`, { method: "POST", body: JSON.stringify({ refresh }) }),
+  createWorldChat: (body) =>
+    j("/sessions/world", { method: "POST", body: JSON.stringify(body) }),
+  walkOn: (id, body) =>
+    j(`/sessions/${id}/walk-on`, { method: "POST", body: JSON.stringify(body) }),
+  peopleMet: (id) => j(`/sessions/${id}/people`),
+  setPersonMemory: (id, characterId, notes) =>
+    j(`/sessions/${id}/people/${characterId}`, { method: "PUT", body: JSON.stringify({ notes }) }),
   bringGuest: (id, characterId) =>
     j(`/sessions/${id}/guest`, { method: "POST", body: JSON.stringify({ character_id: characterId }) }),
   narrate: (id, event = true) =>

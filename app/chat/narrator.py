@@ -156,7 +156,7 @@ def _pick(session: ChatSession, count: int, event: bool) -> tuple[str, str]:
 
 def _world_extras(session: ChatSession) -> list[Character]:
     """People of this chat's world who could stop by and aren't in the scene."""
-    world = session.character.world if session.character else None
+    world = group.world_of(session)
     here = {c.id for c in group.cast(session)}
     return [c for c in (world.characters if world else []) if getattr(c, "extra", False) and c.id not in here]
 
@@ -170,7 +170,7 @@ def build_prompt(session: ChatSession, event: bool, subject: str, opener: str, a
     fmt = get_format(settings.prompt_format)
     user = session.persona.name if session.persona else "You"
     people = " and ".join(c.name for c in group.cast(session)) or "the characters"
-    world = session.character.world if session.character else None
+    world = group.world_of(session)
     scene = session.scene or {}
     where = " ".join(f"{label}: {scene[key]}." for key, label in
                      (("location", "Where"), ("time", "Time"), ("weather", "Weather")) if scene.get(key))
@@ -191,7 +191,9 @@ async def write_line(session: ChatSession, event: bool | None = None) -> str:
     lines = _lines(session)
     count = len(lines)
     if event is None:
-        event = count % EVENT_EVERY == EVENT_EVERY - 1
+        # In a world chat the people come through Walk on: an unasked-for visitor can't be answered
+        # by anyone, since they aren't the person the user is talking to.
+        event = session.world_id is None and count % EVENT_EVERY == EVENT_EVERY - 1
     extras = _world_extras(session) if event else []
     params = GenerationParams(
         temperature=0.9, top_p=1, top_k=50, min_p=0.075, repeat_penalty=1.1,
@@ -203,7 +205,7 @@ async def write_line(session: ChatSession, event: bool | None = None) -> str:
     # Someone with a card of their own would be described wrongly by a line that hasn't read
     # it: "Ellie pops her head in, her blonde pigtails askew." Extras are fine, as they're
     # the visitors, and the prompt is told who they are.
-    world = session.character.world if session.character else None
+    world = group.world_of(session)
     names += [c.name for c in (world.characters if world else []) if not getattr(c, "extra", False)]
     names += [n.split()[0] for n in names if " " in n]
     client = get_client()

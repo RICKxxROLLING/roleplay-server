@@ -45,7 +45,7 @@ def hint_for(session: ChatSession) -> str:
     """Names this chat is likely to mention, most likely first."""
     names = [session.persona.name] if session.persona else []
     names += [c.name for c in group.cast(session)]
-    world = session.character.world if session.character else None
+    world = group.world_of(session)
     if world:
         names += [c.name for c in world.characters]
         names += [e.get("name") or "" for e in (world.entries or [])]

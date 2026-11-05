@@ -47,6 +47,8 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     ("characters", "voice", "VARCHAR(80)"),
     ("sessions", "choice_mode", "BOOLEAN NOT NULL DEFAULT 0"),
     ("sessions", "choices", "JSON"),
+    ("characters", "host", "BOOLEAN NOT NULL DEFAULT 0"),
+    ("sessions", "world_id", "INTEGER REFERENCES worlds(id)"),
 ]
 
 

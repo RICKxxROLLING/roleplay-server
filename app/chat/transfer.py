@@ -26,14 +26,15 @@ from sqlalchemy.orm import Session as DbSession
 
 from ..cards.models import CharacterCard, LoreEntry
 from ..config import settings
-from ..db.models import (Character, CharacterThought, ChatSession, Message, Persona, SessionMember,
-                         Standing, World)
+from ..db.models import (Character, CharacterThought, ChatSession, Encounter, Message, Persona, PersonMemory,
+                         SessionMember, Standing, World)
 from . import group
 from .rhythm import REACH
 
 _TIME = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
 FORMAT = "roleplay-chat"
-VERSION = 1
+#: Version 2 adds world chats. An ordinary chat still writes 1, since nothing in it changed.
+VERSION = 2
 PNG = b"\x89PNG\r\n\x1a\n"
 MAX_AVATAR = 16 * 1024 * 1024
 #: speaker_id for a line whose character has since been deleted. It reads as "Someone", as
@@ -57,6 +58,8 @@ class PersonOut(BaseModel):
     #: In the scene now, rather than someone who spoke once and left.
     member: bool = False
     avatar: str | None = None
+    #: The hidden owner of world chats (chat/encounters.py).
+    host: bool = False
 
 
 class PersonaOut(BaseModel):
@@ -94,6 +97,21 @@ class StandingOut(BaseModel):
     last_reason: str = ""
 
 
+class EncounterOut(BaseModel):
+    character: str
+    place: str = ""
+    time: str = ""
+    reason: str = ""
+    #: Position in `messages` of the line it starts at.
+    start: int = Field(0, ge=0)
+    ended: bool = False
+
+
+class MemoryOut(BaseModel):
+    character: str
+    notes: str = ""
+
+
 class ChatFile(BaseModel):
     format: str
     version: int = VERSION
@@ -116,6 +134,10 @@ class ChatFile(BaseModel):
     messages: list[LineOut] = []
     thoughts: list[ThoughtOut] = []
     standings: list[StandingOut] = []
+    #: A world chat: the world by name, its meetings, and what each person kept.
+    world: str | None = None
+    encounters: list[EncounterOut] = []
+    memories: list[MemoryOut] = []
 
 
 class ImportRefused(ValueError):
@@ -133,6 +155,13 @@ def export_chat(db: DbSession, s: ChatSession) -> dict:
     """The whole chat as JSON-ready data."""
     members = {m.character_id for m in s.members}
     people: dict[int, Character] = {c.id: c for c in group.cast(s)}
+    # Even if they haven't said anything: they own the chat, or its meetings name them.
+    if s.character is not None:
+        people.setdefault(s.character.id, s.character)
+    memories = db.query(PersonMemory).filter(PersonMemory.session_id == s.id).all()
+    for row in [*s.encounters, *memories]:
+        if row.character_id not in people and (c := db.get(Character, row.character_id)):
+            people[c.id] = c
     for m in s.messages:
         if m.speaker is not None:
             people.setdefault(m.speaker.id, m.speaker)
@@ -144,8 +173,10 @@ def export_chat(db: DbSession, s: ChatSession) -> dict:
 
     position = {m.id: i for i, m in enumerate(s.messages)}
     worlds = {c.world.id: c.world for c in people.values() if c.world is not None}
+    if s.world is not None:
+        worlds[s.world.id] = s.world
     out = ChatFile(
-        format=FORMAT, version=VERSION, exported_at=dt.datetime.now(dt.timezone.utc),
+        format=FORMAT, version=VERSION if s.world_id is not None else 1, exported_at=dt.datetime.now(dt.timezone.utc),
         title=s.title, created_at=s.created_at, character=s.character.name, mode=s.mode, narrator=bool(s.narrator),
         choice_mode=bool(s.choice_mode),
         summary=s.summary or "", facts=s.facts or "", scene=s.scene, scene_prev=s.scene_prev,
@@ -153,7 +184,7 @@ def export_chat(db: DbSession, s: ChatSession) -> dict:
         persona=PersonaOut(name=s.persona.name, description=s.persona.description or "") if s.persona else None,
         characters=[PersonOut(name=c.name, card=c.card or {}, world=c.world.name if c.world else None,
                               extra=bool(c.extra), rhythm=c.rhythm, voice=c.voice, member=c.id in members,
-                              avatar=_avatar(c.avatar_path)) for c in people.values()],
+                              avatar=_avatar(c.avatar_path), host=bool(c.host)) for c in people.values()],
         worlds=[WorldOut(name=w.name, description=w.description or "", entries=w.entries or []) for w in worlds.values()],
         messages=[LineOut(role=m.role, content=m.content, created_at=m.created_at, alternatives=m.alternatives,
                           alt_index=m.alt_index or 0, pinned=bool(m.pinned),
@@ -166,6 +197,12 @@ def export_chat(db: DbSession, s: ChatSession) -> dict:
         standings=[StandingOut(character=people[r.character_id].name, trust=r.trust, affection=r.affection,
                                respect=r.respect, last_reason=r.last_reason or "")
                    for r in standings if r.character_id in people],
+        world=s.world.name if s.world else None,
+        encounters=[EncounterOut(character=people[e.character_id].name, place=e.place, time=e.time, reason=e.reason,
+                                 start=sum(m.id < e.start_id for m in s.messages), ended=bool(e.ended))
+                    for e in s.encounters if e.character_id in people],
+        memories=[MemoryOut(character=people[r.character_id].name, notes=r.notes)
+                  for r in memories if r.character_id in people],
     )
     return out.model_dump(mode="json")
 
@@ -220,7 +257,9 @@ def _check(data: ChatFile) -> None:
             raise ImportRefused(f"A message is by {m.speaker}, who isn't in the file.")
         if m.alternatives is not None and not 0 <= m.alt_index < len(m.alternatives):
             raise ImportRefused("A message points at a version it doesn't have.")
-    for row in [*data.thoughts, *data.standings]:
+    if data.world and data.world.lower() not in {w.name.lower() for w in data.worlds}:
+        raise ImportRefused(f"The file doesn't include the world {data.world}.")
+    for row in [*data.thoughts, *data.standings, *data.encounters, *data.memories]:
         if row.character.lower() not in named:
             raise ImportRefused(f"The journal mentions {row.character}, who isn't in the file.")
     if not all(p.name.strip() for p in data.characters):
@@ -260,7 +299,7 @@ def import_chat(db: DbSession, data: ChatFile) -> dict:
             raise ImportRefused(f"{p.name}'s card in the file is damaged.") from exc
         c = Character(name=card.name, card=card.model_dump(), avatar_path=_save_avatar(p.avatar),
                       world_id=world.id if world else None, extra=p.extra and world is not None,
-                      rhythm=_clean_rhythm(p.rhythm), voice=p.voice)
+                      rhythm=_clean_rhythm(p.rhythm), voice=p.voice, host=p.host)
         db.add(c)
         db.flush()
         people[key] = c
@@ -276,6 +315,18 @@ def import_chat(db: DbSession, data: ChatFile) -> dict:
             db.flush()
             report["persona_created"] = persona.name
 
+    chat_world = None
+    if data.world:
+        chat_world = worlds.get(data.world.lower())
+        if chat_world is None:
+            source = in_file[data.world.lower()]
+            chat_world = World(name=source.name, description=source.description,
+                               entries=[e.model_dump() for e in source.entries])
+            db.add(chat_world)
+            db.flush()
+            worlds[data.world.lower()] = chat_world
+            report["worlds_created"].append(chat_world.name)
+
     taken = {t for (t,) in db.query(ChatSession.title).all()}
     owner = people[data.character.lower()]
     s = ChatSession(
@@ -283,6 +334,7 @@ def import_chat(db: DbSession, data: ChatFile) -> dict:
         character_id=owner.id, persona_id=persona.id if persona else None,
         summary=data.summary, facts=data.facts, scene=data.scene, scene_prev=data.scene_prev,
         mode=data.mode, narrator=data.narrator, choice_mode=data.choice_mode, autonomous=False, created_at=_naive(data.created_at),
+        world_id=chat_world.id if chat_world else None,
     )
     db.add(s)
     db.flush()
@@ -303,6 +355,17 @@ def import_chat(db: DbSession, data: ChatFile) -> dict:
         db.flush()
         ids.append(row.id)
     s.summarized_upto_id = ids[min(data.folded, len(ids)) - 1] if data.folded and ids else 0
+
+    for e in data.encounters:
+        if e.start < len(ids):
+            db.add(Encounter(session_id=s.id, character_id=people[e.character.lower()].id, place=e.place, time=e.time,
+                             reason=e.reason, start_id=ids[e.start], ended=e.ended))
+    kept = set()
+    for r in data.memories:
+        cid = people[r.character.lower()].id
+        if cid not in kept:
+            kept.add(cid)
+            db.add(PersonMemory(session_id=s.id, character_id=cid, notes=r.notes))
 
     for t in data.thoughts:
         at = t.message if t.message is not None and 0 <= t.message < len(ids) else None

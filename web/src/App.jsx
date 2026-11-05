@@ -7,6 +7,7 @@ import MemoryPanel from "./components/MemoryPanel";
 import PersonaManager from "./components/PersonaManager";
 import WorldManager from "./components/WorldManager";
 import NewChatDialog from "./components/NewChatDialog";
+import NewWorldChatDialog from "./components/NewWorldChatDialog";
 import CharacterEditor from "./components/CharacterEditor";
 import NewCharacterDialog from "./components/NewCharacterDialog";
 import ModelManager from "./components/ModelManager";
@@ -25,6 +26,7 @@ export default function App() {
 
   const [panel, setPanel] = useState(null); // settings | memory | personas | models
   const [newChatFor, setNewChatFor] = useState(null);
+  const [worldChatIn, setWorldChatIn] = useState(null);
   const [editingCharId, setEditingCharId] = useState(null);
   const [creatingChar, setCreatingChar] = useState(false);
   // Drawer state is only meaningful below md; above it the sidebar is static.
@@ -173,6 +175,24 @@ export default function App() {
         onChat={(c) => {
           setPanel(null);
           setNewChatFor(c);
+        }}
+        onWorldChat={(w) => {
+          setPanel(null);
+          setWorldChatIn(w);
+        }}
+      />
+
+      <NewWorldChatDialog
+        world={worldChatIn}
+        personas={personas}
+        onClose={() => setWorldChatIn(null)}
+        onCreated={async (id) => {
+          await refresh();
+          setActiveId(id);
+        }}
+        onManagePersonas={() => {
+          setWorldChatIn(null);
+          setPanel("personas");
         }}
       />
 

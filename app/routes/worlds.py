@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session as DbSession
 from ..cards import people
 from ..cards.models import LoreEntry
 from ..db import Character, World, get_db
-from ..db.models import Persona
+from ..db.models import ChatSession, Persona
 
 router = APIRouter(prefix="/worlds", tags=["worlds"])
 
@@ -88,6 +88,9 @@ def delete_world(world_id: int, db: DbSession = Depends(get_db)) -> dict:
     w = db.get(World, world_id)
     if not w:
         raise HTTPException(404, "World not found")
+    chats = db.query(ChatSession).filter(ChatSession.world_id == w.id).count()
+    if chats:
+        raise HTTPException(400, f"{chats} world {'chat is' if chats == 1 else 'chats are'} set here. Delete those first.")
     for c in list(w.characters):
         c.world_id = None
     db.delete(w)

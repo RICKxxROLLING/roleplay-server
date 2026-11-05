@@ -49,6 +49,8 @@ class Character(Base):
     rhythm: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     # Who reads their lines (chat/voices.py). None picks one from the card.
     voice: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # The one hidden owner of every world chat (chat/encounters.py). Never speaks or lists.
+    host: Mapped[bool] = mapped_column(default=False)
 
     sessions: Mapped[list["ChatSession"]] = relationship(
         back_populates="character", cascade="all, delete-orphan"
@@ -148,9 +150,15 @@ class ChatSession(Base):
     mode: Mapped[str] = mapped_column(String(20), default="story")
     next_check_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+    # Set for a world chat: people come and go in encounters (chat/encounters.py).
+    world_id: Mapped[int | None] = mapped_column(ForeignKey("worlds.id"), nullable=True)
 
     character: Mapped[Character] = relationship(back_populates="sessions")
     persona: Mapped[Persona | None] = relationship()
+    world: Mapped["World | None"] = relationship()
+    encounters: Mapped[list["Encounter"]] = relationship(
+        cascade="all, delete-orphan", order_by="Encounter.id"
+    )
     messages: Mapped[list["Message"]] = relationship(
         back_populates="session",
         cascade="all, delete-orphan",
@@ -161,6 +169,37 @@ class ChatSession(Base):
     members: Mapped[list["SessionMember"]] = relationship(
         cascade="all, delete-orphan", order_by="SessionMember.position"
     )
+
+
+class Encounter(Base):
+    """One meeting in a world chat: who, where, when, and the message it starts at.
+
+    New tables, so `create_all` adds them to existing databases.
+    """
+
+    __tablename__ = "encounters"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("sessions.id"), index=True)
+    character_id: Mapped[int] = mapped_column(ForeignKey("characters.id"))
+    place: Mapped[str] = mapped_column(String(200), default="")
+    time: Mapped[str] = mapped_column(String(80), default="")
+    #: Why they speak first, kept so a swipe of their opening has the same reason.
+    reason: Mapped[str] = mapped_column(Text, default="")
+    start_id: Mapped[int] = mapped_column(default=0)
+    ended: Mapped[bool] = mapped_column(default=False)
+
+    character: Mapped[Character] = relationship()
+
+
+class PersonMemory(Base):
+    """What one person keeps of their meetings with the user in a world chat."""
+
+    __tablename__ = "person_memories"
+
+    session_id: Mapped[int] = mapped_column(ForeignKey("sessions.id"), primary_key=True)
+    character_id: Mapped[int] = mapped_column(ForeignKey("characters.id"), primary_key=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
 
 
 class SessionMember(Base):

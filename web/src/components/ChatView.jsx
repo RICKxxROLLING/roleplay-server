@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { api, streamTurn, stripSpeakerPrefix } from "../api";
 import Message from "./Message";
 import PersonDrafter from "./PersonDrafter";
@@ -301,6 +301,32 @@ export default function ChatView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [choiceKey]);
 
+  // World chats: leave this person and meet the next. Who and where are optional; the
+  // next person's opening starts by itself once they're there (below).
+  const worldChat = !!session?.world_chat;
+  const [walking, setWalking] = useState(false);
+  const [walkPlace, setWalkPlace] = useState("");
+  const [walkWho, setWalkWho] = useState("");
+  async function walkOn() {
+    setWalking(true);
+    setError(null);
+    try {
+      const fresh = await api.walkOn(sessionId, {
+        place: walkPlace.trim(),
+        ...(walkWho ? { character_id: Number(walkWho) } : {}),
+      });
+      setWalkPlace("");
+      setWalkWho("");
+      stopPlaying();
+      setSession(fresh);
+      onDirty?.();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setWalking(false);
+    }
+  }
+
   const charName = session?.character_name;
   const cast = session?.cast || [];
   const isGroup = cast.length > 1;
@@ -427,6 +453,25 @@ export default function ChatView({
     runStream(`/sessions/${sessionId}/regenerate`, {});
   }
 
+  // Someone new speaks first. Once per meeting, so a failed reply can't loop: Regenerate
+  // or simply talking to them still works after that.
+  const openedFor = useRef(null);
+  const meeting = session?.awaiting_opening && !busy && !walking ? session.encounters?.at(-1)?.id : null;
+  useEffect(() => {
+    if (meeting && session?.id === sessionId && openedFor.current !== meeting) {
+      openedFor.current = meeting;
+      runStream(`/sessions/${sessionId}/respond`, {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meeting, sessionId]);
+
+  // Chapter headings: each meeting's sits above the first message still in it.
+  const chapters = {};
+  for (const e of session?.encounters || []) {
+    const first = session.messages.find((m) => typeof m.id === "number" && m.id >= e.start_id);
+    if (first && !chapters[first.id]) chapters[first.id] = e;
+  }
+
   function stop() {
     abortRef.current?.();
     abortRef.current = null;
@@ -490,27 +535,29 @@ export default function ChatView({
         <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto overflow-x-hidden scroll-thin">
           <div className="max-w-[640px] mx-auto px-6 sm:px-8 py-6 sm:py-10 space-y-5">
             {session?.messages?.map((m, i) => (
-              <Message
-                key={m.id}
-                msg={m}
-                swipeable={!busy && i === session.messages.length - 1 && typeof m.id === "number"}
-                onRegenerate={regenerate}
-                charName={m.speaker_name || charName}
-                showName={isGroup}
-                userName={userName}
-                sessionId={sessionId}
-                onChanged={() => {
-                  reload();
-                  onDirty?.();
-                }}
-              />
+              <Fragment key={m.id}>
+                {chapters[m.id] && <ChapterHeading encounter={chapters[m.id]} />}
+                <Message
+                  msg={m}
+                  swipeable={!busy && i === session.messages.length - 1 && typeof m.id === "number"}
+                  onRegenerate={regenerate}
+                  charName={m.speaker_name || charName}
+                  showName={isGroup || worldChat}
+                  userName={userName}
+                  sessionId={sessionId}
+                  onChanged={() => {
+                    reload();
+                    onDirty?.();
+                  }}
+                />
+              </Fragment>
             ))}
 
             {streamText && (
               <Message
                 msg={{ role: "assistant", content: streamText, texted: session?.mode === "texting" }}
                 charName={writerName}
-                showName={isGroup}
+                showName={isGroup || worldChat}
                 userName={userName}
                 streaming
               />
@@ -621,6 +668,43 @@ export default function ChatView({
                   }}
                   onCancel={() => setArrivals(null)}
                 />
+              </div>
+            )}
+            {worldChat && (
+              <div className="py-2 flex flex-wrap items-center gap-2 text-sm">
+                <button
+                  onClick={walkOn}
+                  disabled={busy || walking}
+                  title="Leave and meet someone else. What you said stays with them."
+                  className={`min-h-[36px] px-3 rounded-lg disabled:opacity-40 ${
+                    session?.leaving ? "bg-accent text-ink-950" : "border border-ink-700 text-slate-200 hover:border-accent/60"
+                  }`}
+                >
+                  {walking ? "On your way…" : "Walk on"}
+                </button>
+                <input
+                  value={walkPlace}
+                  onChange={(e) => setWalkPlace(e.target.value)}
+                  maxLength={60}
+                  aria-label="Where to"
+                  placeholder="Where to? (optional)"
+                  className="flex-1 min-w-[8rem] min-h-[36px] bg-ink-850 border border-ink-700 rounded-lg px-2 text-sm outline-none focus:border-accent/60 placeholder:text-slate-500"
+                />
+                <select
+                  value={walkWho}
+                  onChange={(e) => setWalkWho(e.target.value)}
+                  aria-label="Who to find"
+                  className="min-h-[36px] max-w-[9rem] bg-ink-850 border border-ink-700 rounded-lg px-2 text-sm text-slate-200 outline-none focus:border-accent/60"
+                >
+                  <option value="">Anyone</option>
+                  {characters
+                    .filter((c) => c.world_id === session?.world_id)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                </select>
               </div>
             )}
             {isGroup && (
@@ -770,18 +854,20 @@ export default function ChatView({
               onChange={setChoiceMode}
             />
             <Toggle label="Read aloud" hint="Each new reply, on this device" checked={readAloud} onChange={chooseReadAloud} />
-            <Toggle
-              label="Writes first"
-              hint={
-                session?.autonomous
-                  ? session.waiting_because
-                    ? `On. Not writing yet: ${session.waiting_because}.`
-                    : "On. May write at the next check."
-                  : `${charName || "They"} may message you on their own`
-              }
-              checked={!!session?.autonomous}
-              onChange={setAutonomous}
-            />
+            {!worldChat && (
+              <Toggle
+                label="Writes first"
+                hint={
+                  session?.autonomous
+                    ? session.waiting_because
+                      ? `On. Not writing yet: ${session.waiting_because}.`
+                      : "On. May write at the next check."
+                    : `${charName || "They"} may message you on their own`
+                }
+                checked={!!session?.autonomous}
+                onChange={setAutonomous}
+              />
+            )}
             {session?.autonomous && (
               <button onClick={messageMeNow} disabled={busy || nudging} className="block text-accent hover:underline disabled:opacity-40">
                 {nudging ? "Writing…" : "Message me now"}
@@ -792,21 +878,23 @@ export default function ChatView({
           <PanelSection>
             {/* Story or texting (app/chat/texting.py): the same chat, as prose or as a
                 text thread. The character is told about the switch on the next reply. */}
-            <div className="flex rounded-lg border border-ink-700 overflow-hidden" role="group" aria-label="Chat style">
-              {["story", "texting"].map((m) => (
-                <button
-                  key={m}
-                  onClick={() => (session?.mode || "story") !== m && setMode(m)}
-                  disabled={busy}
-                  aria-pressed={(session?.mode || "story") === m}
-                  className={`flex-1 min-h-[38px] capitalize ${
-                    (session?.mode || "story") === m ? "bg-ink-800 text-slate-100" : "text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
+            {!worldChat && (
+              <div className="flex rounded-lg border border-ink-700 overflow-hidden" role="group" aria-label="Chat style">
+                {["story", "texting"].map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => (session?.mode || "story") !== m && setMode(m)}
+                    disabled={busy}
+                    aria-pressed={(session?.mode || "story") === m}
+                    className={`flex-1 min-h-[38px] capitalize ${
+                      (session?.mode || "story") === m ? "bg-ink-800 text-slate-100" : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            )}
             <label className="block text-xs text-slate-500">
               Playing as
               <select
@@ -837,7 +925,7 @@ export default function ChatView({
                 {narrating ? "Thinking…" : "Something happens"}
               </PanelLink>
             )}
-            {(session?.mode || "story") === "story" && session?.world_id && (
+            {(session?.mode || "story") === "story" && session?.world_id && !worldChat && (
               <PanelLink
                 disabled={busy || arriving}
                 title="Someone from this world joins the scene"
@@ -891,31 +979,98 @@ export default function ChatView({
             </PanelLink>
           </PanelSection>
 
-          <PanelSection title="In the scene">
-            <div className="flex flex-wrap gap-1.5 text-xs">
-              {characters
-                .filter((c) => c.id !== session?.character_id && (!c.extra || cast.some((m) => m.id === c.id)))
-                .map((c) => {
-                  const here = cast.some((m) => m.id === c.id);
-                  const others = cast.filter((m) => m.id !== session?.character_id).map((m) => m.id);
-                  return (
-                    <button
-                      key={c.id}
-                      aria-pressed={here}
-                      onClick={() => setMembers(here ? others.filter((id) => id !== c.id) : [...others, c.id])}
-                      className={`px-2.5 py-1.5 rounded-md border ${
-                        here ? "border-accent/60 text-accent" : "border-ink-700 text-slate-400 hover:text-slate-200"
-                      }`}
-                    >
-                      {c.name}
-                    </button>
-                  );
-                })}
-            </div>
-          </PanelSection>
+          {worldChat ? (
+            <PeopleMet sessionId={sessionId} meetings={session?.encounters?.length || 0} />
+          ) : (
+            <PanelSection title="In the scene">
+              <div className="flex flex-wrap gap-1.5 text-xs">
+                {characters
+                  .filter((c) => c.id !== session?.character_id && (!c.extra || cast.some((m) => m.id === c.id)))
+                  .map((c) => {
+                    const here = cast.some((m) => m.id === c.id);
+                    const others = cast.filter((m) => m.id !== session?.character_id).map((m) => m.id);
+                    return (
+                      <button
+                        key={c.id}
+                        aria-pressed={here}
+                        onClick={() => setMembers(here ? others.filter((id) => id !== c.id) : [...others, c.id])}
+                        className={`px-2.5 py-1.5 rounded-md border ${
+                          here ? "border-accent/60 text-accent" : "border-ink-700 text-slate-400 hover:text-slate-200"
+                        }`}
+                      >
+                        {c.name}
+                      </button>
+                    );
+                  })}
+              </div>
+            </PanelSection>
+          )}
         </div>
       </aside>
     </div>
+  );
+}
+
+function ChapterHeading({ encounter }) {
+  const place = encounter.place ? encounter.place[0].toUpperCase() + encounter.place.slice(1) : "";
+  return (
+    <div className="pt-6 pb-1 text-center font-serif text-sm text-slate-400">
+      {[place, encounter.name, encounter.time].filter(Boolean).join(" · ")}
+    </div>
+  );
+}
+
+/**
+ * Everyone met in a world chat and what each of them kept. The notes go back into their
+ * prompts, and an 8B can get details wrong, so they can be corrected here.
+ */
+function PeopleMet({ sessionId, meetings }) {
+  const [people, setPeople] = useState([]);
+  const [editing, setEditing] = useState(null);
+  const [draft, setDraft] = useState("");
+  useEffect(() => {
+    api.peopleMet(sessionId).then(setPeople).catch(() => setPeople([]));
+  }, [sessionId, meetings]);
+
+  async function save(person) {
+    try {
+      await api.setPersonMemory(sessionId, person.character_id, draft);
+      setPeople((all) => all.map((p) => (p.character_id === person.character_id ? { ...p, notes: draft.trim() } : p)));
+      setEditing(null);
+    } catch {
+      /* keep the editor open so nothing typed is lost */
+    }
+  }
+
+  return (
+    <PanelSection title="People you've met">
+      {people.map((p) => (
+        <div key={p.character_id} className="text-xs">
+          <button
+            onClick={() => {
+              setEditing(editing === p.character_id ? null : p.character_id);
+              setDraft(p.notes);
+            }}
+            className="text-slate-200 hover:text-accent text-left"
+          >
+            {p.name}
+          </button>
+          {editing === p.character_id && (
+            <div className="mt-1 space-y-1">
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                rows={6}
+                aria-label={`What ${p.name} remembers`}
+                placeholder="Nothing yet. Notes are written when you walk on."
+                className="w-full bg-ink-850 border border-ink-700 rounded px-2 py-1 text-slate-200 outline-none focus:border-accent/60"
+              />
+              <button onClick={() => save(p)} className="text-accent hover:underline">Save</button>
+            </div>
+          )}
+        </div>
+      ))}
+    </PanelSection>
   );
 }
 

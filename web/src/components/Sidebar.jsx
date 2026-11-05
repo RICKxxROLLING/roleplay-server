@@ -229,6 +229,11 @@ export default function Sidebar({
               New chat
             </button>
           )}
+          {tab === "chats" && (
+            <button onClick={onManageWorlds} className="w-full min-h-[36px] text-slate-400 hover:text-slate-200">
+              New world chat
+            </button>
+          )}
           <button
             onClick={() => fileRef.current?.click()}
             className="w-full min-h-[36px] text-slate-400 hover:text-slate-200"

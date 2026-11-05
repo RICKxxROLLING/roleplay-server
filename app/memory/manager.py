@@ -101,6 +101,14 @@ class MemoryManager:
         from ..chat import group  # chat imports memory; import late
 
         msgs = [m for m in self.pending(session) if m.id not in (exclude_ids or ())]
+        # World chats: what was said to someone else stays with them (chat/encounters.py).
+        private: set[int] = set()
+        remembered = ""
+        if session.world_id is not None and speaker is not None:
+            from ..chat import encounters
+
+            private = encounters.private_ids(session, speaker)
+            remembered = encounters.remembered(session, speaker, db)
         # `speaker` is who writes this reply in a group chat; others' lines are
         # labelled by name (chat/group.py). None is the session's character.
         history = group.history_roles(session, msgs, speaker)
@@ -108,7 +116,7 @@ class MemoryManager:
         # Lorebook scans recent turns only, so it runs on pending history.
         # The speaker's world: members of a group need not share one.
         owner = speaker or session.character
-        world = owner.world if owner else None
+        world = group.world_of(session) if session.world_id is not None else (owner.world if owner else None)
         world_entries = [LoreEntry.model_validate(e) for e in (world.entries or [])] if world else []
         lore = lorebook.select(card, history, world_entries=world_entries)
 
@@ -116,7 +124,7 @@ class MemoryManager:
             history=history,
             summary=session.summary or "",
             world=(world.description or "").strip() if world else "",
-            facts=(session.facts or "") if settings.facts_enabled else "",
+            facts="\n".join(p for p in (remembered, (session.facts or "") if settings.facts_enabled else "") if p),
             lore_before=lorebook.render(lore.before_char),
             lore_after=lorebook.render(lore.after_char),
             lore_fired=[_label(e) for e in lore.all],
@@ -136,7 +144,7 @@ class MemoryManager:
 
         mark = session.summarized_upto_id or 0
         pins = [m for m in session.messages
-                if m.pinned and m.id <= mark and m.id not in (exclude_ids or ())]
+                if m.pinned and m.id <= mark and m.id not in (exclude_ids or ()) and m.id not in private]
         kept, used = [], 0
         for m in reversed(pins):  # newest first under the budget...
             line = f"{who(m)}: {m.content.strip()}"
@@ -153,7 +161,7 @@ class MemoryManager:
             # it would only buy a duplicate; a pin is already in the prompt too.
             result = await rag.retrieve(
                 db, session, history,
-                exclude_ids={m.id for m in msgs} | {m.id for m in pins} | set(exclude_ids or ()),
+                exclude_ids={m.id for m in msgs} | {m.id for m in pins} | set(exclude_ids or ()) | private,
             )
             by_id = {m.id: m for m in session.messages}
             ctx.retrieved = rag.render(

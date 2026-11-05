@@ -13,7 +13,7 @@ const BLANK = { name: "", description: "", entries: [] };
  * card's own -- keyword-triggered, under the chatting character's budget -- so
  * a world costs no context until something in the chat mentions it.
  */
-export default function WorldManager({ open, onClose, onChanged, onChat }) {
+export default function WorldManager({ open, onClose, onChanged, onChat, onWorldChat }) {
   const [worlds, setWorlds] = useState([]);
   const [editing, setEditing] = useState(null); // id, "new", or null
   const [form, setForm] = useState(BLANK);
@@ -149,6 +149,12 @@ export default function WorldManager({ open, onClose, onChanged, onChat }) {
                         : "no characters yet"}
                     </div>
                   </div>
+                  <Button
+                    onClick={() => onWorldChat?.(w)}
+                    title="A chat based in this world, where people come and go"
+                  >
+                    World chat
+                  </Button>
                   <Button onClick={() => setDrafting(w.id)}>New person</Button>
                   <Button onClick={() => startEdit(w)}>Edit</Button>
                   <Button variant="danger" onClick={() => remove(w)}>Delete</Button>

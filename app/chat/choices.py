@@ -161,7 +161,7 @@ def build_prompt(session: ChatSession, romance_ok: bool = False, minor: bool = F
     fmt = get_format(settings.prompt_format)
     user = session.persona.name if session.persona else "You"
     people = " and ".join(c.name for c in group.cast(session)) or "the characters"
-    world = session.character.world if session.character else None
+    world = group.world_of(session)
     recent = [m for m in session.messages if m.role in ("user", "assistant", group.NARRATOR_ROLE)][-4:]
     transcript = "\n".join(
         f"{user if m.role == 'user' else group.speaker_name(session, m)}: {m.content[:600]}" for m in recent)

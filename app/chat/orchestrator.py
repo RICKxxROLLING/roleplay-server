@@ -21,7 +21,7 @@ from ..memory import thoughts, trust
 from ..memory.scene import blank as blank_scene, update_scene
 from ..prompt import build_prompt, tokens
 from ..prompt.builder import PACING_MAX_NEW_TOKENS
-from . import autonomy, group, narrator, pacing, texting
+from . import autonomy, encounters, group, narrator, pacing, texting
 from .guard import (
     first_person_narration,
     infer_pronoun,
@@ -62,8 +62,13 @@ async def build_turn_prompt(
 ):
     """`speaker` writes the reply; None is the session's own character.
     `initiative` makes it a message the character starts (chat/autonomy.py)."""
-    speaker = speaker or session.character
+    speaker = speaker or group.lead(session) or session.character
     card = _card_of(speaker)
+    world_chat = session.world_id is not None
+    if world_chat:
+        # A card's scenario is the situation its own chat opens in, which isn't this one.
+        # Its greeting goes unused for the same reason: nothing reads first_mes here.
+        card = card.model_copy(update={"scenario": ""})
     ctx = await memory_manager.build_context(
         session, card, db=db, exclude_ids=exclude_ids, speaker=speaker
     )
@@ -72,7 +77,8 @@ async def build_turn_prompt(
         card=card,
         history=ctx.history,
         user_name=persona.name if persona else "You",
-        user_persona=persona.description if persona else "",
+        user_persona=encounters.persona_for(session, speaker) if world_chat
+        else (persona.description if persona else ""),
         summary=ctx.summary,
         world=ctx.world,
         facts=ctx.facts,
@@ -90,9 +96,11 @@ async def build_turn_prompt(
         if settings.scene_enabled else None,
         others=_others(session, speaker),
         initiative=initiative,
-        time_note="" if initiative or exclude_ids else autonomy.time_line(session),
+        # A world chat keeps the story's clock (encounters.next_time), not the owner's.
+        time_note="" if initiative or exclude_ids or world_chat else autonomy.time_line(session),
         texting=session.mode == "texting",
-        mode_note=texting.mode_note(session, exclude_ids),
+        mode_note=encounters.tail_note(session, card, exclude_ids) if world_chat
+        else texting.mode_note(session, exclude_ids),
         slow_pacing=settings.slow_pacing,
         standing=_standing(db, session, speaker, card, persona),
         private_view=thoughts.latest_view(db, session.id, speaker.id, exclude_ids)
@@ -245,7 +253,11 @@ async def stream_reply(
     user's message names, else whoever has waited longest (chat/group.py). A
     swipe is always re-rolled by the character who wrote it.
     """
-    user_text = next((m.content for m in reversed(session.messages) if m.role == "user"), "")
+    world_chat = session.world_id is not None
+    # In a world chat the user's last line may have been said to someone else entirely.
+    user_text = encounters.last_user_text(session) if world_chat else next(
+        (m.content for m in reversed(session.messages) if m.role == "user"), "")
+    opening = world_chat and encounters.is_opening(session, {swipe_of.id} if swipe_of else None)
     # Real hours have passed since the last exchange, so the story's clock may move too.
     long_gap = bool(autonomy.time_line(session))
     is_texting = session.mode == "texting"
@@ -254,10 +266,10 @@ async def stream_reply(
     elif settings.slow_pacing and not initiative and "max_new_tokens" not in (overrides or {}):
         overrides = {**(overrides or {}), "max_new_tokens": min(settings.max_new_tokens, PACING_MAX_NEW_TOKENS)}
     if swipe_of is not None:
-        speaker = group.by_id(session, group.speaker_id(session, swipe_of)) or session.character
+        speaker = group.by_id(session, group.speaker_id(session, swipe_of)) or group.lead(session) or session.character
     elif speaker is None:
         speaker = group.choose_speaker(session, user_text)
-    if group.is_group(session):
+    if group.is_group(session) or world_chat:
         yield {"type": "speaker", "id": speaker.id, "name": speaker.name}
 
     # Before the reply and not after, so the reply stays the chat's last message
@@ -438,7 +450,7 @@ async def stream_reply(
     # --- Earned trust: what the user just did, judged on the user's line alone ---
     # Not on a swipe: re-rolling a reply is not something the user did to the character.
     # Not when the character wrote first or spoke unprompted: there is no new line to judge.
-    if settings.trust_enabled and swipe_of is None and not initiative:
+    if settings.trust_enabled and swipe_of is None and not initiative and not opening:
         try:
             # Without the narrator: its line can sit between the user's and the reply.
             msgs = [m for m in session.messages if m.role != narrator.ROLE]
@@ -475,7 +487,7 @@ async def stream_reply(
         try:
             # Folded from the session character's side, whoever spoke last.
             folded = await memory_manager.summarize_now(
-                db, session, _card_of(session.character))
+                db, session, _card_of(group.lead(session) or session.character))
             yield {"type": "memory", "status": "done", "folded": folded}
         except Exception as exc:
             # A failed fold must never break the chat -- the turn is already

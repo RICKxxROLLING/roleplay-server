@@ -12,10 +12,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DbSession
 
 from ..cards.models import CharacterCard
-from ..chat import build_turn_prompt, group, stream_reply, transfer
+from ..chat import build_turn_prompt, encounters, group, stream_reply, transfer
 from ..config import settings
 from ..db import Character, ChatSession, Message, Persona, SessionLocal, SessionMember, get_db
-from ..db.models import Notification
+from ..db.models import Notification, PersonMemory, World
 from ..memory import memory_manager, rag
 from ..prompt import estimate_tokens, substitute, tokens
 
@@ -112,6 +112,99 @@ def create_session(body: SessionIn, db: DbSession = Depends(get_db)) -> dict:
     return {"id": s.id, "title": s.title, "messages": [_serialise(m, s) for m in s.messages]}
 
 
+class WorldChatIn(BaseModel):
+    world_id: int
+    persona_id: int | None = None
+    title: str | None = None
+    #: Where to begin and who with. Unset leaves both to the world.
+    place: str = ""
+    character_id: int | None = None
+    narrator: bool | None = None
+
+
+@router.post("/world")
+async def create_world_chat(body: WorldChatIn, db: DbSession = Depends(get_db)) -> dict:
+    """A chat based in a world (chat/encounters.py). The first person speaks through /respond."""
+    world = db.get(World, body.world_id)
+    if not world:
+        raise HTTPException(404, "World not found")
+    persona = db.get(Persona, body.persona_id) if body.persona_id else None
+    if body.persona_id and not persona:
+        raise HTTPException(404, "Persona not found")
+    s = ChatSession(character_id=encounters.host(db).id, world_id=world.id, persona_id=persona.id if persona else None,
+                    title=(body.title or "").strip() or world.name,
+                    narrator=settings.narrator_default if body.narrator is None else body.narrator)
+    db.add(s)
+    db.flush()
+    try:
+        await encounters.walk_on(db, s, body.place, body.character_id)
+    except encounters.NobodyHere as exc:
+        db.rollback()
+        raise HTTPException(400, str(exc)) from exc
+    return {"id": s.id, "title": s.title}
+
+
+class WalkOnIn(BaseModel):
+    place: str = ""
+    character_id: int | None = None
+
+
+@router.post("/{session_id}/walk-on")
+async def walk_on(session_id: int, body: WalkOnIn, db: DbSession = Depends(get_db)) -> dict:
+    """Leave whoever this is with and meet the next person, who speaks through /respond."""
+    s = db.get(ChatSession, session_id)
+    if not s:
+        raise HTTPException(404, "Session not found")
+    if s.world_id is None:
+        raise HTTPException(400, "Only a world chat can walk on")
+    try:
+        await encounters.walk_on(db, s, body.place, body.character_id)
+    except encounters.NobodyHere as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return get_session(session_id, db)
+
+
+class PersonMemoryIn(BaseModel):
+    notes: str
+
+
+def _memory_rows(s: ChatSession, db: DbSession) -> list[dict]:
+    """Who the user has met in this chat and what they kept, for reading and correcting."""
+    people: dict[int, dict] = {}
+    for e in s.encounters:
+        if e.character is None:
+            continue
+        row = people.setdefault(e.character_id, {"character_id": e.character_id, "name": e.character.name, "meetings": 0, "notes": ""})
+        row["meetings"] += 1
+    for row in people.values():
+        kept = db.get(PersonMemory, (s.id, row["character_id"]))
+        row["notes"] = kept.notes if kept else ""
+    return list(people.values())
+
+
+@router.get("/{session_id}/people")
+def people_met(session_id: int, db: DbSession = Depends(get_db)) -> list[dict]:
+    s = db.get(ChatSession, session_id)
+    if not s:
+        raise HTTPException(404, "Session not found")
+    return _memory_rows(s, db)
+
+
+@router.put("/{session_id}/people/{character_id}")
+def set_person_memory(session_id: int, character_id: int, body: PersonMemoryIn, db: DbSession = Depends(get_db)) -> dict:
+    """Correct what someone remembers: the notes can invent things, and this is the fix."""
+    s = db.get(ChatSession, session_id)
+    if not s or not any(e.character_id == character_id for e in s.encounters):
+        raise HTTPException(404, "They haven't met in this chat")
+    row = db.get(PersonMemory, (session_id, character_id))
+    if row:
+        row.notes = body.notes.strip()
+    else:
+        db.add(PersonMemory(session_id=session_id, character_id=character_id, notes=body.notes.strip()))
+    db.commit()
+    return {"ok": True}
+
+
 @router.post("/import")
 async def import_chat(body: transfer.ChatFile, db: DbSession = Depends(get_db)) -> dict:
     """A new chat from an exported file (chat/transfer.py). Changes nothing already here."""
@@ -170,6 +263,8 @@ def set_members(session_id: int, body: MembersIn, db: DbSession = Depends(get_db
     s = db.get(ChatSession, session_id)
     if not s:
         raise HTTPException(404, "Session not found")
+    if s.world_id is not None:
+        raise HTTPException(400, "People come and go by themselves in a world chat")
     members = _members(db, s.character_id, body.member_ids)
     s.members = [SessionMember(character_id=c.id, position=i) for i, c in enumerate(members)]
     db.commit()
@@ -185,7 +280,8 @@ def list_sessions(db: DbSession = Depends(get_db)) -> list[dict]:
             "id": s.id,
             "title": s.title,
             "character_id": s.character_id,
-            "character_name": s.character.name if s.character else None,
+            # The sidebar's second line: for a world chat, the world rather than its host.
+            "character_name": s.world.name if s.world else (s.character.name if s.character else None),
             "member_names": [c.name for c in group.cast(s)[1:]],
             "message_count": len(s.messages),
         }
@@ -198,12 +294,20 @@ def get_session(session_id: int, db: DbSession = Depends(get_db)) -> dict:
     s = db.get(ChatSession, session_id)
     if not s:
         raise HTTPException(404, "Session not found")
+    person = group.lead(s)
+    world_chat = s.world_id is not None
     return {
         "id": s.id,
         "title": s.title,
         "character_id": s.character_id,
-        "character_name": s.character.name if s.character else None,
-        "world_id": s.character.world_id if s.character else None,
+        "character_name": person.name if person else (s.world.name if s.world else None),
+        "world_id": s.world_id if world_chat else (s.character.world_id if s.character else None),
+        "world_chat": world_chat,
+        "encounters": [{"id": e.id, "start_id": e.start_id, "place": e.place, "time": e.time,
+                        "name": e.character.name if e.character else "Someone"} for e in s.encounters],
+        # They've said goodbye and it's time to walk on, or someone hasn't yet spoken up.
+        "leaving": bool(world_chat and person and encounters.leaving(s)),
+        "awaiting_opening": bool(world_chat and person and encounters.is_opening(s)),
         "persona_id": s.persona_id,
         "summary": s.summary,
         "scene": s.scene,
@@ -260,12 +364,19 @@ def send_message(
         raise HTTPException(400, "Message cannot be empty")
     if body.speaker_id is not None and not group.by_id(s, body.speaker_id):
         raise HTTPException(400, "That character is not in this chat")
+    _someone_here(s)
 
     # Marked like the replies, so a thread renders as one phone conversation.
     db.add(Message(session_id=s.id, role="user", content=body.content.strip(),
                    texted=s.mode == "texting"))
     db.commit()
     return _stream_response(session_id, body.overrides(), speaker_id=body.speaker_id)
+
+
+def _someone_here(s: ChatSession) -> None:
+    """A world chat whose person was deleted has nobody to answer until the user walks on."""
+    if s.world_id is not None and group.lead(s) is None:
+        raise HTTPException(400, "Nobody's here. Walk on to find someone.")
 
 
 class RespondIn(BaseModel):
@@ -281,6 +392,7 @@ def respond(session_id: int, body: RespondIn, db: DbSession = Depends(get_db)) -
         raise HTTPException(404, "Session not found")
     if body.character_id is not None and not group.by_id(s, body.character_id):
         raise HTTPException(400, "That character is not in this chat")
+    _someone_here(s)
     return _stream_response(session_id, {}, speaker_id=body.character_id)
 
 
@@ -294,6 +406,7 @@ def regenerate(session_id: int, db: DbSession = Depends(get_db)) -> StreamingRes
     s = db.get(ChatSession, session_id)
     if not s:
         raise HTTPException(404, "Session not found")
+    _someone_here(s)
     last = s.messages[-1] if s.messages else None
     # The greeting is a reply too, and swiping it is how a chat re-rolls its
     # opening -- but only while it is the whole chat.
@@ -405,6 +518,9 @@ def update_session(
             raise HTTPException(404, "Persona not found")
         s.persona_id = body.persona_id
 
+    # Neither has a place yet: whoever would write first, or text, isn't settled in a world chat.
+    if s.world_id is not None and (body.autonomous or body.mode == "texting"):
+        raise HTTPException(400, "A world chat is told in person, and nobody writes first yet")
     if body.autonomous is not None:
         s.autonomous = body.autonomous
         s.next_check_at = None
@@ -451,6 +567,8 @@ async def write_first(session_id: int, body: WriteFirstIn, db: DbSession = Depen
         raise HTTPException(404, "Session not found")
     if not s.messages:
         raise HTTPException(400, "Say something first")
+    if s.world_id is not None:
+        raise HTTPException(400, "Nobody writes first in a world chat yet")
     return await autonomy.check(db, s, force=body.force)
 
 
@@ -552,6 +670,8 @@ async def bring_guest(session_id: int, body: GuestIn, db: DbSession = Depends(ge
         raise HTTPException(404, "Session not found")
     if s.mode == "texting":
         raise HTTPException(400, "Nobody arrives in a text thread")
+    if s.world_id is not None:
+        raise HTTPException(400, "Walk on to meet someone else in a world chat")
     person = db.get(Character, body.character_id)
     if not person:
         raise HTTPException(404, "Character not found")
@@ -754,7 +874,7 @@ async def force_summarize(session_id: int, db: DbSession = Depends(get_db)) -> d
     s = db.get(ChatSession, session_id)
     if not s:
         raise HTTPException(404, "Session not found")
-    card = CharacterCard.model_validate(s.character.card or {})
+    card = CharacterCard.model_validate((group.lead(s) or s.character).card or {})
     folded = await memory_manager.summarize_now(db, s, card)
     return {"folded": folded, "summary": s.summary}
 
@@ -770,6 +890,7 @@ def delete_session(session_id: int, db: DbSession = Depends(get_db)) -> dict:
 
     db.query(CharacterThought).filter(CharacterThought.session_id == session_id).delete()
     db.query(Standing).filter(Standing.session_id == session_id).delete()
+    db.query(PersonMemory).filter(PersonMemory.session_id == session_id).delete()
     db.delete(s)
     db.commit()
     return {"ok": True}
@@ -791,7 +912,8 @@ def patch_scene(session_id: int, body: ScenePatch, db: DbSession = Depends(get_d
     if not s:
         raise HTTPException(404, "Session not found")
     user = s.persona.name if s.persona else "You"
-    scene = dict(s.scene or blank(s.character.name if s.character else "Character", user))
+    lead = group.lead(s)
+    scene = dict(s.scene or blank(lead.name if lead else "Character", user))
     for key, value in body.model_dump(exclude_none=True).items():
         scene[key] = value.strip()[:80] or "unknown"
     s.scene = scene

@@ -25,8 +25,36 @@ NARRATOR_ROLE = "narrator"
 NARRATOR_NAME = "Narrator"
 
 
+def current_encounter(session: ChatSession):
+    """The meeting under way in a world chat (chat/encounters.py). None anywhere else, and when
+    the person it was with has been deleted."""
+    if getattr(session, "world_id", None) is None or not session.encounters:
+        return None
+    last = session.encounters[-1]
+    return None if last.ended or last.character is None else last
+
+
+def world_of(session: ChatSession):
+    """The chat's world: its own in a world chat, otherwise its character's."""
+    if getattr(session, "world_id", None) is not None:
+        return session.world
+    return session.character.world if session.character else None
+
+
+def lead(session: ChatSession) -> Character | None:
+    """Whoever the chat is with right now. In a world chat, never its hidden host."""
+    if getattr(session, "world_id", None) is not None:
+        encounter = current_encounter(session)
+        return encounter.character if encounter else None
+    return session.character
+
+
 def cast(session: ChatSession) -> list[Character]:
-    """The session's character first, then the members in order."""
+    """The session's character first, then the members in order. In a world chat, just
+    whoever the user is talking to."""
+    if getattr(session, "world_id", None) is not None:
+        person = lead(session)
+        return [person] if person else []
     out = [session.character] if session.character else []
     out += [m.character for m in session.members
             if m.character and m.character.id != session.character_id]
@@ -58,7 +86,7 @@ def history_roles(
     session: ChatSession, messages: list[Message], speaker: Character | None = None
 ) -> list[tuple[str, str]]:
     """[(role, content)] as `speaker` sees it -- see the module docstring."""
-    me = speaker.id if speaker else session.character_id
+    me = speaker.id if speaker else (lead(session).id if lead(session) else session.character_id)
     names = {c.id: c.name for c in cast(session)}
     out = []
     for m in messages:

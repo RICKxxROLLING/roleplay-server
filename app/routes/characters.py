@@ -152,7 +152,7 @@ def draft_character(body: DraftIn, db: DbSession = Depends(get_db)) -> Streaming
 
 @router.get("")
 def list_characters(db: DbSession = Depends(get_db)) -> list[dict]:
-    rows = db.query(Character).order_by(Character.name).all()
+    rows = db.query(Character).filter(Character.host.is_(False)).order_by(Character.name).all()
     return [
         {
             "id": c.id,
@@ -289,13 +289,18 @@ def delete_character(char_id: int, db: DbSession = Depends(get_db)) -> dict:
     c = db.get(Character, char_id)
     if not c:
         raise HTTPException(404, "Character not found")
+    if c.host:
+        raise HTTPException(400, "That one looks after the world chats and can't be deleted")
     if c.avatar_path and os.path.exists(c.avatar_path):
         os.remove(c.avatar_path)
     # Leaves any group chat it was in; its old lines there keep their text and
     # read as "Someone" (chat/group.py).
     db.query(SessionMember).filter(SessionMember.character_id == c.id).delete()
-    from ..db.models import CharacterThought, Standing
+    from ..db.models import CharacterThought, Encounter, PersonMemory, Standing
 
+    # If they were mid-conversation in a world chat, the user is left to walk on.
+    db.query(Encounter).filter(Encounter.character_id == c.id).update({"ended": True})
+    db.query(PersonMemory).filter(PersonMemory.character_id == c.id).delete()
     db.query(CharacterThought).filter(CharacterThought.character_id == c.id).delete()
     db.query(Standing).filter(Standing.character_id == c.id).delete()
     db.delete(c)
