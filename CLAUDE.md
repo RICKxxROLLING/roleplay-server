@@ -13,7 +13,7 @@ push notifications, opt-in per device, sent **empty** through the browser's rela
 Deployment target is **Unraid** (Docker Compose or native Docker templates). Development
 happens on **Windows**.
 
-**Status: Phases 0–4 complete and tested. Phase 5 (polish + extra backends) is next.**
+**Status: Phases 0–4 complete, plus group chats, world chats and the character-life features below, each measured on Stheno. Next: the lived-in world stage of world chats.**
 
 ## Commands
 
@@ -72,6 +72,12 @@ app/
   chat/autonomy.py      characters writing first: rules, would-they pass, scheduler
   chat/texting.py       texting mode: the chat as a text thread, switching in and out
   chat/narrator.py      short lines about the world around the scene, and small events
+  chat/encounters.py    world chats: encounters, Walk on, per-person notes, privacy
+  chat/pacing.py        keeps a reply in the moment: no walking out, a steady clock
+  chat/choices.py       three things the user could do next
+  chat/rhythm.py        each character's day, for writing first
+  chat/voices.py, listen.py  Piper read-aloud and Whisper speech input, on the CPU
+  chat/transfer.py      chat export and import
   db/                   SQLAlchemy models + additive migrations
   routes/               characters, personas, sessions, system, worlds
 web/src/components/     React UI
@@ -441,6 +447,15 @@ new face in town", "Hey Riley" from someone who never heard the name); a returni
 what they did about the deal; the note can still get one word wrong (Dina became his sister in 8 of 8).
 Places by hand and generated locals are the next stage, so a typed place only favours a card mentioning it.
 Writing first, texting, guests and visitor events are off in world chats.
+Review fixes after shipping: a backend failure during Walk on answers 502 and changes nothing; an
+export keeps a deleted person's meeting as its own range (character -1), or on import its lines fell
+into the meeting before and that person read them; a first name that is a month or day ("June")
+doesn't cut a persona sentence; the place pass runs without the repeat penalty it was measured
+without; "I'll see you in three days", "gotta run" and "goodnight" count as leaving; the
+"Something happens" button posts chores and news there, never a visitor the current person would
+voice; message ownership is worked out in one pass. Known and left: Walk on isn't refused
+server-side while a reply streams (the UI disables it), and two world chats created at the same
+instant could make two hosts.
 
 **The look is "Manuscript": a warm dark book, not a chat app (`web/tailwind.config.js`).** The owner chose it from three directions, for long reading. Tailwind's `slate` is overridden with warm tones and `ink` is the ground, so every panel follows from the tokens; keep any `slate` step used for text at 4.5:1 on `ink-950`. Literata and Inter are bundled with `@fontsource`, never a Google Fonts link, because the server makes no outside calls to show a page. Everything about a chat beyond who and where lives in the scene panel in `ChatView.jsx`, beside the story from `lg` and sliding over below it. Messages have no avatars, which also ended a 404 per message for characters without a picture.
 

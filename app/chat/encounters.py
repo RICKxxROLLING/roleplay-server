@@ -112,11 +112,18 @@ _LEAVE_ACT = re.compile(
     r"head over to|heads over to|turn and go|turn and leave|turns and leaves|step out|steps out|"
     r"carry on down|carries on down|set off|sets off|take my leave|takes? (?:his|her|their) leave)\b", re.I)
 _LEAVE_SAID = re.compile(
-    r"\b(?:good\s?bye|bye|farewell|i'?m off|i should (?:go|get going|head off)|i(?:'d| had) better (?:go|get going)|"
-    r"i'?ll let you get back to it|see you (?:around|later|tomorrow|soon)|take care)\b(?=\s*[,.!…\"”]|\s*$)", re.I)
+    r"\b(?:good\s?bye|bye|farewell|good\s?night|i'?m off|i should (?:go|get going|head off)|i(?:'d| had) better (?:go|get going)|"
+    r"(?:gotta|got to|have to|need to) (?:go|run|get going)|best be (?:going|off)|"
+    r"i'?ll let you get back to it|see you (?:around|later|tomorrow|soon|then)|take care)\b(?=\s*[,.!…\"”]|\s*$)"
+    # Said anywhere in the line, not only at its end: "I'll see you in three days."
+    r"|\bi'?ll see you (?:in|on|at|next|around|later|tomorrow|soon|then)\b", re.I)
 _QUOTED = re.compile(r'"[^"]*"|“[^”]*”')
 #: Going to another part of the same room, or staying, isn't leaving.
 _LEAVE_NOT = re.compile(r"\b(?:never|won'?t|wouldn'?t|couldn'?t|can'?t|don'?t|didn'?t|not)\s+(?:\w+\s+)?(?:leave|go)\b", re.I)
+
+
+_CALENDAR = frozenset("January February March April May June July August September October November December "
+                      "Monday Tuesday Wednesday Thursday Friday Saturday Sunday".split())
 
 
 class NobodyHere(ValueError):
@@ -137,23 +144,29 @@ def _user(session: ChatSession) -> str:
     return session.persona.name if session.persona else "You"
 
 
+def _owners(session: ChatSession) -> dict[int, Encounter]:
+    """Which encounter each message belongs to, by range, in one pass. Ranges rather than a
+    column on Message, so that no place that writes a message has to know about encounters."""
+    starts = sorted(session.encounters, key=lambda e: e.start_id)
+    out, i = {}, -1
+    for m in session.messages:
+        while i + 1 < len(starts) and starts[i + 1].start_id <= m.id:
+            i += 1
+        if i >= 0:
+            out[m.id] = starts[i]
+    return out
+
+
 def messages_of(session: ChatSession, encounter: Encounter | None) -> list[Message]:
-    """An encounter's messages, by range. Ranges rather than a column on Message, so that no
-    place that writes a message has to know about encounters."""
     if encounter is None:
         return []
-    later = [e.start_id for e in session.encounters if e.start_id > encounter.start_id]
-    end = min(later) if later else None
-    return [m for m in session.messages if m.id >= encounter.start_id and (end is None or m.id < end)]
+    owners = _owners(session)
+    return [m for m in session.messages if owners.get(m.id) is encounter]
 
 
 def private_ids(session: ChatSession, speaker: Character) -> set[int]:
     """Messages from encounters `speaker` wasn't in."""
-    out: set[int] = set()
-    for e in session.encounters:
-        if e.character_id != speaker.id:
-            out |= {m.id for m in messages_of(session, e)}
-    return out
+    return {mid for mid, e in _owners(session).items() if e.character_id != speaker.id}
 
 
 def last_user_text(session: ChatSession) -> str:
@@ -221,7 +234,9 @@ def persona_for(session: ChatSession, speaker: Character) -> str:
     text = session.persona.description if session.persona else ""
     world = group.world_of(session)
     others = [c.name for c in (world.characters if world else []) if c.id != speaker.id]
-    names = {n for full in others for n in (full, full.split()[0]) if n}
+    # A first name alone counts too ("known Dina since childhood"), except one that is also a
+    # month or a day: "born in June" isn't about June Abernathy.
+    names = {n for full in others for n in (full, full.split()[0]) if n and n not in _CALENDAR}
     if not text or not names:
         return text
     pattern = re.compile(r"(?<!\w)(?:" + "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True)) + r")(?!\w)")
@@ -243,8 +258,8 @@ def _about(person: Character) -> str:
     return " ".join(((person.card or {}).get("description") or "").split())[:400]
 
 
-def _params(max_new_tokens: int, temperature: float = 0.9) -> GenerationParams:
-    return GenerationParams(temperature=temperature, top_p=1, top_k=50, min_p=0.075, repeat_penalty=1.1,
+def _params(max_new_tokens: int, temperature: float = 0.9, repeat_penalty: float = 1.1) -> GenerationParams:
+    return GenerationParams(temperature=temperature, top_p=1, top_k=50, min_p=0.075, repeat_penalty=repeat_penalty,
                             context_tokens=settings.context_tokens, max_new_tokens=max_new_tokens,
                             stop=list(get_format(settings.prompt_format).stops))
 
@@ -291,7 +306,8 @@ async def choose_place(session: ChatSession, person: Character, time: str) -> st
     prompt = _ask(WHERE.format(setting=_setting(session), name=person.name, about=_about(person), time=time),
                   f"{person.name} is in the")
     for _ in range(2):
-        place = clean_place("the" + await get_client().generate(prompt, _params(16, 0.7)))
+        # No repeat penalty, as measured: a few words naming a place are mostly words already in the prompt.
+        place = clean_place("the" + await get_client().generate(prompt, _params(16, 0.7, 1.0)))
         if place and not re.search(r"\d", place) and not re.search(rf"(?<!\w){re.escape(first)}(?!\w)", place):
             return place
     return "the main street"

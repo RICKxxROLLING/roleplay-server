@@ -141,6 +141,9 @@ async def create_world_chat(body: WorldChatIn, db: DbSession = Depends(get_db)) 
     except encounters.NobodyHere as exc:
         db.rollback()
         raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(502, f"The model didn't answer, so nobody arrived. Try again. ({type(exc).__name__})") from exc
     return {"id": s.id, "title": s.title}
 
 
@@ -161,6 +164,10 @@ async def walk_on(session_id: int, body: WalkOnIn, db: DbSession = Depends(get_d
         await encounters.walk_on(db, s, body.place, body.character_id)
     except encounters.NobodyHere as exc:
         raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        # Nothing was written: every model call comes first (encounters.walk_on).
+        db.rollback()
+        raise HTTPException(502, f"The model didn't answer, so you're still here. Try again. ({type(exc).__name__})") from exc
     return get_session(session_id, db)
 
 

@@ -8,46 +8,66 @@ Nothing leaves your machine.
 Anywhere else with Docker + an NVIDIA GPU: `docker compose up -d`, then
 <http://localhost:8000>.
 
-**This is Phase 0–4** of the roadmap in [`docs/architecture.md`](docs/architecture.md) —
-chat with SillyTavern V2 cards, personas, streaming, regenerate, rolling summarization, a
-keyword-triggered lorebook, and vector recall over past turns. That completes the hybrid
-memory design; Phase 5 is polish and extra backends.
+Phases 0–4 of the roadmap in [`docs/architecture.md`](docs/architecture.md) are done (cards,
+streaming, rolling summary, lorebook, vector recall), and on top of them: group chats, world
+chats where people come and go, characters with their own thoughts, earned trust, a narrator,
+texting, writing first, choices, voices and speech input. Tuned and measured on
+L3-8B-Stheno-v3.2 on an 8 GB RTX 2080; the measurements behind each choice are in
+[`CLAUDE.md`](CLAUDE.md).
 
 ---
 
 ## What works now
 
+**Chats**
 - **SillyTavern V2 card import** — drop in a community card PNG, get a playable character.
-  Handles V1 flat cards, V2 (`spec: chara_card_v2`), and V3-shaped payloads.
+  Handles V1 flat cards, V2 (`spec: chara_card_v2`), and V3-shaped payloads. Or write one by
+  hand, or have the model draft or expand a card from a one-line brief.
+- **Group chats** — several characters in one scene, one speaking per reply; pick who answers
+  or let the server choose.
+- **World chats** — a chat based in a world rather than one character. You meet people one at a
+  time, they speak first, and **Walk on** takes you somewhere else to meet someone new. What you
+  tell one person stays with them; each keeps a short note of you that you can correct. Chapter
+  headings mark each meeting.
+- **Worlds** — a shared setting and lorebook for many characters, and generated locals
+  (extras) who can visit or join a scene.
+- **Texting mode** — the same chat as a phone thread, switching in and out.
+- **Swipes** — regenerate keeps every version of the last reply to flip between.
+- **Stop keeps what was written** — generation ends on the GPU and the partial reply is saved.
+- **Choices** — three things you could do next, above the type box.
+- **Read aloud and speak instead of typing** — Piper voices and Whisper, both on the server's
+  CPU, nothing sent out.
+- **Import and export a chat** — move one chat between installs, or keep a copy. Bundles load
+  whole worlds and casts at once.
+
+**Characters who feel alive**
+- **Their own thoughts** — a private journal after each reply, and an opinion of you that
+  shapes the next one.
+- **Earned trust** — trust, affection and respect move with what you do, capped by the server.
+  Romance is opt-in per card and never unlocks for a card written as a minor.
+- **Writing first** — a character may message you on their own, within quiet hours, their own
+  daily rhythm and a daily cap. Push notifications are optional and carry no content.
+- **A narrator** — quiet lines about the world now and then, and a small event on request.
+- **A scene tracker** — where, when, weather and who's present, updated after each reply and
+  editable.
+- **Living in the moment** — replies don't rush ahead, walk out or jump the clock.
+
+**Under the hood**
 - **Backend-agnostic inference** — Ollama or any OpenAI-compatible server (llama.cpp, vLLM,
-  LM Studio, TGI). Swap via one env var.
-- **Token streaming** over SSE, with stop/abort.
-- **Raw prompt builder in Alpaca, Llama 3 or ChatML format**, honoring V2 slot ordering,
-  `{{char}}`/`{{user}}` substitution, and token budgeting that trims oldest-first.
-- **Narration style** — one house-style directive (e.g. rich scene description) applied to
-  every character, editable in Settings.
+  LM Studio, TGI).
+- **Raw prompt builder in Alpaca, Llama 3 or ChatML format**, honoring V2 slot ordering and
+  token budgeting learned per model. Format and samplers are saved per model.
 - **Impersonation guard** — lines where the reply acts or speaks for you are removed before
-  the reply is saved, so the habit can't snowball through chat history.
-- **Rolling summarization** — old turns fold into a running memory log so conversations stay
-  coherent well past 4096 tokens. Inspectable and hand-editable.
-- **Keyword lorebook** — authored world facts that inject only when their keywords appear.
-  Full V2 semantics, editable in the UI.
-- **Vector recall** — semantic search over turns the summary has already condensed, so the
-  character can still name the innkeeper from chapter one. Off until you pull an embedding
-  model; toggled from the Memory panel.
-- **Everything managed from the UI** — no terminal needed after install:
-  - **Personas** — create, edit and delete; swap which one you're playing mid-chat.
-  - **Greeting picker** — choose among a card's alternate greetings when starting a chat.
-  - **Character editor** — edit any card field, manage alternate greetings, view the
-    lorebook, delete characters.
-  - **Model manager** — list installed models, switch the active one, and download new ones
-    with a progress bar.
-  - **Message editing** — fix or delete any turn in the history.
-  - **Chat renaming** and per-chat persona swapping.
-- **Settings persist** — sampler and memory settings save to the database and survive
-  restarts. Env vars are first-run defaults only.
-- **Regenerate** — re-roll the last reply.
-- **Prompt inspector** — see the exact text the model receives (Settings → Inspect built prompt).
+  the reply is saved, so the habit can't snowball. A reply that slips into first person is
+  redone once.
+- **Rolling summary plus a fact list** — old turns fold into a memory log and a list of
+  specifics that a rewrite can't silently drop. Pins keep a moment verbatim.
+- **Keyword lorebook** and **vector recall** over condensed turns.
+- **Test this model** — a scripted 12-turn check of any model from Settings.
+
+**Everything from the UI** — personas, characters, worlds, models, settings, memory, scene,
+journal and standings are all editable in the browser, on a phone too. A password and
+two-factor protect it; the look is a warm dark "manuscript" made for long reading.
 
 ---
 
@@ -500,16 +520,15 @@ GET   /api/sessions/{id}/prompt       exact prompt text, incl. what was recalled
 
 ## Notes & known limits
 
-- **Token counts are estimates** (~3.6 chars/token, deliberately conservative). Swap in a real
-  tokenizer in `app/prompt/tokens.py` if you want exact budgeting.
+- **Token counts are estimates**, learned per model from the backend's own prompt counts
+  after the first reply (until then ~3.6 chars/token).
 - **Env vars are first-run defaults.** Once a setting is changed in the UI it's stored in the
   database and wins over the environment. Editing `.env` afterwards won't override it —
   change it in the UI, or delete the row from the `app_settings` table.
 - **Editing a message below the memory watermark won't reach the model.** Its original text
   is already folded into the summary. The UI says so when it happens; edit the summary in the
   Memory panel instead.
-- **Stop during streaming aborts the client, not the server.** The backend finishes its turn
-  and persists it; the UI resyncs. Cancelling server-side generation is a Phase 5 item.
+- **Stop ends generation on the server too**, and keeps what was written as the reply.
 - **Single-user, one password.** There are no accounts. Set a password under **Settings →
   Password** and every `/api` route refuses to answer without a session; until you do, the
   server is open to anything that can reach it and the settings panel says so in amber.
@@ -519,7 +538,9 @@ GET   /api/sessions/{id}/prompt       exact prompt text, incl. what was recalled
 - **No filesystem side effects at import.** Data directories are created in `init_db()` and
   on first avatar upload, not at module load — otherwise the image build and any tooling
   would break wherever `/data` isn't writable yet.
-- **1:1 chats only** and simple regenerate (no branching/swipes) — both deliberate v1 scope.
+- **Small models make things up.** An 8B invents details about you, and in world chats about
+  what someone did since you last met. The guard, the notes editor and the scene panel are how
+  to correct it.
 - **Summarization is lossy.** It preserves narrative flow well and precise facts poorly —
   that's inherent to the approach, not a bug. Vector recall is the fix for exact recall, and
   the Memory panel lets you correct anything important the fold dropped.
@@ -538,16 +559,15 @@ GET   /api/sessions/{id}/prompt       exact prompt text, incl. what was recalled
 
 ---
 
-## Next: Phase 5
+## Next
 
-Polish and reach, now that the hybrid memory design is complete:
-
-- **Cancelling generation server-side** — today Stop aborts the client only.
-- **Branching and swipes** — keep alternate timelines instead of destructive regenerate.
+- **A lived-in world** — places you can edit, who's around by time of day, and generated locals
+  waiting in each place.
+- **World chat extras** — interruptions, gossip between people, companions who walk with you,
+  and people who leave on their own.
+- **Branching** — going back to an old turn and forking it.
 - **Semantic lorebook matching** — embed `character_book` entries so paraphrases fire them,
-  alongside the keyword contract rather than replacing it. The V2 spec is keyword-based, so
-  this has to be additive.
-- **Optional TTS / image hooks**, and multi-user if it's ever wanted.
+  alongside the keyword contract rather than replacing it.
 
 The memory tradeoffs behind all of this are laid out in
 [`docs/architecture.md`](docs/architecture.md) §5.

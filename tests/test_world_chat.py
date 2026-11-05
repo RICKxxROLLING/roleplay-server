@@ -198,6 +198,7 @@ def test_a_goodbye_gets_the_goodbye_line_and_lights_up_walk_on(client, world, ll
     '*I wave and carry on down the road.*', '"Bye, then."', '"Farewell, friend."',
     "I head home.", '*I set off toward the river.*', '"Take care of yourself. See you soon."',
     '"I had better get going."', 'Riley takes his leave.',
+    "\"Gotta run. I'll see you in three days.\"", '"Goodnight, Hana."',
 ])
 def test_leaving_is_noticed(text):
     assert encounters.is_leaving(text)
@@ -207,6 +208,7 @@ def test_leaving_is_noticed(text):
     '"Do you think I should go to Seattle?"', '"Goodbye is the hardest word, my mother used to say."',
     '"Would you ever leave Jackson?"', '*I walk over to the shelf.*', '"Who walks this road at night?"',
     "I would never leave her.", '"She said goodbye to him years ago."', '*I step closer.*', "",
+    '"Will I see you at the dance?"',
 ])
 def test_staying_is_not_leaving(text):
     assert not encounters.is_leaving(text)
@@ -223,6 +225,33 @@ def test_swiping_an_opening_keeps_it_an_opening(client, world, llm):
     assert "speaks first" in prompt and reason.replace("{{user}}", "You") in prompt
     last = get(client, sid)["messages"][-1]
     assert last["swipes"] == 2 and last["speaker_name"] == "Hana Brandt"
+
+
+def test_a_first_name_that_is_a_month_doesnt_cut_the_persona(client, world, llm):
+    june = client.post("/api/characters", json={"name": "June Abernathy", "description": "June runs the diner."}).json()["id"]
+    client.put(f"/api/worlds/membership/{june}", json={"world_id": world["id"]})
+    persona = client.post("/api/personas", json={"name": "Riley", "description": "Riley was born in June. He has a dog."}).json()["id"]
+    sid = start(client, world, persona=persona)
+    respond(client, sid)
+    assert "born in June" in chat_prompts(llm)[-1]
+
+
+def test_a_deleted_persons_meeting_stays_theirs_through_export(client, world):
+    sid = start(client, world)
+    respond(client, sid)
+    walk(client, sid, "Cole", world)
+    respond(client, sid)
+    say(client, sid, "A secret for Cole: COLEWORD.")
+    walk(client, sid, "Hana", world)
+    respond(client, sid)
+    client.delete(f"/api/characters/{world['Cole']}")
+    new = client.post("/api/sessions/import", json=client.get(f"/api/sessions/{sid}/export").json()).json()["id"]
+    with SessionLocal() as db:
+        s = db.get(ChatSession, new)
+        hana = next(e.character for e in s.encounters if e.character is not None)
+        hidden = encounters.private_ids(s, hana)
+        assert any("COLEWORD" in m.content for m in s.messages if m.id in hidden)
+        assert len(s.encounters) == 3
 
 
 def test_a_persona_line_about_someone_else_only_reaches_them(client, world, llm):
@@ -260,8 +289,8 @@ def test_a_failed_walk_on_leaves_you_where_you_were(client, world, llm, monkeypa
         raise RuntimeError("backend down")
 
     monkeypatch.setattr(llm, "generate", down, raising=False)
-    with pytest.raises(RuntimeError):
-        client.post(f"/api/sessions/{sid}/walk-on", json={"character_id": world["Cole"]})
+    r = client.post(f"/api/sessions/{sid}/walk-on", json={"character_id": world["Cole"]})
+    assert r.status_code == 502 and "still here" in r.json()["detail"]
     after = get(client, sid)
     assert after["character_name"] == "Hana Brandt"
     assert len(after["messages"]) == len(before["messages"]) and len(after["encounters"]) == 1

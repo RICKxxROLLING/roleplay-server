@@ -213,6 +213,10 @@ async def write_line(session: ChatSession, event: bool | None = None) -> str:
         # A new subject each try: repeated presses used to fail on the one this chat had
         # reached, however many times it was asked.
         subject, opener = _pick(session, count + attempt, event)
+        # A visitor in a world chat would be voiced by the person the user is talking to, so the
+        # button's events there are chores and news; people come by Walk on.
+        if session.world_id is not None and subject.startswith("someone "):
+            subject, opener = _pick(session, count + attempt + 1, event)
         # A kept extra is the visitor when there is one: a name the owner has seen and
         # chosen, rather than another invented Sarah.
         about = ""

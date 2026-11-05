@@ -98,7 +98,9 @@ class StandingOut(BaseModel):
 
 
 class EncounterOut(BaseModel):
-    character: str
+    #: None for someone since deleted: their meeting still has to keep its range, or its
+    #: lines would fall into the meeting before and be read by that person.
+    character: str | None = None
     place: str = ""
     time: str = ""
     reason: str = ""
@@ -198,9 +200,10 @@ def export_chat(db: DbSession, s: ChatSession) -> dict:
                                respect=r.respect, last_reason=r.last_reason or "")
                    for r in standings if r.character_id in people],
         world=s.world.name if s.world else None,
-        encounters=[EncounterOut(character=people[e.character_id].name, place=e.place, time=e.time, reason=e.reason,
-                                 start=sum(m.id < e.start_id for m in s.messages), ended=bool(e.ended))
-                    for e in s.encounters if e.character_id in people],
+        encounters=[EncounterOut(character=people[e.character_id].name if e.character_id in people else None,
+                                 place=e.place, time=e.time, reason=e.reason,
+                                 start=sum(m.id < e.start_id for m in s.messages), ended=bool(e.ended or e.character_id not in people))
+                    for e in s.encounters],
         memories=[MemoryOut(character=people[r.character_id].name, notes=r.notes)
                   for r in memories if r.character_id in people],
     )
@@ -259,7 +262,7 @@ def _check(data: ChatFile) -> None:
             raise ImportRefused("A message points at a version it doesn't have.")
     if data.world and data.world.lower() not in {w.name.lower() for w in data.worlds}:
         raise ImportRefused(f"The file doesn't include the world {data.world}.")
-    for row in [*data.thoughts, *data.standings, *data.encounters, *data.memories]:
+    for row in [*data.thoughts, *data.standings, *[e for e in data.encounters if e.character], *data.memories]:
         if row.character.lower() not in named:
             raise ImportRefused(f"The journal mentions {row.character}, who isn't in the file.")
     if not all(p.name.strip() for p in data.characters):
@@ -358,8 +361,9 @@ def import_chat(db: DbSession, data: ChatFile) -> dict:
 
     for e in data.encounters:
         if e.start < len(ids):
-            db.add(Encounter(session_id=s.id, character_id=people[e.character.lower()].id, place=e.place, time=e.time,
-                             reason=e.reason, start_id=ids[e.start], ended=e.ended))
+            who = people[e.character.lower()].id if e.character else GONE
+            db.add(Encounter(session_id=s.id, character_id=who, place=e.place, time=e.time,
+                             reason=e.reason, start_id=ids[e.start], ended=e.ended or who == GONE))
     kept = set()
     for r in data.memories:
         cid = people[r.character.lower()].id
