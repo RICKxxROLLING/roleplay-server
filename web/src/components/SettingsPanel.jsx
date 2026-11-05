@@ -75,7 +75,7 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
                 id="prompt-format"
                 value={s.prompt_format}
                 onChange={(e) => update("prompt_format", e.target.value)}
-                className="bg-ink-950 border border-ink-800 rounded-lg px-2 py-1 text-sm outline-none focus:border-accent/60"
+                className="w-full sm:w-auto bg-ink-950 border border-ink-800 rounded-lg px-2 py-1 text-sm outline-none focus:border-accent/60"
               >
                 {PROMPT_FORMATS.map((f) => (
                   <option key={f.value} value={f.value}>{f.label}</option>

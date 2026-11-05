@@ -69,7 +69,11 @@ export default function App() {
   useEffect(() => {
     const open = (url) => {
       const id = Number(new URL(url, window.location.origin).searchParams.get("session"));
-      if (id) setActiveId(id);
+      if (id) {
+        setActiveId(id);
+        // A tapped notification means that chat, not the drawer sitting over it.
+        setNavOpen(false);
+      }
     };
     open(window.location.href);
     if (window.location.search) window.history.replaceState(null, "", "/");

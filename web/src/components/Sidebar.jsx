@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { api } from "../api";
 
 export default function Sidebar({
@@ -19,6 +19,10 @@ export default function Sidebar({
   onClose,
 }) {
   const fileRef = useRef(null);
+  const [chosenTab, setTab] = useState(null);
+  // With no chats yet, start where something can be done. Worked out rather than set once:
+  // the lists are empty for a moment on every load.
+  const tab = chosenTab ?? (sessions.length === 0 ? "people" : "chats");
 
   async function handleFile(e) {
     const file = e.target.files?.[0];
@@ -72,6 +76,9 @@ export default function Sidebar({
     }
   }
 
+  // No answer yet isn't the same as a bad one: "offline" used to flash on every load.
+  const checking = !health;
+  const offline = health && !health.ok;
   const modelMissing = health?.ok && health?.model_installed === false;
 
   return (
@@ -90,154 +97,152 @@ export default function Sidebar({
         // overflow-hidden: off-canvas on a phone, a long unbroken line (a full
         // Hugging Face model name) spilled out of the hidden drawer and across
         // the chat header. Seen live on an iPhone.
-        className={`bg-ink-900 border-r border-ink-800 flex flex-col overflow-hidden
+        className={`bg-ink-950 border-r border-ink-800 flex flex-col overflow-hidden
           fixed inset-y-0 left-0 z-40 w-72 transition-transform duration-200
           ${open ? "translate-x-0" : "-translate-x-full"}
-          md:static md:translate-x-0 md:shrink-0 md:z-auto`}
+          md:static md:w-64 md:translate-x-0 md:shrink-0 md:z-auto`}
       >
-      <div className="p-4 border-b border-ink-800">
-        <h1 className="font-semibold tracking-tight">Roleplay</h1>
-        <button
-          onClick={onManageModels}
-          className="mt-1.5 flex items-center gap-1.5 text-xs hover:text-slate-300 transition w-full min-w-0"
-          title="Manage models"
-        >
-          <span
-            className={`w-1.5 h-1.5 rounded-full ${
-              !health?.ok ? "bg-rose-400" : modelMissing ? "bg-amber-400" : "bg-emerald-400"
-            }`}
-          />
-          <span className="text-slate-500 truncate min-w-0">
-            {!health?.ok
-              ? "backend offline"
-              : modelMissing
-              ? `${health.model} not installed`
-              : health.model}
-          </span>
-        </button>
-      </div>
-
-      <div className="p-3 border-b border-ink-800 space-y-2">
-        <button
-          onClick={() => fileRef.current?.click()}
-          className="w-full text-sm rounded-lg bg-accent/20 border border-accent/30 py-2 hover:bg-accent/30 transition"
-        >
-          Import card or chat
-        </button>
-        <button
-          onClick={onNewCharacter}
-          className="w-full text-xs rounded-lg border border-ink-700 py-1.5 hover:bg-ink-850 transition"
-        >
-          Write one from scratch
-        </button>
-        <div className="flex gap-2">
-          <button
-            onClick={onManagePersonas}
-            className="flex-1 text-xs rounded-lg border border-ink-700 py-1.5 hover:bg-ink-850 transition"
-          >
-            Personas
-          </button>
-          <button
-            onClick={onManageWorlds}
-            className="flex-1 text-xs rounded-lg border border-ink-700 py-1.5 hover:bg-ink-850 transition"
-          >
-            Worlds
-          </button>
+        <div className="px-5 pt-5 pb-3">
+          <h1 className="font-serif text-[22px] font-semibold">Roleplay</h1>
           <button
             onClick={onManageModels}
-            className="flex-1 text-xs rounded-lg border border-ink-700 py-1.5 hover:bg-ink-850 transition"
+            title={health?.model || "Manage models"}
+            className="mt-1 flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 w-full min-w-0"
           >
-            Models
+            {(offline || modelMissing) && (
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${offline ? "bg-rose-400" : "bg-amber-400"}`} />
+            )}
+            <span className="truncate min-w-0">
+              {checking
+                ? "Connecting…"
+                : offline
+                ? "Backend offline"
+                : modelMissing
+                ? `${health.model} not installed`
+                : "Model ready"}
+            </span>
           </button>
         </div>
-        <input ref={fileRef} type="file" accept=".png,.json" hidden onChange={handleFile} />
-      </div>
 
-      <div className="flex-1 overflow-y-auto scroll-thin">
-        <Section title={`Characters (${characters.length})`}>
-          {characters.map((c) => (
-            <div key={c.id} className="group flex items-center hover:bg-ink-850">
-              <button
-                onClick={() => { onNewChat(c); onClose?.(); }}
-                className="flex items-center gap-2.5 px-3 py-2 text-left flex-1 min-w-0"
-                title={c.description}
-              >
-                {/* Characters written by hand have no PNG behind them, and the
-                    list already says so -- rendering the <img> anyway would fire
-                    a guaranteed 404 per character on every load. */}
-                {c.has_avatar ? (
-                  <img
-                    src={api.avatarUrl(c.id)}
-                    alt=""
-                    className="w-8 h-8 rounded-full object-cover bg-ink-700 shrink-0"
-                    onError={(e) => (e.currentTarget.style.visibility = "hidden")}
-                  />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-ink-700 shrink-0 grid place-items-center text-[11px] font-semibold text-slate-300">
-                    {c.name.slice(0, 2).toUpperCase()}
-                  </div>
-                )}
-                <span className="text-sm truncate">{c.name}</span>
-              </button>
-              <button
-                onClick={() => { onEditCharacter(c.id); onClose?.(); }}
-                className="px-2 text-xs text-slate-600 hover:text-slate-300 opacity-100 md:opacity-0 md:group-hover:opacity-100"
-                title="Edit character"
-              >
-                edit
-              </button>
-            </div>
-          ))}
-          {characters.length === 0 && (
-            <p className="px-3 py-2 text-xs text-slate-600">
-              No characters yet — import a V2 card PNG above.
-            </p>
-          )}
-        </Section>
-
-        <Section title={`Chats (${sessions.length})`}>
-          {sessions.map((s) => (
-            <div
-              key={s.id}
-              className={`group flex items-center ${
-                s.id === activeSessionId ? "bg-ink-850" : ""
+        <div className="px-5 flex gap-5 border-b border-ink-800 text-sm" role="tablist" aria-label="Sidebar">
+          {[
+            ["chats", `Chats (${sessions.length})`],
+            ["people", `People (${characters.length})`],
+          ].map(([id, label]) => (
+            <button
+              key={id}
+              role="tab"
+              aria-selected={tab === id}
+              onClick={() => setTab(id)}
+              className={`pb-2.5 -mb-px border-b-2 ${
+                tab === id ? "border-accent text-accent" : "border-transparent text-slate-400 hover:text-slate-200"
               }`}
             >
-              <button
-                onClick={() => { onOpenSession(s.id); onClose?.(); }}
-                className="flex-1 px-3 py-2 text-left hover:bg-ink-850 min-w-0"
-              >
-                <div className="text-sm truncate">{s.title}</div>
-                <div className="text-xs text-slate-600">{s.message_count} messages</div>
-              </button>
-              <button
-                onClick={() => onDeleteSession(s.id)}
-                className="px-2 text-slate-600 hover:text-rose-400 opacity-100 md:opacity-0 md:group-hover:opacity-100"
-                title="Delete chat"
-              >
-                ×
-              </button>
-            </div>
+              {label}
+            </button>
           ))}
-          {sessions.length === 0 && (
-            <p className="px-3 py-2 text-xs text-slate-600">
-              Click a character to start a chat.
-            </p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto scroll-thin py-2">
+          {tab === "chats" &&
+            sessions.map((s) => (
+              <div key={s.id} className="group flex items-center">
+                <button
+                  onClick={() => { onOpenSession(s.id); onClose?.(); }}
+                  aria-current={s.id === activeSessionId ? "true" : undefined}
+                  className="flex-1 min-w-0 pl-5 pr-2 py-2.5 text-left"
+                >
+                  <div className={`text-sm truncate ${s.id === activeSessionId ? "text-accent" : "text-slate-200 group-hover:text-slate-100"}`}>
+                    {s.title}
+                  </div>
+                  <div className="text-xs text-slate-500 truncate mt-0.5">
+                    {[s.character_name, `${s.message_count} messages`].filter(Boolean).join(" · ")}
+                  </div>
+                </button>
+                <button
+                  onClick={() => onDeleteSession(s.id)}
+                  aria-label={`Delete ${s.title}`}
+                  title="Delete chat"
+                  className="w-10 h-10 shrink-0 text-slate-500 hover:text-rose-400 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          {tab === "chats" && sessions.length === 0 && (
+            <p className="px-5 py-3 text-sm text-slate-500">Pick someone under People to start a chat.</p>
           )}
-        </Section>
-      </div>
+
+          {tab === "people" &&
+            characters.map((c) => (
+              <div key={c.id} className="group flex items-center">
+                <button
+                  onClick={() => { onNewChat(c); onClose?.(); }}
+                  className="flex items-center gap-3 pl-5 pr-2 py-2 text-left flex-1 min-w-0"
+                  title={c.description}
+                >
+                  {/* Characters written by hand have no PNG behind them, and the
+                      list already says so -- rendering the <img> anyway would fire
+                      a guaranteed 404 per character on every load. */}
+                  {c.has_avatar ? (
+                    <img
+                      src={api.avatarUrl(c.id)}
+                      alt=""
+                      className="w-8 h-8 rounded-full object-cover bg-ink-800 shrink-0"
+                      onError={(e) => (e.currentTarget.style.visibility = "hidden")}
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-ink-800 shrink-0 grid place-items-center font-serif text-xs text-slate-300">
+                      {c.name.slice(0, 1).toUpperCase()}
+                    </div>
+                  )}
+                  <span className="text-sm truncate text-slate-200 group-hover:text-slate-100">{c.name}</span>
+                </button>
+                <button
+                  onClick={() => { onEditCharacter(c.id); onClose?.(); }}
+                  aria-label={`Edit ${c.name}`}
+                  title="Edit character"
+                  className="px-3 py-2 text-xs text-slate-500 hover:text-slate-300 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100"
+                >
+                  edit
+                </button>
+              </div>
+            ))}
+          {tab === "people" && characters.length === 0 && (
+            <p className="px-5 py-3 text-sm text-slate-500">No characters yet. Import a card or write one below.</p>
+          )}
+        </div>
+
+        <div className="border-t border-ink-800 p-3 space-y-1 text-sm">
+          {tab === "people" ? (
+            <button
+              onClick={onNewCharacter}
+              className="w-full min-h-[40px] rounded-lg border border-ink-700 text-slate-200 hover:border-accent/60"
+            >
+              Write a new character
+            </button>
+          ) : (
+            <button
+              onClick={() => setTab("people")}
+              className="w-full min-h-[40px] rounded-lg border border-ink-700 text-slate-200 hover:border-accent/60"
+            >
+              New chat
+            </button>
+          )}
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="w-full min-h-[36px] text-slate-400 hover:text-slate-200"
+          >
+            Import a card or chat
+          </button>
+          <div className="flex justify-between px-2 pt-1 text-xs text-slate-500">
+            <button onClick={onManagePersonas} className="py-1.5 hover:text-slate-300">Personas</button>
+            <button onClick={onManageWorlds} className="py-1.5 hover:text-slate-300">Worlds</button>
+            <button onClick={onManageModels} className="py-1.5 hover:text-slate-300">Models</button>
+          </div>
+          <input ref={fileRef} type="file" accept=".png,.json" hidden onChange={handleFile} />
+        </div>
       </aside>
     </>
-  );
-}
-
-function Section({ title, children }) {
-  return (
-    <div className="py-2">
-      <div className="px-3 py-1.5 text-[11px] uppercase tracking-wider text-slate-600">
-        {title}
-      </div>
-      {children}
-    </div>
   );
 }

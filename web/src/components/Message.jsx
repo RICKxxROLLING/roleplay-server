@@ -19,13 +19,13 @@ function ListenButton({ sessionId, messageId, onError }) {
 }
 
 /** Render *action text* as italic narration, the roleplay convention. */
-function RichText({ text }) {
+function RichText({ text, tone = "text-slate-400" }) {
   const parts = text.split(/(\*[^*]+\*)/g);
   return (
     <>
       {parts.map((p, i) =>
         p.startsWith("*") && p.endsWith("*") && p.length > 2 ? (
-          <em key={i} className="text-slate-400 italic">
+          <em key={i} className={`${tone} italic`}>
             {p.slice(1, -1)}
           </em>
         ) : (
@@ -55,7 +55,7 @@ function NarratorLine({ msg, sessionId, onChanged }) {
   }
 
   return (
-    <div className="group px-4 sm:px-12 text-center">
+    <div className="group px-2 sm:px-8 text-center">
       {editing ? (
         <div className="text-left">
           <textarea
@@ -76,9 +76,9 @@ function NarratorLine({ msg, sessionId, onChanged }) {
         </div>
       ) : (
         <>
-          <p className="text-sm italic text-slate-400 leading-relaxed break-words">{msg.content}</p>
+          <p className="font-serif text-[15px] sm:text-base italic text-slate-500 leading-relaxed break-words">{msg.content}</p>
           {typeof msg.id === "number" && (
-            <span className="text-[11px] text-slate-600 inline-flex gap-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition">
+            <span className="text-xs text-slate-500 inline-flex gap-3 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition">
               <ListenButton sessionId={sessionId} messageId={msg.id} onError={setNote} />
               <button
                 onClick={() => {
@@ -104,7 +104,7 @@ function NarratorLine({ msg, sessionId, onChanged }) {
 function Turn({
   msg,
   charName,
-  charId,
+  showName,
   userName,
   streaming,
   sessionId,
@@ -116,7 +116,7 @@ function Turn({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(msg.content);
   const [note, setNote] = useState(null);
-  const [avatarFailed, setAvatarFailed] = useState(false);
+  const [showActions, setShowActions] = useState(false);
 
   const isUser = msg.role === "user";
   const name = isUser ? userName || "You" : charName || "Character";
@@ -163,157 +163,131 @@ function Turn({
     }
   }
 
-  return (
-    <div className={`group flex gap-3 ${isUser ? "flex-row-reverse" : ""}`}>
-      <div className="shrink-0">
-        {/* Falls back to initials rather than hiding, since a character written
-            by hand has no avatar and would otherwise leave a blank gap on every
-            one of its messages. */}
-        {!isUser && charId && !avatarFailed ? (
-          <img
-            src={api.avatarUrl(charId)}
-            alt={name}
-            className="w-9 h-9 rounded-full object-cover bg-ink-700"
-            onError={() => setAvatarFailed(true)}
-          />
-        ) : (
-          <div className="w-9 h-9 rounded-full bg-ink-700 grid place-items-center text-xs font-semibold text-slate-300">
-            {name.slice(0, 2).toUpperCase()}
-          </div>
-        )}
-      </div>
+  // Touch has no hover: a tap on the message brings its actions up.
+  const actions = editable && !editing && (
+    <div
+      className={`${showActions ? "flex" : "hidden"} md:flex md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition gap-3 mt-1.5 font-sans text-xs text-slate-500 ${
+        isUser ? "pl-4" : ""
+      }`}
+    >
+      {!isUser && <ListenButton sessionId={sessionId} messageId={msg.id} onError={setNote} />}
+      <button
+        onClick={() => {
+          setDraft(msg.content);
+          setEditing(true);
+        }}
+        className="hover:text-slate-300"
+      >
+        edit
+      </button>
+      <button
+        onClick={togglePin}
+        className="hover:text-slate-300"
+        title="Keep this message word for word in the character's memory"
+      >
+        {msg.pinned ? "unpin" : "pin"}
+      </button>
+      <button onClick={remove} className="hover:text-rose-400">
+        delete
+      </button>
+    </div>
+  );
 
-      <div className={`max-w-[85%] sm:max-w-[72%] min-w-0 ${isUser ? "text-right" : ""}`}>
-        <div className="text-xs text-slate-500 mb-1 flex items-center gap-2">
-          <span className={isUser ? "ml-auto" : ""}>{name}</span>
-          {msg.initiated && (
-            <span
-              className="text-[10px] px-1.5 rounded-full bg-ink-800 border border-ink-700 text-slate-400"
-              title="Sent on their own, without a message from you"
-            >
-              wrote first
-            </span>
-          )}
+  return (
+    <div className="group min-w-0" onClick={(e) => e.target.tagName !== "BUTTON" && setShowActions((v) => !v)}>
+      {(showName || msg.initiated || msg.pinned) && !isUser && (
+        <div className="mb-1 flex gap-2 items-baseline text-xs text-slate-500">
+          {showName && <span className="text-slate-300 font-medium">{name}</span>}
+          {msg.initiated && <span title="Sent on their own, without a message from you">wrote first</span>}
           {msg.pinned && (
-            <span
-              className="text-[10px] px-1.5 rounded-full bg-accent/15 border border-accent/30 text-accent/90"
-              title="Kept word for word in the prompt, even after the summary condenses it"
-            >
+            <span className="text-accent" title="Kept word for word in the prompt, even after the summary condenses it">
               pinned
             </span>
           )}
-          {/* Always visible on touch: there is no hover, so these were unreachable. */}
-          {editable && !editing && (
-            <span className="opacity-100 md:opacity-0 md:group-hover:opacity-100 flex gap-1.5 transition">
-              {!isUser && <ListenButton sessionId={sessionId} messageId={msg.id} onError={setNote} />}
-              <button
-                onClick={() => {
-                  setDraft(msg.content);
-                  setEditing(true);
-                }}
-                className="hover:text-slate-300"
-              >
-                edit
-              </button>
-              <button
-                onClick={togglePin}
-                className="hover:text-slate-300"
-                title="Keep this message word for word in the character's memory"
-              >
-                {msg.pinned ? "unpin" : "pin"}
-              </button>
-              <button onClick={remove} className="hover:text-rose-400">
-                delete
-              </button>
-            </span>
-          )}
         </div>
+      )}
 
-        {editing ? (
-          <div className="text-left">
-            <textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              rows={Math.min(12, Math.max(3, draft.split("\n").length + 1))}
-              autoFocus
-              className="w-full bg-ink-950 border border-ink-700 rounded-xl px-3 py-2.5 text-sm leading-relaxed outline-none focus:border-accent/60 resize-y"
-            />
-            <div className="flex gap-2 mt-1.5">
-              <button
-                onClick={save}
-                className="text-xs px-2.5 py-1 rounded-lg bg-accent/25 border border-accent/40 hover:bg-accent/35"
-              >
-                Save
-              </button>
-              <button
-                onClick={() => setEditing(false)}
-                className="text-xs px-2.5 py-1 rounded-lg border border-ink-700 hover:bg-ink-850"
-              >
-                Cancel
-              </button>
+      {editing ? (
+        <div onClick={(e) => e.stopPropagation()}>
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={Math.min(12, Math.max(3, draft.split("\n").length + 1))}
+            autoFocus
+            className="w-full bg-ink-850 border border-ink-700 rounded-lg px-3 py-2.5 text-[15px] leading-relaxed outline-none focus:border-accent/60 resize-y"
+          />
+          <div className="flex gap-2 mt-1.5">
+            <button onClick={save} className="text-xs px-3 py-1.5 rounded-lg bg-accent text-ink-950 font-medium">
+              Save
+            </button>
+            <button onClick={() => setEditing(false)} className="text-xs px-3 py-1.5 rounded-lg border border-ink-700 hover:bg-ink-850">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : msg.texted ? (
+        // Texting mode: one phone bubble per line, the way a thread looks.
+        <div className={`flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
+          {msg.content.split("\n").filter((l) => l.trim()).map((line, i, all) => (
+            <div
+              key={i}
+              className={`max-w-[85%] text-left px-3.5 py-2 text-[15px] leading-snug break-words ${
+                isUser
+                  ? "bg-accent text-ink-950 rounded-2xl rounded-br-md"
+                  : "bg-ink-800 text-slate-100 rounded-2xl rounded-bl-md"
+              } ${streaming && i === all.length - 1 ? "caret" : ""}`}
+            >
+              {line}
             </div>
-          </div>
-        ) : msg.texted ? (
-          // Texting mode: one phone bubble per line, the way a thread looks.
-          <div className={`flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
-            {msg.content.split("\n").filter((l) => l.trim()).map((line, i, all) => (
-              <div
-                key={i}
-                className={`max-w-full text-left px-3.5 py-2 text-[15px] leading-snug break-words ${
-                  isUser
-                    ? "bg-accent/80 text-ink-950 rounded-2xl rounded-br-md"
-                    : "bg-ink-800 text-slate-100 rounded-2xl rounded-bl-md"
-                } ${streaming && i === all.length - 1 ? "caret" : ""}`}
-              >
-                {line}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div
-            className={`inline-block max-w-full text-left rounded-2xl px-3.5 sm:px-4 py-2.5 whitespace-pre-wrap break-words leading-relaxed ${
-              isUser
-                ? "bg-accent/20 border border-accent/30"
-                : "bg-ink-850 border border-ink-700"
-            } ${streaming ? "caret" : ""}`}
+          ))}
+        </div>
+      ) : isUser ? (
+        // Yours is set apart by its type and colour, as a note in the margin of the story.
+        <div className="pl-4 text-[15px] leading-relaxed text-accent whitespace-pre-wrap break-words">
+          <RichText text={msg.content} tone="text-accent/80" />
+        </div>
+      ) : (
+        <div
+          className={`font-serif text-[18px] sm:text-[19px] leading-[1.62] text-slate-200 whitespace-pre-wrap break-words ${
+            streaming ? "caret" : ""
+          }`}
+        >
+          <RichText text={msg.content} />
+        </div>
+      )}
+
+      {swipeable && !isUser && !editing && (
+        <div className="flex items-center gap-1 mt-1 text-xs text-slate-500 font-sans">
+          <button
+            onClick={() => swipeTo(msg.swipe_index - 1)}
+            disabled={!msg.swipes || msg.swipe_index === 0}
+            className="w-8 h-8 hover:text-slate-300 disabled:opacity-30"
+            aria-label="Previous version"
           >
-            <RichText text={msg.content} />
-          </div>
-        )}
+            ‹
+          </button>
+          <span className="tabular-nums">
+            {(msg.swipe_index ?? 0) + 1}/{msg.swipes ?? 1}
+          </span>
+          {/* Past the newest version, the arrow writes another one. */}
+          <button
+            onClick={() =>
+              msg.swipe_index < (msg.swipes ?? 1) - 1
+                ? swipeTo(msg.swipe_index + 1)
+                : onRegenerate?.()
+            }
+            className="w-8 h-8 hover:text-slate-300"
+            aria-label="Next version"
+            title={msg.swipe_index < (msg.swipes ?? 1) - 1 ? "Next version" : "Write another version"}
+          >
+            ›
+          </button>
+        </div>
+      )}
 
-        {swipeable && !isUser && !editing && (
-          <div className="flex items-center gap-1 mt-1 text-xs text-slate-500">
-            <button
-              onClick={() => swipeTo(msg.swipe_index - 1)}
-              disabled={!msg.swipes || msg.swipe_index === 0}
-              className="px-1.5 hover:text-slate-300 disabled:opacity-30"
-              aria-label="Previous version"
-            >
-              ‹
-            </button>
-            <span className="tabular-nums">
-              {(msg.swipe_index ?? 0) + 1}/{msg.swipes ?? 1}
-            </span>
-            {/* Past the newest version, the arrow writes another one. */}
-            <button
-              onClick={() =>
-                msg.swipe_index < (msg.swipes ?? 1) - 1
-                  ? swipeTo(msg.swipe_index + 1)
-                  : onRegenerate?.()
-              }
-              className="px-1.5 hover:text-slate-300"
-              aria-label="Next version"
-              title={msg.swipe_index < (msg.swipes ?? 1) - 1 ? "Next version" : "Write another version"}
-            >
-              ›
-            </button>
-          </div>
-        )}
+      {actions}
 
-        {note && (
-          <div className="text-[11px] text-amber-400/80 mt-1 text-left">{note}</div>
-        )}
-      </div>
+      {note && <div className="text-xs text-amber-300 mt-1">{note}</div>}
     </div>
   );
 }

@@ -25,9 +25,11 @@ export default function ChatView({
   const [titleDraft, setTitleDraft] = useState("");
   // Group chats: who is writing the reply being streamed.
   const [streamSpeaker, setStreamSpeaker] = useState(null);
-  const [castOpen, setCastOpen] = useState(false);
+  // Below lg the scene panel slides over; from lg up it's always beside the story.
+  const [panelOpen, setPanelOpen] = useState(false);
   const abortRef = useRef(null);
   const lastRead = useRef(null);
+  const composerRef = useRef(null);
   const bottomRef = useRef(null);
 
   const reload = () =>
@@ -250,17 +252,24 @@ export default function ChatView({
     const el = scrollRef.current;
     if (el && stickRef.current) el.scrollTop = el.scrollHeight;
   }, [session?.messages?.length, streamText]);
+  // The box grows with what's typed, up to its max height.
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight + 2}px`;
+  }, [draft]);
   // A newly opened chat starts at its latest message.
   useEffect(() => {
     stickRef.current = true;
   }, [sessionId]);
 
-  const [menuOpen, setMenuOpen] = useState(false);
-
   // Choose your own adventure: asked for once the reply is in, so it never holds one up,
   // and dropped if the chat has moved on by the time they arrive.
   const [choices, setChoices] = useState([]);
   const [choosing, setChoosing] = useState(false);
+  // Three long options can take a third of a phone screen. Hidden until the next reply.
+  const [choicesHidden, setChoicesHidden] = useState(false);
   const lastMessage = session?.messages?.[session.messages.length - 1];
   const choiceKey =
     session?.choice_mode && !busy && lastMessage && lastMessage.role !== "user"
@@ -281,6 +290,7 @@ export default function ChatView({
     }
   }
   useEffect(() => {
+    setChoicesHidden(false);
     if (choiceKey) {
       fetchChoices(false);
     } else {
@@ -295,7 +305,6 @@ export default function ChatView({
   const cast = session?.cast || [];
   const isGroup = cast.length > 1;
   const writerName = streamSpeaker?.name || charName;
-  const writerId = streamSpeaker?.id || session?.character_id;
 
   async function setMembers(ids) {
     try {
@@ -432,560 +441,530 @@ export default function ChatView({
 
   if (!sessionId)
     return (
-      <div className="flex-1 grid place-items-center text-slate-600 p-6">
+      <div className="flex-1 grid place-items-center text-slate-500 p-6">
         <div className="text-center">
-          <p className="text-sm">Pick a character to start a chat.</p>
-          <p className="text-xs mt-1">Import a SillyTavern V2 card if the list is empty.</p>
+          <p className="font-serif text-xl text-slate-300">Pick up a story, or start a new one.</p>
+          <p className="text-sm mt-2">Your chats and characters are in the sidebar.</p>
           {/* Without this there is no way to reach the drawer on a phone when
               no chat is open -- the header that normally holds it is not rendered. */}
           <button
             onClick={onOpenNav}
-            className="md:hidden mt-4 text-sm px-4 py-2 rounded-lg border border-ink-700 hover:bg-ink-850"
+            className="md:hidden mt-4 text-sm min-h-[44px] px-4 rounded-lg border border-ink-700 hover:bg-ink-850"
           >
-            Browse characters
+            Open chats and people
           </button>
         </div>
       </div>
     );
 
+  const scene = session?.scene;
+  const sceneLine = scene
+    ? [scene.location, scene.time, scene.weather]
+        .filter((v) => v && v !== "unknown" && v.toLowerCase() !== "indoors")
+        .join(" · ")
+    : "";
+
   return (
-    <div className="flex-1 flex flex-col min-w-0">
-      <header className="px-3 sm:px-5 py-3 border-b border-ink-800 flex items-center gap-2 sm:gap-3 relative">
-        {/* The sidebar is off-canvas below md, so this is the only way back to
-            the chat list on a phone. */}
-        <button
-          onClick={onOpenNav}
-          aria-label="Open menu"
-          className="md:hidden -ml-1 mr-1 p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-ink-850 shrink-0"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <path d="M3 6h18M3 12h18M3 18h18" />
-          </svg>
-        </button>
-        <div className="min-w-0 flex-1">
-          {renaming ? (
-            <input
-              value={titleDraft}
-              onChange={(e) => setTitleDraft(e.target.value)}
-              onBlur={saveTitle}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") saveTitle();
-                if (e.key === "Escape") setRenaming(false);
-              }}
-              autoFocus
-              className="bg-ink-950 border border-ink-700 rounded px-2 py-0.5 text-sm outline-none focus:border-accent/60"
+    <div className="flex-1 flex min-w-0">
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Just who and where. Everything else about the chat lives in the scene panel. */}
+        <header className="flex items-center gap-1 px-2 py-2 border-b border-ink-800 lg:justify-center">
+          {/* The sidebar is off-canvas below md, so this is the only way back to
+              the chat list on a phone. */}
+          <IconButton label="Open chats" onClick={onOpenNav} className="md:hidden">
+            <path d="M4 7h16M4 12h16M4 17h16" />
+          </IconButton>
+          <div className="flex-1 min-w-0 text-center py-1">
+            <div className="font-serif text-[17px] font-semibold truncate">
+              {cast.length > 1 ? cast.map((c) => c.name).join(" & ") : charName ?? "…"}
+            </div>
+            {sceneLine && <div className="text-xs text-slate-500 truncate">{sceneLine}</div>}
+          </div>
+          <IconButton label="Scene options" onClick={() => setPanelOpen(true)} className="lg:hidden">
+            <path d="M4 8h10M18 8h2M4 16h2M10 16h10" />
+            <circle cx="16" cy="8" r="2" />
+            <circle cx="8" cy="16" r="2" />
+          </IconButton>
+        </header>
+
+        <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto overflow-x-hidden scroll-thin">
+          <div className="max-w-[640px] mx-auto px-6 sm:px-8 py-6 sm:py-10 space-y-5">
+            {session?.messages?.map((m, i) => (
+              <Message
+                key={m.id}
+                msg={m}
+                swipeable={!busy && i === session.messages.length - 1 && typeof m.id === "number"}
+                onRegenerate={regenerate}
+                charName={m.speaker_name || charName}
+                showName={isGroup}
+                userName={userName}
+                sessionId={sessionId}
+                onChanged={() => {
+                  reload();
+                  onDirty?.();
+                }}
+              />
+            ))}
+
+            {streamText && (
+              <Message
+                msg={{ role: "assistant", content: streamText, texted: session?.mode === "texting" }}
+                charName={writerName}
+                showName={isGroup}
+                userName={userName}
+                streaming
+              />
+            )}
+
+            {busy && !streamText && (
+              <p className="text-sm text-slate-500">
+                {writerName} is {session?.mode === "texting" ? "typing" : "writing"}…
+              </p>
+            )}
+
+            {session?.suspended && (
+              <p className="text-xs text-center text-slate-500" title="Settings → Characters writing first">
+                {charName} sent {session.unanswered} messages without a reply and is waiting for you
+              </p>
+            )}
+
+            {guardRemoved > 0 && !busy && (
+              <p className="text-xs text-center text-slate-500" title="Settings → Keep the character from acting for you">
+                removed {guardRemoved} {guardRemoved === 1 ? "line" : "lines"} that acted for you
+              </p>
+            )}
+
+            {memoryState && (
+              <p className="text-center">
+                <button onClick={onOpenMemory} className="text-xs text-slate-500 hover:text-slate-300" title="Open memory panel">
+                  {memoryState.kind === "busy" && "condensing earlier turns into memory…"}
+                  {memoryState.kind === "done" &&
+                    `memory updated: ${memoryState.folded} earlier messages condensed`}
+                  {memoryState.kind === "failed" &&
+                    `memory update failed, chat unaffected: ${memoryState.message}`}
+                  {memoryState.kind === "recalled" &&
+                    `recalled ${memoryState.recalled} earlier ${
+                      memoryState.recalled === 1 ? "moment" : "moments"
+                    }`}
+                  {memoryState.kind === "recall_failed" &&
+                    `recall unavailable, chat unaffected: ${memoryState.message}`}
+                </button>
+              </p>
+            )}
+
+            {error && (
+              <div className="text-sm text-rose-300 border-l-2 border-rose-400 pl-3 py-1">{error}</div>
+            )}
+
+            <div ref={bottomRef} />
+          </div>
+        </div>
+
+        <div className="border-t border-ink-800">
+          <div className="max-w-[640px] mx-auto px-3 sm:px-8 pt-1 pb-3 sm:pb-5">
+            {session?.choice_mode && !busy && (choosing || choices.length > 0) && (
+              <div className="mb-2 text-sm">
+                {choosing && <p className="text-xs text-slate-500 py-2">Thinking of choices…</p>}
+                {!choicesHidden && choices.map((c, i) => (
+                  <button
+                    key={i}
+                    onClick={() => send(undefined, c)}
+                    className={`block w-full min-h-[44px] text-left px-1 py-2 text-slate-200 hover:text-accent break-words ${
+                      i ? "border-t border-ink-800" : ""
+                    }`}
+                  >
+                    {c.replace(/\*/g, "")}
+                  </button>
+                ))}
+                {!choosing && (
+                  <div className="flex gap-4 px-1 text-xs text-slate-500">
+                    {!choicesHidden && (
+                      <button onClick={() => fetchChoices(true)} className="py-1 hover:text-slate-300">
+                        other choices
+                      </button>
+                    )}
+                    <button onClick={() => setChoicesHidden((h) => !h)} className="py-1 hover:text-slate-300">
+                      {choicesHidden ? "show choices" : "hide"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            {arrivals === "list" && (
+              <div className="py-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+                <span className="text-xs text-slate-500">Who arrives?</span>
+                {characters
+                  .filter((c) => c.world_id === session?.world_id && !cast.some((m) => m.id === c.id))
+                  .sort((a, b) => Number(b.extra) - Number(a.extra))
+                  .map((c) => (
+                    <button key={c.id} onClick={() => bringIn(c)} className="text-slate-200 hover:text-accent">
+                      {c.name}
+                    </button>
+                  ))}
+                <button onClick={() => setArrivals("new")} className="text-accent hover:underline">
+                  someone new
+                </button>
+                <button onClick={() => setArrivals(null)} className="ml-auto text-xs text-slate-500 hover:text-slate-300">
+                  close
+                </button>
+              </div>
+            )}
+            {arrivals === "new" && (
+              <div className="my-2 max-h-[60vh] overflow-y-auto scroll-thin border border-ink-800 rounded-lg p-3">
+                <PersonDrafter
+                  worldId={session?.world_id}
+                  inChat
+                  onKept={(person, how) => {
+                    onDirty?.();
+                    if (how === "guest") bringIn(person);
+                    else setArrivals(null);
+                  }}
+                  onCancel={() => setArrivals(null)}
+                />
+              </div>
+            )}
+            {isGroup && (
+              <div className="py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                <span className="text-xs text-slate-500">{draft.trim() ? "Send to" : "Have speak"}</span>
+                {cast.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => send(c.id)}
+                    disabled={busy}
+                    className="min-h-[32px] text-slate-200 hover:text-accent disabled:opacity-40"
+                  >
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-1.5 items-end pt-2">
+              <textarea
+                ref={composerRef}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
+                rows={1}
+                aria-label="Your turn"
+                placeholder={session?.mode === "texting" ? `Text ${charName || "them"}…` : "Your turn…"}
+                title="Enter to send, Shift+Enter for a new line"
+                className="flex-1 min-w-0 min-h-[44px] max-h-40 resize-none bg-ink-850 border border-ink-700 rounded-lg px-3 py-2.5 text-[15px] leading-snug outline-none focus:border-accent/60 placeholder:text-slate-500"
+              />
+              <button
+                onClick={() => (mic === "recording" ? recorder.current?.stop() : startListening())}
+                disabled={mic === "hearing"}
+                title={mic === "recording" ? "Stop and turn this into text" : "Speak instead of typing"}
+                aria-label={mic === "recording" ? "Stop recording" : "Speak instead of typing"}
+                className={`w-11 h-11 shrink-0 grid place-items-center rounded-lg disabled:opacity-40 ${
+                  mic === "recording" ? "bg-rose-500/25 text-rose-200" : "text-slate-400 hover:text-slate-200 hover:bg-ink-850"
+                }`}
+              >
+                {mic === "hearing" ? (
+                  <span aria-hidden="true">…</span>
+                ) : (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                    <rect x="9" y="3" width="6" height="12" rx="3" />
+                    <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+                  </svg>
+                )}
+              </button>
+              {busy ? (
+                <button
+                  onClick={stop}
+                  aria-label="Stop writing"
+                  title="Stop"
+                  className="w-11 h-11 shrink-0 grid place-items-center rounded-lg border border-ink-700 text-slate-200 hover:bg-ink-850"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <rect x="5" y="5" width="14" height="14" rx="2" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  onClick={() => send()}
+                  disabled={!draft.trim()}
+                  aria-label="Send"
+                  title="Send"
+                  className="w-11 h-11 shrink-0 grid place-items-center rounded-lg bg-accent text-ink-950 disabled:opacity-40"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                    <path d="M5 12h14M13 6l6 6-6 6" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {panelOpen && (
+        <div className="lg:hidden fixed inset-0 z-30 bg-black/60" onClick={() => setPanelOpen(false)} aria-hidden="true" />
+      )}
+      <aside
+        aria-label="Scene"
+        className={`bg-ink-950 border-l border-ink-800 w-72 lg:w-64 shrink-0 overflow-y-auto scroll-thin
+          fixed inset-y-0 right-0 z-40 transition-transform duration-200
+          ${panelOpen ? "translate-x-0" : "translate-x-full"}
+          lg:static lg:translate-x-0 lg:z-auto`}
+      >
+        <div className="p-5 space-y-5 text-sm">
+          <div className="flex items-start gap-2">
+            <div className="flex-1 min-w-0">
+              {renaming ? (
+                <input
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onBlur={saveTitle}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveTitle();
+                    if (e.key === "Escape") setRenaming(false);
+                  }}
+                  autoFocus
+                  aria-label="Chat title"
+                  className="w-full bg-ink-850 border border-ink-700 rounded px-2 py-1 outline-none focus:border-accent/60"
+                />
+              ) : (
+                <button
+                  onClick={() => {
+                    setTitleDraft(session?.title || "");
+                    setRenaming(true);
+                  }}
+                  title="Rename chat"
+                  className="font-serif text-[17px] font-semibold text-left hover:text-accent break-words max-w-full"
+                >
+                  {session?.title ?? "…"}
+                </button>
+              )}
+            </div>
+            <IconButton label="Close scene options" onClick={() => setPanelOpen(false)} className="lg:hidden -mt-2 -mr-2">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </IconButton>
+          </div>
+
+          {scene && (
+            <SceneDetails
+              scene={scene}
+              sessionId={sessionId}
+              onSaved={(s) => setSession((old) => ({ ...old, scene: s }))}
             />
-          ) : (
-            <button
-              onClick={() => {
-                setTitleDraft(session?.title || "");
-                setRenaming(true);
-              }}
-              title="Rename chat"
-              className="font-medium truncate max-w-full block hover:text-accent transition text-left"
-            >
-              {session?.title ?? "…"}
-            </button>
           )}
-          <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-1 gap-y-1 mt-0.5">
-            as
-            <select
-              value={session?.persona_id ?? ""}
-              onChange={(e) => swapPersona(e.target.value)}
-              title="Change who you're playing"
-              className="bg-transparent outline-none hover:text-slate-300 cursor-pointer -ml-0.5"
-            >
-              <option value="">You</option>
-              {personas.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-            <span className="text-slate-700">·</span>
+
+          <PanelSection>
+            {(session?.mode || "story") === "story" && (
+              <Toggle
+                label="Narrator"
+                hint="A short line about the world now and then"
+                checked={!!session?.narrator}
+                onChange={setNarrator}
+              />
+            )}
+            <Toggle
+              label="Choices"
+              hint="Three things you could do next, above the type box"
+              checked={!!session?.choice_mode}
+              onChange={setChoiceMode}
+            />
+            <Toggle label="Read aloud" hint="Each new reply, on this device" checked={readAloud} onChange={chooseReadAloud} />
+            <Toggle
+              label="Writes first"
+              hint={
+                session?.autonomous
+                  ? session.waiting_because
+                    ? `On. Not writing yet: ${session.waiting_because}.`
+                    : "On. May write at the next check."
+                  : `${charName || "They"} may message you on their own`
+              }
+              checked={!!session?.autonomous}
+              onChange={setAutonomous}
+            />
+            {session?.autonomous && (
+              <button onClick={messageMeNow} disabled={busy || nudging} className="block text-accent hover:underline disabled:opacity-40">
+                {nudging ? "Writing…" : "Message me now"}
+              </button>
+            )}
+          </PanelSection>
+
+          <PanelSection>
             {/* Story or texting (app/chat/texting.py): the same chat, as prose or as a
                 text thread. The character is told about the switch on the next reply. */}
-            <span className="inline-flex rounded-md border border-ink-700 overflow-hidden" role="group">
+            <div className="flex rounded-lg border border-ink-700 overflow-hidden" role="group" aria-label="Chat style">
               {["story", "texting"].map((m) => (
                 <button
                   key={m}
                   onClick={() => (session?.mode || "story") !== m && setMode(m)}
                   disabled={busy}
-                  className={`px-1.5 ${
-                    (session?.mode || "story") === m ? "bg-ink-700 text-slate-200" : "hover:text-slate-300"
+                  aria-pressed={(session?.mode || "story") === m}
+                  className={`flex-1 min-h-[38px] capitalize ${
+                    (session?.mode || "story") === m ? "bg-ink-800 text-slate-100" : "text-slate-400 hover:text-slate-200"
                   }`}
-                  title={m === "texting" ? "Text each other, like on your phones" : "Scenes in prose"}
                 >
                   {m}
                 </button>
               ))}
-            </span>
-            <span className="text-slate-700">·</span>
-            <label
-              className="flex items-center gap-1 cursor-pointer hover:text-slate-300"
-              title={
-                session?.autonomous
-                  ? session.waiting_because
-                    ? `On. Not writing yet: ${session.waiting_because}.`
-                    : "On. May write at the next check."
-                  : `Let ${charName || "the character"} send messages on their own, with a notification`
-              }
-            >
-              <input
-                type="checkbox"
-                checked={!!session?.autonomous}
-                onChange={(e) => setAutonomous(e.target.checked)}
-                className="accent-accent w-3 h-3"
-              />
-              writes first
+            </div>
+            <label className="block text-xs text-slate-500">
+              Playing as
+              <select
+                value={session?.persona_id ?? ""}
+                onChange={(e) => swapPersona(e.target.value)}
+                className="mt-1 w-full bg-ink-850 border border-ink-700 rounded-lg px-2 py-2 text-sm text-slate-200 outline-none focus:border-accent/60"
+              >
+                <option value="">You</option>
+                {personas.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
             </label>
-            {session?.autonomous && (
-              <button
-                onClick={messageMeNow}
-                disabled={busy || nudging}
-                className="hover:text-slate-300 disabled:opacity-40"
-                title="Have them write to you now, skipping the waiting"
-              >
-                {nudging ? "writing…" : "· message me now"}
-              </button>
-            )}
+          </PanelSection>
+
+          <PanelSection>
             {(session?.mode || "story") === "story" && (
-              <>
-                <span className="text-slate-700">·</span>
-                <label
-                  className="flex items-center gap-1 cursor-pointer hover:text-slate-300"
-                  title="Now and then, a short line about the world around the scene"
-                >
-                  <input
-                    type="checkbox"
-                    checked={!!session?.narrator}
-                    onChange={(e) => setNarrator(e.target.checked)}
-                    className="accent-accent w-3 h-3"
-                  />
-                  narrator
-                </label>
-                <label
-                  className="flex items-center gap-1 cursor-pointer hover:text-slate-300"
-                  title="Read each new reply aloud, on this device"
-                >
-                  <input
-                    type="checkbox"
-                    checked={readAloud}
-                    onChange={(e) => chooseReadAloud(e.target.checked)}
-                    className="accent-accent w-3 h-3"
-                  />
-                  read aloud
-                </label>
-                <label
-                  className="flex items-center gap-1 cursor-pointer hover:text-slate-300"
-                  title="Choose your own adventure: three things you could do next, above the type box"
-                >
-                  <input
-                    type="checkbox"
-                    checked={!!session?.choice_mode}
-                    onChange={(e) => setChoiceMode(e.target.checked)}
-                    className="accent-accent w-3 h-3"
-                  />
-                  choices
-                </label>
-                <button
-                  onClick={somethingHappens}
-                  disabled={busy || narrating}
-                  className="hover:text-slate-300 disabled:opacity-40"
-                  title="The narrator brings in something small, and they respond to it"
-                >
-                  {narrating ? "· thinking…" : "· something happens"}
-                </button>
-                {session?.world_id && (
-                  <button
-                    onClick={() => setArrivals(arrivals ? null : "list")}
-                    disabled={busy || arriving}
-                    className="hover:text-slate-300 disabled:opacity-40"
-                    title="Someone from this world joins the scene"
-                  >
-                    {arriving ? "· on their way…" : "· someone arrives"}
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-        {/* Phones: the four actions don't fit beside the title, so they fold
-            into a menu. Wider screens keep them as buttons. */}
-        <div className="sm:hidden shrink-0 self-start">
-          <button
-            onClick={() => setMenuOpen((o) => !o)}
-            aria-label="Chat actions"
-            className="px-2.5 py-1.5 rounded-lg border border-ink-700 text-slate-300 hover:bg-ink-850"
-          >
-            ⋯
-          </button>
-          {menuOpen && (
-            <>
-              <div className="fixed inset-0 z-20" onClick={() => setMenuOpen(false)} />
-              <div className="absolute right-3 top-full mt-1 z-30 w-44 rounded-lg border border-ink-700 bg-ink-900 shadow-xl py-1 text-sm">
-                {/* Written out rather than mapped over an array of handlers: the
-                    hooks linter reads a handler held in a render-time array as a
-                    ref access, since regenerate closes over one. */}
-                <button
-                  disabled={busy}
-                  onClick={() => { setMenuOpen(false); regenerate(); }}
-                  className="block w-full text-left px-3 py-2 hover:bg-ink-850 disabled:opacity-40"
-                >
-                  Regenerate
-                </button>
-                <button
-                  onClick={() => { setMenuOpen(false); onOpenMemory?.(); }}
-                  className="block w-full text-left px-3 py-2 hover:bg-ink-850"
-                >
-                  Memory
-                </button>
-                <button
-                  onClick={() => { setMenuOpen(false); onOpenJournal?.(); }}
-                  className="block w-full text-left px-3 py-2 hover:bg-ink-850"
-                >
-                  Journal
-                </button>
-                <button
-                  onClick={() => { setMenuOpen(false); exportChat(); }}
-                  className="block w-full text-left px-3 py-2 hover:bg-ink-850"
-                >
-                  Export chat
-                </button>
-                <button
-                  onClick={() => { setMenuOpen(false); onOpenSettings?.(); }}
-                  className="block w-full text-left px-3 py-2 hover:bg-ink-850"
-                >
-                  Settings
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-        <div className="ml-auto hidden sm:flex items-center gap-2 shrink-0">
-          <button
-            onClick={regenerate}
-            disabled={busy}
-            className="text-xs sm:text-sm px-2 sm:px-3 py-1.5 rounded-lg border border-ink-700 hover:bg-ink-850 disabled:opacity-40"
-          >
-            Regenerate
-          </button>
-          <button
-            onClick={onOpenMemory}
-            className="text-xs sm:text-sm px-2 sm:px-3 py-1.5 rounded-lg border border-ink-700 hover:bg-ink-850"
-          >
-            Memory
-          </button>
-          <button
-            onClick={onOpenJournal}
-            title="What the character privately thinks -- never shown in the chat"
-            className="text-xs sm:text-sm px-2 sm:px-3 py-1.5 rounded-lg border border-ink-700 hover:bg-ink-850"
-          >
-            Journal
-          </button>
-          <button
-            onClick={exportChat}
-            title="Save this chat as a file, to keep or import on another install"
-            className="text-xs sm:text-sm px-2 sm:px-3 py-1.5 rounded-lg border border-ink-700 hover:bg-ink-850"
-          >
-            Export
-          </button>
-          <button
-            onClick={onOpenSettings}
-            className="text-xs sm:text-sm px-2 sm:px-3 py-1.5 rounded-lg border border-ink-700 hover:bg-ink-850"
-          >
-            Settings
-          </button>
-        </div>
-      </header>
-
-      {session?.scene && (
-        <SceneBar
-          scene={session.scene}
-          sessionId={sessionId}
-          onSaved={(scene) => setSession((s) => ({ ...s, scene }))}
-        />
-      )}
-
-      <div
-        ref={scrollRef}
-        onScroll={onScroll}
-        className="flex-1 overflow-y-auto overflow-x-hidden scroll-thin px-3 sm:px-5 py-6 space-y-5"
-      >
-        {session?.messages?.map((m, i) => (
-          <Message
-            key={m.id}
-            msg={m}
-            swipeable={!busy && i === session.messages.length - 1 && typeof m.id === "number"}
-            onRegenerate={regenerate}
-            charName={m.speaker_name || charName}
-            charId={m.speaker_id || session.character_id}
-            userName={userName}
-            sessionId={sessionId}
-            onChanged={() => {
-              reload();
-              onDirty?.();
-            }}
-          />
-        ))}
-
-        {streamText && (
-          <Message
-            msg={{ role: "assistant", content: streamText, texted: session?.mode === "texting" }}
-            charName={writerName}
-            charId={writerId}
-            userName={userName}
-            streaming
-          />
-        )}
-
-        {busy && !streamText && (
-          <div className="text-xs text-slate-600 pl-12">
-            {writerName} is {session?.mode === "texting" ? "typing" : "writing"}…
-          </div>
-        )}
-
-        {session?.suspended && (
-          <div className="flex justify-center">
-            <span
-              className="text-[11px] px-3 py-1 rounded-full border border-ink-700 bg-ink-900 text-slate-500"
-              title="Settings → Characters writing first"
-            >
-              {charName} sent {session.unanswered} messages without a reply and is waiting for you
-            </span>
-          </div>
-        )}
-
-        {guardRemoved > 0 && !busy && (
-          <div className="flex justify-center">
-            <span
-              className="text-[11px] px-3 py-1 rounded-full border border-ink-700 bg-ink-900 text-slate-500"
-              title="Settings → Keep the character from acting for you"
-            >
-              removed {guardRemoved} {guardRemoved === 1 ? "line" : "lines"} that acted for you
-            </span>
-          </div>
-        )}
-
-        {memoryState && (
-          <div className="flex justify-center">
-            <button
-              onClick={onOpenMemory}
-              className="text-[11px] px-3 py-1 rounded-full border border-ink-700 bg-ink-900 text-slate-500 hover:text-slate-300 hover:border-ink-700"
-              title="Open memory panel"
-            >
-              {memoryState.kind === "busy" && "⋯ condensing earlier turns into memory"}
-              {memoryState.kind === "done" &&
-                `memory updated — ${memoryState.folded} earlier messages condensed`}
-              {memoryState.kind === "failed" &&
-                `memory update failed (chat unaffected) — ${memoryState.message}`}
-              {memoryState.kind === "recalled" &&
-                `recalled ${memoryState.recalled} earlier ${
-                  memoryState.recalled === 1 ? "moment" : "moments"
-                }`}
-              {memoryState.kind === "recall_failed" &&
-                `vector recall unavailable (chat unaffected) — ${memoryState.message}`}
-            </button>
-          </div>
-        )}
-
-        {error && (
-          <div className="text-sm text-rose-400 bg-rose-950/30 border border-rose-900/50 rounded-lg px-3 py-2">
-            {error}
-          </div>
-        )}
-
-        <div ref={bottomRef} />
-      </div>
-
-      <div className="border-t border-ink-800 p-4">
-        {session?.choice_mode && !busy && (choosing || choices.length > 0) && (
-          <div className="mb-2 space-y-1.5">
-            {choosing && <p className="text-[11px] text-slate-500">Thinking of choices…</p>}
-            {choices.map((c, i) => (
-              <button
-                key={i}
-                onClick={() => send(undefined, c)}
-                className="block w-full text-left text-sm rounded-xl border border-ink-700 px-3 py-2 hover:border-accent/50 hover:bg-accent/10 break-words"
+              <PanelLink
+                disabled={busy || narrating}
+                title="The narrator brings in something small, and they respond to it"
+                onClick={() => {
+                  setPanelOpen(false);
+                  somethingHappens();
+                }}
               >
-                {c.replace(/\*/g, "")}
-              </button>
-            ))}
-            {!choosing && (
-              <button onClick={() => fetchChoices(true)} className="text-[11px] text-slate-500 hover:text-slate-300">
-                other choices
-              </button>
+                {narrating ? "Thinking…" : "Something happens"}
+              </PanelLink>
             )}
-          </div>
-        )}
-        {arrivals === "list" && (
-          <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
-            <span>Who arrives?</span>
-            {characters
-              .filter(
-                (c) =>
-                  c.world_id === session?.world_id &&
-                  !cast.some((m) => m.id === c.id)
-              )
-              .sort((a, b) => Number(b.extra) - Number(a.extra))
-              .map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => bringIn(c)}
-                  className="px-2.5 py-1 rounded-full border border-ink-700 text-slate-300 hover:border-accent/50 hover:bg-accent/10"
-                >
-                  {c.name}
-                </button>
-              ))}
-            <button
-              onClick={() => setArrivals("new")}
-              className="px-2.5 py-1 rounded-full border border-accent/40 text-slate-200 hover:bg-accent/10"
-            >
-              someone new
-            </button>
-            <button onClick={() => setArrivals(null)} className="ml-auto hover:text-slate-300">close</button>
-          </div>
-        )}
-        {arrivals === "new" && (
-          <div className="mb-2 max-h-[60vh] overflow-y-auto scroll-thin border border-ink-800 rounded-lg p-3 bg-ink-900/40">
-            <PersonDrafter
-              worldId={session?.world_id}
-              inChat
-              onKept={(person, how) => {
-                onDirty?.();
-                if (how === "guest") bringIn(person);
-                else setArrivals(null);
+            {(session?.mode || "story") === "story" && session?.world_id && (
+              <PanelLink
+                disabled={busy || arriving}
+                title="Someone from this world joins the scene"
+                onClick={() => {
+                  setPanelOpen(false);
+                  setArrivals(arrivals ? null : "list");
+                }}
+              >
+                {arriving ? "On their way…" : "Someone arrives"}
+              </PanelLink>
+            )}
+            <PanelLink
+              disabled={busy}
+              onClick={() => {
+                setPanelOpen(false);
+                regenerate();
               }}
-              onCancel={() => setArrivals(null)}
-            />
-          </div>
-        )}
-        {(isGroup || castOpen) && (
-          <CastBar
-            cast={cast}
-            characters={characters}
-            ownerId={session?.character_id}
-            busy={busy}
-            hasDraft={!!draft.trim()}
-            open={castOpen}
-            setOpen={setCastOpen}
-            onAnswer={send}
-            onMembers={setMembers}
-          />
-        )}
-        <div className="flex gap-2 items-end">
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                send();
-              }
-            }}
-            rows={2}
-            placeholder={
-              session?.mode === "texting"
-                ? `Text ${charName || "them"}…`
-                : "Write your turn…  (Enter to send, Shift+Enter for a new line)"
-            }
-            className="flex-1 resize-none bg-ink-900 border border-ink-700 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/60 placeholder:text-slate-600"
-          />
-          {!isGroup && !castOpen && characters.length > 1 && (
-            <button
-              onClick={() => setCastOpen(true)}
-              title="Bring more characters into this scene"
-              className="px-3 py-2.5 rounded-xl border border-ink-700 text-sm text-slate-400 hover:bg-ink-850"
             >
-              +
-            </button>
-          )}
-          <button
-            onClick={() => (mic === "recording" ? recorder.current?.stop() : startListening())}
-            disabled={mic === "hearing"}
-            title={mic === "recording" ? "Stop and turn this into text" : "Speak instead of typing"}
-            aria-label={mic === "recording" ? "Stop recording" : "Speak instead of typing"}
-            className={`px-3 py-2.5 rounded-xl border text-sm disabled:opacity-40 ${
-              mic === "recording"
-                ? "border-rose-500/60 bg-rose-500/20 text-rose-200"
-                : "border-ink-700 text-slate-400 hover:bg-ink-850"
-            }`}
-          >
-            {mic === "recording" ? "Stop" : mic === "hearing" ? "…" : "Mic"}
-          </button>
-          {busy ? (
-            <button
-              onClick={stop}
-              className="px-4 py-2.5 rounded-xl border border-ink-700 text-sm hover:bg-ink-850"
+              Regenerate
+            </PanelLink>
+          </PanelSection>
+
+          <PanelSection>
+            <PanelLink
+              onClick={() => {
+                setPanelOpen(false);
+                onOpenMemory?.();
+              }}
             >
-              Stop
-            </button>
-          ) : (
-            <button
-              onClick={() => send()}
-              disabled={!draft.trim()}
-              className="px-4 py-2.5 rounded-xl bg-accent/25 border border-accent/40 text-sm hover:bg-accent/35 disabled:opacity-40"
+              Memory
+            </PanelLink>
+            <PanelLink
+              title="What the character privately thinks, never shown in the chat"
+              onClick={() => {
+                setPanelOpen(false);
+                onOpenJournal?.();
+              }}
             >
-              Send
-            </button>
-          )}
+              Journal
+            </PanelLink>
+            <PanelLink title="Save this chat as a file, to keep or import on another install" onClick={exportChat}>
+              Export
+            </PanelLink>
+            <PanelLink
+              onClick={() => {
+                setPanelOpen(false);
+                onOpenSettings?.();
+              }}
+            >
+              Settings
+            </PanelLink>
+          </PanelSection>
+
+          <PanelSection title="In the scene">
+            <div className="flex flex-wrap gap-1.5 text-xs">
+              {characters
+                .filter((c) => c.id !== session?.character_id && (!c.extra || cast.some((m) => m.id === c.id)))
+                .map((c) => {
+                  const here = cast.some((m) => m.id === c.id);
+                  const others = cast.filter((m) => m.id !== session?.character_id).map((m) => m.id);
+                  return (
+                    <button
+                      key={c.id}
+                      aria-pressed={here}
+                      onClick={() => setMembers(here ? others.filter((id) => id !== c.id) : [...others, c.id])}
+                      className={`px-2.5 py-1.5 rounded-md border ${
+                        here ? "border-accent/60 text-accent" : "border-ink-700 text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      {c.name}
+                    </button>
+                  );
+                })}
+            </div>
+          </PanelSection>
         </div>
-      </div>
+      </aside>
     </div>
   );
 }
 
-/**
- * Group chats: who is in the scene, and who answers next. A name button sends
- * the draft to that character, or with nothing typed has them speak next --
- * one character answering another. Send on its own lets the server choose:
- * whoever the message names, else whoever has waited longest.
- */
-function CastBar({ cast, characters, ownerId, busy, hasDraft, open, setOpen, onAnswer, onMembers }) {
-  const memberIds = cast.filter((c) => c.id !== ownerId).map((c) => c.id);
-  const toggle = (id) =>
-    onMembers(memberIds.includes(id) ? memberIds.filter((m) => m !== id) : [...memberIds, id]);
-
+function IconButton({ label, onClick, className = "", children }) {
   return (
-    <div className="mb-2 text-[11px] text-slate-500">
-      <div className="flex flex-wrap items-center gap-1.5">
-        {cast.length > 1 && <span>{hasDraft ? "Send to" : "Have speak"}</span>}
-        {cast.length > 1 &&
-          cast.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => onAnswer(c.id)}
-              disabled={busy}
-              className="px-2.5 py-1 rounded-full border border-ink-700 text-slate-300 hover:border-accent/50 hover:bg-accent/10 disabled:opacity-40"
-            >
-              {c.name}
-            </button>
-          ))}
-        <button onClick={() => setOpen(!open)} className="ml-auto hover:text-slate-300">
-          {open ? "done" : "cast"}
-        </button>
-      </div>
-      {open && (
-        <div className="flex flex-wrap items-center gap-1.5 mt-2">
-          <span>In the scene</span>
-          {characters
-            .filter((c) => c.id !== ownerId && (!c.extra || memberIds.includes(c.id)))
-            .map((c) => (
-              <button
-                key={c.id}
-                onClick={() => toggle(c.id)}
-                className={`px-2.5 py-1 rounded-full border transition ${
-                  memberIds.includes(c.id)
-                    ? "border-accent/50 bg-accent/10 text-slate-200"
-                    : "border-ink-800 hover:border-ink-700"
-                }`}
-              >
-                {c.name}
-              </button>
-            ))}
-        </div>
-      )}
+    <button
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={`w-11 h-11 shrink-0 grid place-items-center rounded-lg text-slate-400 hover:text-slate-200 ${className}`}
+    >
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+        {children}
+      </svg>
+    </button>
+  );
+}
+
+function PanelSection({ title, children }) {
+  return (
+    <div className="border-t border-ink-800 pt-4 space-y-3">
+      {title && <div className="text-xs text-slate-500">{title}</div>}
+      {children}
     </div>
+  );
+}
+
+function PanelLink({ children, ...props }) {
+  return (
+    <button {...props} className="block w-full min-h-[28px] text-left text-slate-300 hover:text-accent disabled:opacity-40">
+      {children}
+    </button>
+  );
+}
+
+function Toggle({ label, hint, checked, onChange }) {
+  return (
+    <label className="flex gap-2.5 items-start cursor-pointer">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="accent-accent w-4 h-4 mt-0.5 shrink-0"
+      />
+      <span className="min-w-0">
+        <span className="block text-slate-200">{label}</span>
+        <span className="block text-xs text-slate-500 leading-snug mt-0.5">{hint}</span>
+      </span>
+    </label>
   );
 }
 
@@ -1001,7 +980,7 @@ const SCENE_FIELDS = [
  * model before the next one; editable because an 8B sometimes misreads a scene
  * change, and the next update starts from whatever is saved here.
  */
-function SceneBar({ scene, sessionId, onSaved }) {
+function SceneDetails({ scene, sessionId, onSaved }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(scene);
 
@@ -1020,36 +999,37 @@ function SceneBar({ scene, sessionId, onSaved }) {
   }
 
   return (
-    <div className="px-5 py-1.5 border-b border-ink-800 bg-ink-900/60 text-[11px] text-slate-500 flex flex-wrap items-center gap-x-4 gap-y-1">
+    <div className="border-t border-ink-800 pt-4 space-y-1.5 text-xs">
       {SCENE_FIELDS.map(([key, label]) =>
         editing ? (
-          <label key={key} className="flex items-center gap-1">
+          <label key={key} className="block text-slate-500">
             {label}
             <input
               value={draft[key] ?? ""}
               onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
               maxLength={80}
-              className="bg-ink-950 border border-ink-800 rounded px-1.5 py-0.5 text-slate-300 outline-none focus:border-accent/60 w-36"
+              className="mt-0.5 w-full bg-ink-850 border border-ink-700 rounded px-2 py-1 text-slate-200 outline-none focus:border-accent/60"
             />
           </label>
         ) : (
-          <span key={key}>
-            {label} <span className="text-slate-300">{scene[key] || "unknown"}</span>
-          </span>
+          <div key={key} className="flex gap-2">
+            <span className="w-14 shrink-0 text-slate-500">{label}</span>
+            <span className="min-w-0 text-slate-300 break-words">{scene[key] || "unknown"}</span>
+          </div>
         )
       )}
       {editing ? (
-        <span className="flex gap-2 ml-auto">
-          <button onClick={save} className="text-accent hover:underline">save</button>
-          <button onClick={() => setEditing(false)} className="hover:text-slate-300">cancel</button>
-        </span>
+        <div className="flex gap-3 pt-1">
+          <button onClick={save} className="text-accent hover:underline">Save</button>
+          <button onClick={() => setEditing(false)} className="text-slate-400 hover:text-slate-200">Cancel</button>
+        </div>
       ) : (
         <button
           onClick={() => setEditing(true)}
-          className="ml-auto hover:text-slate-300"
+          className="text-slate-500 hover:text-slate-300"
           title="Correct the scene; the next update starts from what you save"
         >
-          edit
+          Edit
         </button>
       )}
     </div>

@@ -150,7 +150,7 @@ export default function CardDrafter({ characterId, current = {}, worlds = [], wo
                 type="checkbox"
                 checked={!!picked[k]}
                 onChange={(e) => setPicked({ ...picked, [k]: e.target.checked })}
-                className="mt-0.5 accent-violet-400"
+                className="mt-0.5 accent-accent"
               />
               <span className="min-w-0">
                 <span className="text-slate-300">{LABELS[k] || k}</span>

@@ -15,7 +15,7 @@ export function Modal({ open, onClose, title, width = 560, children }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-5 py-4 border-b border-ink-800 flex items-center justify-between sticky top-0 bg-ink-900">
-          <h2 className="font-semibold">{title}</h2>
+          <h2 className="font-serif text-lg font-semibold">{title}</h2>
           <button
             onClick={onClose}
             aria-label="Close"
@@ -61,7 +61,7 @@ export function Textarea(props) {
 export function Button({ variant = "ghost", className = "", ...props }) {
   const styles = {
     primary:
-      "bg-accent/25 border border-accent/40 hover:bg-accent/35 disabled:opacity-40",
+      "bg-accent border border-accent text-ink-950 font-medium hover:brightness-110 disabled:opacity-40",
     ghost: "border border-ink-700 hover:bg-ink-850 disabled:opacity-40",
     danger:
       "border border-rose-900/60 text-rose-300 hover:bg-rose-950/40 disabled:opacity-40",
