@@ -14,6 +14,7 @@ export default function Sidebar({
   onManagePersonas,
   onManageWorlds,
   onManageModels,
+  onOpenStats,
   health,
   open,
   onClose,
@@ -244,6 +245,7 @@ export default function Sidebar({
             <button onClick={onManagePersonas} className="py-1.5 hover:text-slate-300">Personas</button>
             <button onClick={onManageWorlds} className="py-1.5 hover:text-slate-300">Worlds</button>
             <button onClick={onManageModels} className="py-1.5 hover:text-slate-300">Models</button>
+            <button onClick={onOpenStats} className="py-1.5 hover:text-slate-300">Stats</button>
           </div>
           <input ref={fileRef} type="file" accept=".png,.json" hidden onChange={handleFile} />
         </div>

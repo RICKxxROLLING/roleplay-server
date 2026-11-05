@@ -8,6 +8,7 @@ import PersonaManager from "./components/PersonaManager";
 import WorldManager from "./components/WorldManager";
 import NewChatDialog from "./components/NewChatDialog";
 import NewWorldChatDialog from "./components/NewWorldChatDialog";
+import StatsPanel from "./components/StatsPanel";
 import CharacterEditor from "./components/CharacterEditor";
 import NewCharacterDialog from "./components/NewCharacterDialog";
 import ModelManager from "./components/ModelManager";
@@ -126,6 +127,7 @@ export default function App() {
         onManagePersonas={() => setPanel("personas")}
         onManageWorlds={() => setPanel("worlds")}
         onManageModels={() => setPanel("models")}
+        onOpenStats={() => setPanel("stats")}
         open={navOpen}
         onClose={() => setNavOpen(false)}
       />
@@ -181,6 +183,8 @@ export default function App() {
           setWorldChatIn(w);
         }}
       />
+
+      <StatsPanel open={panel === "stats"} onClose={() => setPanel(null)} />
 
       <NewWorldChatDialog
         world={worldChatIn}

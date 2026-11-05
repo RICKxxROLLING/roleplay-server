@@ -116,6 +116,7 @@ export const api = {
   },
   choices: (id, refresh = false) =>
     j(`/sessions/${id}/choices`, { method: "POST", body: JSON.stringify({ refresh }) }),
+  stats: (tz) => j(`/stats?tz=${encodeURIComponent(tz || "")}`),
   createWorldChat: (body) =>
     j("/sessions/world", { method: "POST", body: JSON.stringify(body) }),
   walkOn: (id, body) =>
