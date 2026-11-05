@@ -158,6 +158,26 @@ def test_a_refused_line_posts_nothing_and_the_reply_still_comes(client, llm, eve
     assert len(llm.narrator_calls) >= narrator.ATTEMPTS
 
 
+def test_each_try_gets_a_new_subject(client, llm):
+    sid = chat(client)
+    llm.narrator_reply = " a sudden scream."
+    client.post(f"/api/sessions/{sid}/narrate", json={"event": False})
+    subjects = {next(s for s, _ in narrator.AMBIENT if f"about {s}." in p) for p in llm.narrator_calls}
+    assert len(subjects) == narrator.ATTEMPTS
+
+
+def test_a_line_about_someone_with_a_card_is_refused(client, llm):
+    wid = client.post("/api/worlds", json={"name": "Jackson", "description": "A town."}).json()["id"]
+    persona = client.post("/api/personas", json={"name": "Riley", "description": ""}).json()["id"]
+    owner = client.post("/api/characters", json={"name": "Dina", "first_mes": "Hi.", "world_id": wid}).json()["id"]
+    client.post("/api/characters", json={"name": "Ellie", "first_mes": "Hi.", "world_id": wid})
+    client.post("/api/characters", json={"name": "Otis Boone", "first_mes": "Hi.", "world_id": wid, "extra": True})
+    sid = client.post("/api/sessions", json={"character_id": owner, "persona_id": persona}).json()["id"]
+    llm.narrator_replies = [" Ellie pops her head in with her pigtails askew.", " Otis Boone stops by with a split boot."]
+    r = client.post(f"/api/sessions/{sid}/narrate", json={})
+    assert r.status_code == 200 and "Otis Boone" in r.json()["content"]
+
+
 def test_every_third_line_is_an_event(client, llm, every_two):
     sid = chat(client)
     while roles(client, sid).count("narrator") < 4:

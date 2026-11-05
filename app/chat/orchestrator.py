@@ -21,7 +21,7 @@ from ..memory import thoughts, trust
 from ..memory.scene import blank as blank_scene, update_scene
 from ..prompt import build_prompt, tokens
 from ..prompt.builder import PACING_MAX_NEW_TOKENS
-from . import autonomy, group, narrator, texting
+from . import autonomy, group, narrator, pacing, texting
 from .guard import (
     first_person_narration,
     infer_pronoun,
@@ -246,6 +246,8 @@ async def stream_reply(
     swipe is always re-rolled by the character who wrote it.
     """
     user_text = next((m.content for m in reversed(session.messages) if m.role == "user"), "")
+    # Real hours have passed since the last exchange, so the story's clock may move too.
+    long_gap = bool(autonomy.time_line(session))
     is_texting = session.mode == "texting"
     if is_texting and "max_new_tokens" not in (overrides or {}):
         overrides = {**(overrides or {}), "max_new_tokens": texting.MAX_NEW_TOKENS}
@@ -329,6 +331,18 @@ async def stream_reply(
             # Before persisting: once one reply narrating the user is in
             # history, the model copies it -- see chat/guard.py.
             reply, removed = _guarded(raw, session, card)
+            # Nobody walks out and the clock stays put (chat/pacing.py). A first try that
+            # loses half its length goes round again; a second is never left with nothing.
+            held = {"exit": 0, "time": 0, "user": 0}
+            cut_too_far = False
+            if settings.slow_pacing and not is_texting and not initiative:
+                kept, held = pacing.hold_the_moment(
+                    reply, user_text, session.persona.name if session.persona else "You",
+                    str((session.scene or {}).get("time") or ""))
+                cut_too_far = len(kept) < len(reply) * 0.5
+                if kept.strip() and not (cut_too_far and attempt == 0):
+                    reply = kept
+                removed += held["user"]
             redo = None
             if (
                 attempt == 0
@@ -348,6 +362,8 @@ async def stream_reply(
                 raw, reply, removed = first_try
             elif attempt == 0 and ((removed and _gutted(raw, reply)) or (is_texting and not reply)):
                 redo = "guard"
+            elif attempt == 0 and cut_too_far:
+                redo = "pacing"
             if redo:
                 # Tells the UI to drop the draft it has streamed so far.
                 yield {"type": "redo", "reason": redo}
@@ -368,6 +384,8 @@ async def stream_reply(
     # draft is replaced by the guarded one.
     if removed:
         yield {"type": "guard", "removed": removed}
+    if held["exit"] or held["time"]:
+        yield {"type": "held", "exit": held["exit"], "time": held["time"]}
     if not reply:
         # Everything the model wrote was the user's side of the scene. Say so
         # rather than leave the user's message silently unanswered.
@@ -396,6 +414,7 @@ async def stream_reply(
             new_scene = await update_scene(
                 base, user_text, reply, card,
                 session.persona.name if session.persona else "You",
+                keep_time=settings.slow_pacing and not pacing.time_may_move(user_text, long_gap),
             )
             session.scene_prev = base
             session.scene = new_scene

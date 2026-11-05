@@ -68,7 +68,7 @@ EVENT_PROMPT = _HEAD + (
 
 _ALARM = re.compile(
     r"\b(sudden\w*|eerie|ominous\w*|startl\w*|gun\w*|shots?|scream\w*|bang\w*|crash\w*|howl\w*|"
-    r"infected|shriek\w*|menac\w*|threat\w*|urgent\w*|frantic\w*|panic\w*|"
+    r"infected|shriek\w*|menac\w*|threat\w*|urgent\w*|frantic\w*|panic\w*|bullets?|"
     # Not alarming in themselves, but read as a plot hook. "A lone figure, hood up and
     # rifle slung low" was meant as background; live, Dina set about investigating it.
     r"figures?|silhouette\w*|rifles?|hood\w*|lurk\w*|stealth\w*|skulk\w*|sneak\w*)\b", re.I)
@@ -192,15 +192,7 @@ async def write_line(session: ChatSession, event: bool | None = None) -> str:
     count = len(lines)
     if event is None:
         event = count % EVENT_EVERY == EVENT_EVERY - 1
-    subject, opener = _pick(session, count, event)
-    # A kept extra is the visitor when there is one: a name the owner has seen and
-    # chosen, rather than another invented Sarah.
-    about = ""
-    extras = _world_extras(session) if event and subject.startswith("someone ") else []
-    if extras:
-        person = extras[count % len(extras)]
-        subject, about = person.name + subject[len("someone"):], _about(person)
-    prompt = build_prompt(session, event, subject, opener, about)
+    extras = _world_extras(session) if event else []
     params = GenerationParams(
         temperature=0.9, top_p=1, top_k=50, min_p=0.075, repeat_penalty=1.1,
         context_tokens=settings.context_tokens, max_new_tokens=70,
@@ -208,9 +200,24 @@ async def write_line(session: ChatSession, event: bool | None = None) -> str:
     )
     user = session.persona.name if session.persona else "You"
     names = [user, *(c.name for c in group.cast(session))]
+    # Someone with a card of their own would be described wrongly by a line that hasn't read
+    # it: "Ellie pops her head in, her blonde pigtails askew." Extras are fine, as they're
+    # the visitors, and the prompt is told who they are.
+    world = session.character.world if session.character else None
+    names += [c.name for c in (world.characters if world else []) if not getattr(c, "extra", False)]
     names += [n.split()[0] for n in names if " " in n]
     client = get_client()
-    for _ in range(ATTEMPTS):
+    for attempt in range(ATTEMPTS):
+        # A new subject each try: repeated presses used to fail on the one this chat had
+        # reached, however many times it was asked.
+        subject, opener = _pick(session, count + attempt, event)
+        # A kept extra is the visitor when there is one: a name the owner has seen and
+        # chosen, rather than another invented Sarah.
+        about = ""
+        if extras and subject.startswith("someone "):
+            person = extras[count % len(extras)]
+            subject, about = person.name + subject[len("someone"):], _about(person)
+        prompt = build_prompt(session, event, subject, opener, about)
         raw = await client.generate(prompt, params)
         line = judge(f"{opener}{raw}".rstrip(), names, event=event,
                      scene_time=str((session.scene or {}).get("time") or ""),

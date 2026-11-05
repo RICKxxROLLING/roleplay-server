@@ -127,9 +127,11 @@ def moved(user_text: str, reply: str) -> bool:
 
 
 async def update_scene(
-    scene: dict | None, user_text: str, reply: str, card: CharacterCard, user_name: str
+    scene: dict | None, user_text: str, reply: str, card: CharacterCard, user_name: str,
+    keep_time: bool = False,
 ) -> dict:
-    """The scene at the end of this exchange; `scene` unchanged if the model misfires."""
+    """The scene at the end of this exchange; `scene` unchanged if the model misfires.
+    `keep_time` holds a known time of day where it is (chat/pacing.py)."""
     char = card.name or "Character"
     base = dict(scene) if scene else blank(char, user_name)
     params = GenerationParams(
@@ -145,4 +147,6 @@ async def update_scene(
         return base
     if base.get("location") not in (None, "", "unknown") and not moved(user_text, reply):
         new["location"] = base["location"]
+    if keep_time and base.get("time") not in (None, "", "unknown"):
+        new["time"] = base["time"]
     return new

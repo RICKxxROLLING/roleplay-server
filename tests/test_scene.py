@@ -67,7 +67,8 @@ def test_a_mentioned_place_does_not_replace_the_location(client, session, llm):
     llm.replies = ['*She sips her cocoa.* "That lookout tower needs better lights."']
     sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": "*I watch the stove.*"}))
     scene = client.get(f"/api/sessions/{session}").json()["scene"]
-    assert scene["location"] == "the flooded archive" and scene["time"] == "night"
+    # A quiet line moves neither the place nor, now, the clock (chat/pacing.py).
+    assert scene["location"] == "the flooded archive" and scene["time"] != "night"
     llm.replies = ["*She walks to the lookout tower.*"]
     sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": "Hm."}))
     assert client.get(f"/api/sessions/{session}").json()["scene"]["location"] == "the lookout tower"
