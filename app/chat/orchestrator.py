@@ -99,7 +99,7 @@ async def build_turn_prompt(
         # A world chat keeps the story's clock (encounters.next_time), not the owner's.
         time_note="" if initiative or exclude_ids or world_chat else autonomy.time_line(session),
         texting=session.mode == "texting",
-        mode_note=encounters.tail_note(session, card, exclude_ids) if world_chat
+        mode_note=encounters.tail_note(session, card, exclude_ids, db) if world_chat
         else texting.mode_note(session, exclude_ids),
         slow_pacing=settings.slow_pacing,
         standing=_standing(db, session, speaker, card, persona),

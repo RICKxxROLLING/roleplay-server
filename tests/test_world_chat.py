@@ -9,7 +9,7 @@ from app.db import SessionLocal
 from app.db.models import ChatSession
 
 SIDE_TASKS = ("memory log", "fact sheet", "track the scene", "private journal", "you are scoring",
-              "will remember about it", "where would", "setting the scene")
+              "will remember about it", "what ordinary place", "setting the scene")
 
 
 def chat_prompts(llm):
@@ -109,7 +109,7 @@ def test_someone_you_return_to_remembers_only_their_own_meeting(client, world, l
 
     async def noting(prompt, params):
         if "will remember about it" in prompt:
-            return "Riley came for antibiotics for a friend.\n- Hana holds the silver watch for three days."
+            return "Riley traded the silver watch for antibiotics.\n- Hana holds the silver watch."
         return await real(prompt, params)
 
     monkeypatch.setattr(llm, "generate", noting, raising=False)
@@ -121,6 +121,7 @@ def test_someone_you_return_to_remembers_only_their_own_meeting(client, world, l
     prompt = chat_prompts(llm)[-1]
     assert "Hana holds the silver watch" in prompt
     assert "have met before" in prompt and "have never spoken before" not in prompt
+    assert "Hana Brandt remembers of You: - Hana holds the silver watch" in prompt
     assert "GATEWORD" not in prompt
     rows = {p["name"]: p for p in client.get(f"/api/sessions/{sid}/people").json()}
     assert rows["Hana Brandt"]["meetings"] == 2 and "silver watch" in rows["Hana Brandt"]["notes"]
@@ -137,15 +138,49 @@ def test_a_note_can_be_corrected_and_reaches_the_prompt(client, world, llm):
 
 
 def test_a_note_line_naming_someone_who_never_came_up_is_dropped():
-    assert encounters._supported("Hana holds the watch for Riley.", "Hana and Riley spoke of a watch")
+    assert encounters._supported("Hana holds the watch for Riley.", "Hana holds a watch and Riley spoke")
     assert not encounters._supported("Hana sold it to Marcus.", "Hana and Riley spoke of a watch")
+
+
+def test_a_note_invented_after_a_short_talk_is_dropped():
+    """Lines the model wrote live, after nothing more than "Do I know you?"."""
+    said = ("Nora: She glances up from tending a patient. You okay? Riley: Do I know you? You know why "
+            "I'm out this morning? Nora: Maybe, no, I don't think so. No idea, really.")
+    for line in ("Riley came to the hospital to visit Nora, hoping to give her a small gift and some words of encouragement.",
+                 "He gave her a handmade wooden bird feeder, promising to return in a week."):
+        assert not encounters._supported(line, said)
+    deal = "Riley: I need antibiotics. My friend Sam has a fever. Joel: I'll trade for the watch."
+    assert encounters._supported("Riley came seeking antibiotics for his friend Sam.", deal)
+
+
+def test_the_days_clock_is_the_servers(client, world, llm):
+    sid = start(client, world)
+    client.patch(f"/api/sessions/{sid}/scene", json={"time": "8:15am"})
+    times = [walk(client, sid, "Cole", world)["encounters"][-1]["time"]]
+    times.append(walk(client, sid, "Hana", world)["encounters"][-1]["time"])
+    times.append(walk(client, sid, "Cole", world)["encounters"][-1]["time"])
+    assert times == ["morning", "midday", "midday"]
+
+
+def test_a_place_with_a_number_is_refused(client, world, llm, monkeypatch):
+    real = llm.generate
+    answers = [" 2nd Aid Station", " stadium hospital, tending patients"]
+
+    async def places(prompt, params):
+        if "What ordinary place" in prompt:
+            return answers.pop(0)
+        return await real(prompt, params)
+
+    monkeypatch.setattr(llm, "generate", places, raising=False)
+    sid = client.post("/api/sessions/world", json={"world_id": world["id"]}).json()["id"]
+    assert get(client, sid)["encounters"][0]["place"] == "the stadium hospital"
 
 
 def test_a_goodbye_gets_the_goodbye_line_and_lights_up_walk_on(client, world, llm):
     sid = start(client, world)
     respond(client, sid)
     say(client, sid, '"Thanks, Hana." *I head for the door.*')
-    assert "says one brief goodbye" in chat_prompts(llm)[-1]
+    assert "says one brief goodbye out loud" in chat_prompts(llm)[-1]
     assert get(client, sid)["leaving"]
     say(client, sid, '"Actually, one more thing. Do you sell rope?"')
     assert "says one brief goodbye" not in chat_prompts(llm)[-1]

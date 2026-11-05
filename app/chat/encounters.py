@@ -29,13 +29,16 @@ from ..config import settings
 from ..db.models import Character, ChatSession, Encounter, Message, PersonMemory
 from ..llm import GenerationParams, get_client
 from ..memory.scene import blank
-from ..memory.summarizer import merge_facts, parse_facts
+from ..memory.summarizer import _content_words, merge_facts, parse_facts
 from ..prompt.formats import get_format
 from . import group, narrator
 
 HOST_NAME = "(world chat)"
 #: Most people's notes stay well under this; each line costs context on every turn with them.
 MEMORY_CAP = 12
+#: How much of a note's line must be words from the meeting: see `_supported`.
+NOTE_SUPPORT = 0.45
+_NOTE_FILLER = frozenset({"came", "coming", "remembers", "recalls"})
 #: Of the encounter, for the parting note. A long talk's earlier part is in its summary.
 NOTE_TRANSCRIPT_CHARS = 6000
 
@@ -46,11 +49,21 @@ NEVER_MET = ("{{char}} and {{user}} have never spoken before; to {{char}}, {{use
 NEVER_MET_LATER = ("{{char}} and {{user}} had never spoken before today; to {{char}}, {{user}} "
                    "was someone seen around town at most.")
 FIRST_WORD = "{{char}} notices {{user}} and speaks first"
-AGAIN = "{{char}} and {{user}} have met before. {{char}} sees {{user}} again and speaks first."
+# Live, 3 of 3 people who were returned to carried on with their own business, one with no word
+# about the deal. Offline, 18 openings per wording: the notes as a tail line named the deal more
+# (16 of 18 against 7, by word match), but half of those were the character musing alone until
+# "walked up ... out loud" was added, after which all 18 spoke to the user. About half of those
+# brought up the deal outright.
+AGAIN = ("{{char}} and {{user}} have met before. {{user}} has just walked up, and {{char}} looks up "
+         "and speaks to {{user}} first, out loud.")
+REMEMBER = "What {{char}} remembers of {{user}}: {notes}"
 # Without a greeting to copy, some openings dropped the quote marks around speech.
 FORMAT_LINE = 'Spoken words go in "double quotes" and actions in *asterisks*.'
-# A spoken goodbye: 4 of 6 with this, 0 of 6 without. Nobody followed in either, 12 of 12.
-GOODBYE = "{{user}} is leaving. {{char}} stays where {{char}} is and says one brief goodbye."
+# Prototype: a spoken goodbye 4 of 6 without "out loud", 0 of 6 with no line, and nobody followed.
+# Live, the plain line left Joel and Owen watching in silence. Offline, three people, 18 tries:
+# quoted speech in 8 of 18 before "out loud", 18 of 18 after.
+GOODBYE = ('{{user}} is leaving. {{char}} stays where {{char}} is and says one brief goodbye '
+           'out loud, in "double quotes".')
 # Addressed the user 14 of 16 with a reason from the server, 9 of 16 without. The prototype's
 # reasons named things in the scene; these have to suit anyone, anywhere.
 REASONS = [
@@ -75,11 +88,15 @@ PARTING = """Below is a meeting between {user} and {char}. Write what {char} wil
 Write 3 to 5 short lines, each starting with "- ". The first line says why {user} came and who it was for. \
 The others say what was given, what was promised and when. Plain statements, third person, using both names, \
 only what was said above."""
+# "It is morning. Where would they be?" with "At " opening the answer gave "10 AM", "8" and "9mm
+# workshop" live: most answers were an hour or began with a number, with or without a repeat
+# penalty, and so did "The " and a request for no numbers. Asked what place they spend the time
+# in, with "{name} is in the" opening the answer, 40 tries over ten cards had no digit at all.
 WHERE = """{setting}
 
 About {name}: {about}
 
-It is {time}. Where would {name} be right now? Answer with the place only, in a few words."""
+What ordinary place does {name} spend their {time} in? Answer with just the place."""
 ARRIVAL = """{setting}
 
 About {name}: {about}
@@ -181,7 +198,7 @@ def met_before(session: ChatSession, encounter: Encounter) -> bool:
                for e in session.encounters)
 
 
-def tail_note(session: ChatSession, card: CharacterCard, exclude_ids: set[int] | None = None) -> str:
+def tail_note(session: ChatSession, card: CharacterCard, exclude_ids: set[int] | None = None, db=None) -> str:
     """The encounter's line for the prompt's tail."""
     encounter = group.current_encounter(session)
     if encounter is None:
@@ -189,7 +206,8 @@ def tail_note(session: ChatSession, card: CharacterCard, exclude_ids: set[int] |
     known = met_before(session, encounter) or _knows_user(card, _user(session))
     if is_opening(session, exclude_ids):
         if met_before(session, encounter):
-            return f"{AGAIN} {FORMAT_LINE}"
+            notes = " ".join(remembered(session, encounter.character, db).split())
+            return " ".join(p for p in (REMEMBER.replace("{notes}", notes) if notes else "", AGAIN, FORMAT_LINE) if p)
         reason = f", {encounter.reason}" if encounter.reason else ""
         first = f"{FIRST_WORD}{reason}."
         return " ".join(p for p in ("" if known else NEVER_MET, first, FORMAT_LINE) if p)
@@ -269,9 +287,14 @@ def clean_place(raw: str) -> str:
 
 
 async def choose_place(session: ChatSession, person: Character, time: str) -> str:
-    prompt = _ask(WHERE.format(setting=_setting(session), name=person.name, about=_about(person), time=time), "At ")
-    place = clean_place(await get_client().generate(prompt, _params(16, 0.7)))
-    return place if place and not re.search(rf"(?<!\w){re.escape(person.name.split()[0])}(?!\w)", place) else "the main street"
+    first = person.name.split()[0]
+    prompt = _ask(WHERE.format(setting=_setting(session), name=person.name, about=_about(person), time=time),
+                  f"{person.name} is in the")
+    for _ in range(2):
+        place = clean_place("the" + await get_client().generate(prompt, _params(16, 0.7)))
+        if place and not re.search(r"\d", place) and not re.search(rf"(?<!\w){re.escape(first)}(?!\w)", place):
+            return place
+    return "the main street"
 
 
 def _opener(place: str) -> str:
@@ -295,9 +318,17 @@ async def arrival_line(session: ChatSession, person: Character, place: str, time
 
 
 def _supported(line: str, transcript: str) -> bool:
-    """Names the note uses must have come up. It can't catch invented common words: the model
-    called Dina his sister in all 8 notes of one scene, which is why notes can be edited."""
-    return all(w in transcript for w in _NAME_WORD.findall(line) if w not in ("The", "They", "She", "His", "Her", "Their"))
+    """Whether a note's line came from the meeting. Asked why the user came, the model always has
+    an answer. After a mere "Do I know you?" live, all three people got a whole invented errand: a
+    hunting permit, a wooden bird feeder, a brother in hospital. Of 22 live lines, every invented one
+    had at most 40% of its words in the meeting. Four of the 14 true ones fell under that bar too
+    (the 45% used here), all side details, as losing a real line costs less than a false memory
+    going back into prompts. It can't catch one wrong word: the model called Dina his sister in
+    all 8 notes of one scene, which is why notes can be edited."""
+    if not all(w in transcript for w in _NAME_WORD.findall(line) if w not in ("The", "They", "She", "His", "Her", "Their")):
+        return False
+    words = _content_words(line) - _NOTE_FILLER
+    return not words or len(words & _content_words(transcript)) / len(words) >= NOTE_SUPPORT
 
 
 async def write_note(session: ChatSession, encounter: Encounter, db) -> None:
@@ -332,16 +363,14 @@ async def write_note(session: ChatSession, encounter: Encounter, db) -> None:
 
 
 def next_time(session: ChatSession) -> str:
-    """The day moves on one step every second encounter. Hand edits to the scene are kept
-    until then, and an unfamiliar time simply starts again from there."""
-    now = str((session.scene or {}).get("time") or "").lower()
-    count = len(session.encounters)
-    current = next((t for t in TIMES if t in now), None)
-    if current is None:
-        return now if now and now != "unknown" else TIMES[0]
-    if count % 2:
-        return now
-    return TIMES[(TIMES.index(current) + 1) % len(TIMES)]
+    """The day moves on one step every second encounter. Read from the last encounter and not the
+    scene, since the scene tracker rewrites the time ("8:15am" reached a heading, live)."""
+    if not session.encounters:
+        return TIMES[0]
+    now = session.encounters[-1].time
+    if now not in TIMES:
+        return TIMES[0]
+    return now if len(session.encounters) % 2 else TIMES[(TIMES.index(now) + 1) % len(TIMES)]
 
 
 async def walk_on(db, session: ChatSession, place: str = "", wanted: int | None = None) -> Encounter:
@@ -350,7 +379,7 @@ async def walk_on(db, session: ChatSession, place: str = "", wanted: int | None 
     place = " ".join(place.split())[:60]
     person = choose_person(session, place, wanted)
     current = group.current_encounter(session)
-    time = next_time(session) if session.encounters else TIMES[0]
+    time = next_time(session)
     place = place or await choose_place(session, person, time)
     line = await arrival_line(session, person, place, time)
     if current is not None:
