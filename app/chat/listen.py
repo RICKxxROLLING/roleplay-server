@@ -85,4 +85,4 @@ async def hear(path: str, hint: str = "") -> str:
         raise
     except Exception as exc:
         log.warning("speech to text failed: %s", exc)
-        raise ListenUnavailable(f"Couldn't make that out: {exc}") from exc
+        raise ListenUnavailable("Couldn't make that recording out. Try again.") from exc

@@ -84,15 +84,54 @@ def test_texts_stay_plain():
 
 @pytest.mark.parametrize("line", [
     "I lean in and kiss her.", "I take her hand and pull her close, my lips near hers.", '"Come to bed."',
-    "I run a finger along her thigh.", '"I love you."'.replace("I love you", "I love you, you know"),
+    "I run a finger along her thigh.", '"I love you, you know."',
+    # Seen live, in a scene with a minor. No romantic word in any of them.
+    "I take Lev's hand, lacing our fingers together.", "I reach over to brush a strand of hair from his face.",
+    "I drape an arm around his shoulders, pulling him close.", "I gently take her hand.",
+    "I tuck a loose strand behind her ear.", "I pull her close.", "I slide closer to her by the fire.",
 ])
 def test_romance_is_not_offered_unless_allowed(line):
     assert parse(" " + line) == []
     assert parse(" " + line, romance_ok=True)
 
 
+@pytest.mark.parametrize("line", [
+    '"If things were different, maybe I\'d ask you how you like to spend a lazy Saturday morning."',
+    '"We\'ve got each other now, don\'t we?"', "I pull out a crumpled pack of cigarettes and offer one.",
+    '"Maybe tonight we can try that whiskey you found."',
+])
+def test_with_a_minor_wistful_lines_and_vices_also_go(line):
+    assert choices.parse("1. " + line, NAMES, False, minor=True) == []
+    assert choices.parse("1. " + line, NAMES, False, minor=False)
+
+
+def test_a_scene_with_a_minor_gets_its_own_prompt_and_filter(client, llm, chat):
+    cid = client.get(f"/api/sessions/{chat}").json()["character_id"]
+    client.patch(f"/api/characters/{cid}", json={"description": "She is a 15-year-old archivist.", "tags": ["romance"]})
+    llm.choices_reply = ' "We\'ve got each other, don\'t we?"\n2. I sweep the floor.\n3. I ask about the old library.'
+    assert offer(client, chat) == ["*I sweep the floor.*", "*I ask about the old library.*"]
+    assert "a friendly question" in llm.choice_calls[0] and "something practical" in llm.choice_calls[0]
+
+
+def test_a_line_using_the_users_own_name_is_dropped():
+    assert parse(" I stand up.\n2. The silence stretches, until Riley stands abruptly.") == ["*I stand up.*"]
+
+
+def test_reaching_for_a_thing_is_fine():
+    assert parse(" I reach for the guitar and tune it.") == ["*I reach for the guitar and tune it.*"]
+
+
 def test_ordinary_lines_pass_the_filter():
     assert len(parse(' "Any word from the patrol?"\n2. I saddle the horse.\n3. I ask about the old library.')) == 3
+
+
+def test_the_prompt_asks_for_something_practical_unless_romance_is_allowed(client, llm, chat):
+    offer(client, chat)
+    assert "something practical" in llm.choice_calls[0]
+    cid = client.get(f"/api/sessions/{chat}").json()["character_id"]
+    client.patch(f"/api/characters/{cid}", json={"tags": ["romance"]})
+    offer(client, chat, refresh=True)
+    assert "something practical" not in llm.choice_calls[1]
 
 
 def romance_ok_for(client, session, **patch):

@@ -10,9 +10,14 @@ lines of speech; asked for one thing said, one done and one change of direction 
 that, in about 1.5 s. It also runs long and gets cut off by the token cap, and writes the
 action half without the *asterisks* the chat uses, so the server trims and marks up.
 
-Romance is never offered unless everyone in the scene has it allowed (memory/trust.py). The
-owner can always type whatever they like, but a button shouldn't suggest it, and with a
-minor in the scene it must never appear.
+Romance and physical closeness are never offered unless everyone in the scene has romance
+allowed (memory/trust.py). The owner can always type what they like, but a button shouldn't
+suggest it, and with a minor in the scene it must never appear. A list of romantic words
+wasn't enough: after one flirty line, live, the action slot offered taking Lev's hand and
+tucking Ellie's hair behind her ear in most sets, with no such word in them. So the prompt
+asks for something practical, and the filter refuses any touch at all. With a minor in the
+scene the whole prompt is everyday questions and activities, and a stricter filter also
+refuses wistful lines and offers of drink or cigarettes.
 """
 from __future__ import annotations
 
@@ -39,8 +44,19 @@ The story so far:
 Write {user}'s next move three different ways, one short line each, in first person as {user} would write it, for {user} to choose from:
 
 1. {user} says something, in quotes.
-2. {user} does something, starting with "I".
+2. {action}
 3. {user} changes the direction of the scene: asks about something new, goes somewhere, or brings something up."""
+
+WITH_A_MINOR = """{people} and {user} are in an ongoing story.
+{setting}
+The story so far:
+{transcript}
+
+Write {user}'s next move three different ways, one short line each, in first person as {user} would write it, for {user} to choose from:
+
+1. {user} asks a friendly question about {people}'s day, chores, or something they're learning, in quotes.
+2. {user} does something practical with the things around them, starting with "I".
+3. {user} suggests an everyday activity or changes the subject."""
 
 TEXTING = """{people} and {user} are texting each other.
 {setting}
@@ -56,10 +72,21 @@ Write three different texts {user} could send next, one short line each, as {use
 _LINE = re.compile(r"^\s*(?:\d[.)]|[-*])?\s*(.+?)\s*$")
 _NUMBERED = re.compile(r"^\s*\d[.)]\s*")
 _ENDS = re.compile(r"[.!?…][\"”*]*(?=\s|$)")
-_ROMANCE = re.compile(
-    r"\b(kiss\w*|lips?|caress\w*|embrac\w*|cuddl\w*|seduc\w*|naked|nude|undress\w*|strip\w*|bed|beds|bedroom|"
-    r"lover\w*|sex\w*|moan\w*|breasts?|thighs?|waist|hips?|neck|romantic\w*|romance|love you|date|"
-    r"flirt\w*|tease|sensual\w*|intimate\w*|arous\w*|desire\w*|hold you|stroke\w*|hand on your)\b", re.I)
+ACTION_ANY = '{user} does something, starting with "I".'
+ACTION_PRACTICAL = '{user} does something practical with the things around them, starting with "I".'
+_INTIMATE = re.compile(
+    r"\b(kiss\w*|lips?|caress\w*|embrac\w*|cuddl\w*|snuggl\w*|nuzzl\w*|seduc\w*|naked|nude|undress\w*|strip\w*|"
+    r"bed|beds|bedroom|lover\w*|sex\w*|moan\w*|breasts?|thighs?|waist|hips?|neck|romantic\w*|romance|love you|date|"
+    r"flirt\w*|tease|sensual\w*|intimate\w*|arous\w*|desire\w*|stroke\w*|"
+    # Touch, which reads as closeness whatever words surround it.
+    r"touch\w*|hold\w*|hug\w*|hands?|fingers?|thumbs?|palms?|arms?|shoulders?|cheeks?|chin|jaw\w*|ears?|hair|curls?|"
+    r"forehead|face|lap|knees?|wrap\w*|lac\w+|interlac\w*|intertwin\w*|squeez\w*|pull\w* \w+ (close|closer|in)|"
+    r"draw\w* \w+ (close|closer|in)|lean\w* (in|into|close|closer|against)|closer|close to|next to you|beside you|against (me|you|him|her)|just for us|love poems?|"
+    r"tuck\w*|brush\w*|trac\w+|rub\w*|nudge\w*|pat|pats|reach\w* (over|across|out)|gently)\b", re.I)
+_NOT_WITH_A_MINOR = re.compile(
+    r"\b(each other|just us|the two of us|if things were different|our moments?|lazy|lonely|beautiful|pretty|"
+    r"handsome|cute|gorgeous|feels? like home|coming home|stay with|whiskey|beer|wine|liquor|drinks?|"
+    r"cigarettes?|smoke|cigars?)\b", re.I)
 
 
 def _speech_and_action(line: str) -> str:
@@ -86,9 +113,9 @@ def _trim(line: str) -> str:
     return line[:ends[-1]].strip() if ends else ""
 
 
-def parse(raw: str, names: list[str], romance_ok: bool, texting: bool = False) -> list[str]:
-    """Usable choices, best first. Names are the user and the cast's own, to catch a line
-    that has slipped out of first person or into writing someone else's turn."""
+def parse(raw: str, names: list[str], romance_ok: bool, texting: bool = False, minor: bool = False) -> list[str]:
+    """Usable choices, best first. Names are the user's first and then the cast's, to catch
+    a line that has slipped out of first person or into writing someone else's turn."""
     out: list[str] = []
     for row in raw.splitlines():
         if not _NUMBERED.match(row) and out:
@@ -100,7 +127,12 @@ def parse(raw: str, names: list[str], romance_ok: bool, texting: bool = False) -
         line = _trim(_NUMBERED.sub("", m.group(1)).strip())
         if len(line) < 4 or "{{" in line:
             continue
-        if not romance_ok and _ROMANCE.search(line):
+        if not romance_ok and _INTIMATE.search(line):
+            continue
+        if minor and _NOT_WITH_A_MINOR.search(line):
+            continue
+        # First person doesn't use its own name: "until Riley stands abruptly" was seen live.
+        if names and names[0] and re.search(rf"(?<!\w){re.escape(names[0])}(?!\w)", line, re.I):
             continue
         if any(re.search(rf"(?<!\w){re.escape(n)}\s+(says|asks|replies|nods|smiles|laughs)\b", line) for n in names if n):
             continue
@@ -116,12 +148,16 @@ def _romance_ok(session: ChatSession) -> bool:
         trust.romance_allowed(CharacterCard.model_validate(c.card or {"name": c.name})) for c in people)
 
 
+def _has_minor(session: ChatSession) -> bool:
+    return any(trust.is_minor(CharacterCard.model_validate(c.card or {"name": c.name})) for c in group.cast(session))
+
+
 def _key(session: ChatSession) -> str:
     last = session.messages[-1]
     return f"{last.id}:{hashlib.sha1(last.content.encode()).hexdigest()[:12]}"
 
 
-def build_prompt(session: ChatSession) -> str:
+def build_prompt(session: ChatSession, romance_ok: bool = False, minor: bool = False) -> str:
     fmt = get_format(settings.prompt_format)
     user = session.persona.name if session.persona else "You"
     people = " and ".join(c.name for c in group.cast(session)) or "the characters"
@@ -129,8 +165,9 @@ def build_prompt(session: ChatSession) -> str:
     recent = [m for m in session.messages if m.role in ("user", "assistant", group.NARRATOR_ROLE)][-4:]
     transcript = "\n".join(
         f"{user if m.role == 'user' else group.speaker_name(session, m)}: {m.content[:600]}" for m in recent)
-    body = (TEXTING if session.mode == "texting" else STORY).format(
+    body = (TEXTING if session.mode == "texting" else WITH_A_MINOR if minor else STORY).format(
         people=people, user=user, transcript=transcript,
+        action=(ACTION_ANY if romance_ok else ACTION_PRACTICAL).format(user=user),
         setting=f"Setting: {world.description[:500]}" if world and world.description else "",
     )
     return fmt.user.format(text=body) + fmt.joiner + fmt.response_open + "1."
@@ -153,11 +190,12 @@ async def offer(db, session: ChatSession, refresh: bool = False) -> list[str]:
     user = session.persona.name if session.persona else "You"
     names = [user, *(c.name for c in group.cast(session))]
     romance_ok = _romance_ok(session)
-    prompt = build_prompt(session)
+    minor = _has_minor(session)
+    prompt = build_prompt(session, romance_ok, minor)
     best: list[str] = []
     for _ in range(ATTEMPTS):
         got = parse("1." + await get_client().generate(prompt, params), names, romance_ok,
-                    session.mode == "texting")
+                    session.mode == "texting", minor)
         if len(got) > len(best):
             best = got
         if len(best) == COUNT:
