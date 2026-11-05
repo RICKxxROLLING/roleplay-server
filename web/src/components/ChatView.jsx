@@ -318,6 +318,8 @@ export default function ChatView({
       setWalkPlace("");
       setWalkWho("");
       stopPlaying();
+      // The next person turns up at the bottom, even if the reader had scrolled up.
+      stickRef.current = true;
       setSession(fresh);
       onDirty?.();
     } catch (e) {
