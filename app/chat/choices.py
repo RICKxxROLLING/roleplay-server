@@ -81,7 +81,7 @@ _INTIMATE = re.compile(
     # Touch, which reads as closeness whatever words surround it.
     r"touch\w*|hold\w*|hug\w*|hands?|fingers?|thumbs?|palms?|arms?|shoulders?|cheeks?|chin|jaw\w*|ears?|hair|curls?|"
     r"forehead|face|lap|knees?|wrap\w*|lac\w+|interlac\w*|intertwin\w*|squeez\w*|pull\w* \w+ (close|closer|in)|"
-    r"draw\w* \w+ (close|closer|in)|lean\w* (in|into|close|closer|against)|closer|close to|next to you|beside you|against (me|you|him|her)|just for us|love poems?|"
+    r"draw\w* \w+ (close|closer|in)|lean\w* (in|into|close|closer|against)|closer|close to|next to you|beside you|against (me|you|him|her)|just for us|love poems?|jeans|shirt|blankets?|pose|"
     r"tuck\w*|brush\w*|trac\w+|rub\w*|nudge\w*|pat|pats|reach\w* (over|across|out)|gently)\b", re.I)
 _NOT_WITH_A_MINOR = re.compile(
     r"\b(each other|just us|the two of us|if things were different|our moments?|lazy|lonely|beautiful|pretty|"
