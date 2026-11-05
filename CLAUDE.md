@@ -414,6 +414,34 @@ the 2 refusals called it a friendship as if the rest hadn't happened. Tag a card
 
 **Replies are held in the moment at save time (`chat/pacing.py`).** The pacing prompt didn't stop characters ending scenes: over 120 replies, 15 walked out or sent the user away, and quiet talk ran through whole days. Cutting at the first exit, unless the user's line goes somewhere, plus holding the tracked hour through quiet turns, on the same five 24-turn chats: location changes 41 to 21 (Maria 15 to 4), moves-on phrases 9 to 3, and most chats held one or two times of day instead of a dozen. The stored transcript stops teaching exits, so the live change is bigger than the cut alone. Redos rose from 1 to 5 of 120, and replies shortened from 824 to 789 characters on average. First person was already 0 of 120 before this, and name-labelled lines for other people 0, so neither needed work. Read every cut when changing the patterns: "tilting her head back" and "her gaze never leaving Riley's face" both matched at first. Not covered: speech that winds a scene down in other words, and characters touching the user.
 
+**A world chat is a series of encounters, private to each person (`chat/encounters.py`).** Based in
+a world instead of on one character: you arrive somewhere, a person there speaks first, you talk, and
+Walk on ends it. Only the user ends an encounter. `ChatSession.character_id` is NOT NULL and migrations
+are additive, so every world chat is owned by one hidden host character (`Character.host`) that never
+speaks, lists or belongs to a world, which also keeps the `Character.sessions` cascade from taking a chat
+with a deleted person. `ChatSession.world_id` marks the chat; `Encounter` rows hold who, where, when,
+the opening's reason and the message they start at (ranges, so nothing that writes a message has to know).
+Walk on moves the fold's watermark past the encounter and empties summary and facts, so history, summary
+and facts are this encounter alone; recall and pins skip other people's encounters (`private_ids`); each
+person keeps a note (`PersonMemory`) read back as their facts, editable under People you've met. The
+persona loses any sentence naming someone else in the world. Prototype on Stheno, two hand-written locals:
+the last conversation in the prompt leaked into 3 of 8 openings, 0 of 16 without; a "never met" line took
+acting-like-acquaintances 5 of 8 to 1 of 8; a server-chosen reason to speak, addressed the user 14 of 16
+against 9; a returning person recalled the deal 6 of 8 with a note, 0 of 8 without. Then live, three chats
+each run twice (Dina/Maria, Joel/Nora, Owen/Mel): no stranger mentioned the deal in either run. The first
+run found five things, each fixed and measured offline, then confirmed in the second run:
+places came back as "10 AM", "8" and "9mm workshop" ("What ordinary place does X spend their morning in?"
+with "X is in the" prefilled: 0 digits in 40); notes after a mere "Do I know you?" invented whole errands
+(lines needing 45% of their words from the meeting: all invented lines go, so do 4 of 14 true side details);
+goodbyes were silent ("out loud, in double quotes": quoted 18 of 18 against 8); returning people ignored
+the user (the note as a tail line plus "has just walked up ... out loud": 18 of 18 spoke to them); the scene
+tracker's "8:15am" reached a heading (the clock is the encounter's). Known limits: Dina's card mentions the
+user, so she is a friend, not a stranger; strangers still invent things about the user ("Tommy mentioned a
+new face in town", "Hey Riley" from someone who never heard the name); a returning person may still invent
+what they did about the deal; the note can still get one word wrong (Dina became his sister in 8 of 8).
+Places by hand and generated locals are the next stage, so a typed place only favours a card mentioning it.
+Writing first, texting, guests and visitor events are off in world chats.
+
 **The look is "Manuscript": a warm dark book, not a chat app (`web/tailwind.config.js`).** The owner chose it from three directions, for long reading. Tailwind's `slate` is overridden with warm tones and `ink` is the ground, so every panel follows from the tokens; keep any `slate` step used for text at 4.5:1 on `ink-950`. Literata and Inter are bundled with `@fontsource`, never a Google Fonts link, because the server makes no outside calls to show a page. Everything about a chat beyond who and where lives in the scene panel in `ChatView.jsx`, beside the story from `lg` and sliding over below it. Messages have no avatars, which also ended a 404 per message for characters without a picture.
 
 **The narrator is mostly quiet, and the server writes half of each line (`chat/narrator.py`).** A
