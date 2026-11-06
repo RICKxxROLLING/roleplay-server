@@ -38,6 +38,8 @@ HOST_NAME = "(world chat)"
 MEMORY_CAP = 12
 #: How much of a note's line must be words from the meeting: see `_supported`.
 NOTE_SUPPORT = 0.45
+#: A line saying what the user said or did needs this much from the user's own words.
+NOTE_USER_SUPPORT = 0.35
 _NOTE_FILLER = frozenset({"came", "coming", "remembers", "recalls"})
 #: Of the encounter, for the parting note. A long talk's earlier part is in its summary.
 NOTE_TRANSCRIPT_CHARS = 6000
@@ -374,6 +376,27 @@ def _supported(line: str, transcript: str) -> bool:
     return not words or len(words & _content_words(transcript)) / len(words) >= NOTE_SUPPORT
 
 
+_CLAIM = r"(?:shared|said|says|told|mentioned|explained|revealed|admitted|promised|asked|offered|gave|traded|brought|came|visited|wanted|needed|planned|is|was|has|had|would|will|lives|works|moved|replac\w*)"
+_USER_FILLER = frozenset({"came", "coming", "remembers", "recalls", "promised", "agreed", "asked", "told", "said",
+                          "gave", "visited", "shared", "mentioned", "explained"})
+
+
+def claims_about_user(line: str, user: str) -> bool:
+    """Whether a note line says what the user said, did or is. "Riley shared that he was replacing
+    Mrs. Kowalski": the model hands the user what the character said, or what it made up."""
+    first = re.escape(user.split()[0])
+    return bool(re.match(rf"(?:He|She|{first})\b", line) or re.search(rf"\b{first}\b[^.]{{0,40}}?\b{_CLAIM}\b", line))
+
+
+def _from_user(line: str, user_words: str) -> bool:
+    """Of 48 stored notes on the test box, every true line about the user had at least 43% of its
+    words in the user's own lines, and the made-up ones 23% or less (Mrs. Kowalski, Lucien as an
+    "estranged father", a bird feeder): so 35%. It also drops two half-true lines that turned the
+    user's "keep this between us" into a promise of his own."""
+    words = _content_words(line) - _USER_FILLER
+    return not words or len(words & _content_words(user_words)) / len(words) >= NOTE_USER_SUPPORT
+
+
 async def write_note(session: ChatSession, encounter: Encounter, db) -> None:
     """What this person keeps of the meeting. Nothing usable costs the new note, not the old one."""
     person = encounter.character
@@ -392,7 +415,9 @@ async def write_note(session: ChatSession, encounter: Encounter, db) -> None:
                               stop=list(get_format(settings.prompt_format).stops))
     raw = await get_client().generate(prompt, params)
     source = f"{transcript} {session.summary or ''} {person.name} {user}"
-    new = [f for f in parse_facts(raw, user) if _supported(f, source)]
+    said = " ".join(m.content for m in messages_of(session, encounter) if m.role == "user")
+    new = [f for f in parse_facts(raw, user)
+           if _supported(f, source) and (not claims_about_user(f, user) or _from_user(f, said))]
     if not new:
         return
     row = db.get(PersonMemory, (session.id, person.id))

@@ -450,3 +450,13 @@ def test_moving_without_a_goodbye_stays_with_them(client, world, llm):
     respond(client, sid)
     say(client, sid, "*I walk over to the shelf by the window.*")
     assert len(get(client, sid)["encounters"]) == 1
+
+
+def test_a_note_line_about_the_user_needs_the_users_own_words():
+    said = "I need antibiotics for my friend Sam. Hold my father's watch for three days."
+    assert encounters.claims_about_user("Riley came seeking antibiotics for his friend Sam.", "Riley")
+    assert encounters._from_user("Riley came seeking antibiotics for his friend Sam.", said)
+    kowalski = "In return, Riley shared that he was the new teacher, replacing Mrs. Kowalski who had retired."
+    assert encounters.claims_about_user(kowalski, "Riley") and not encounters._from_user(kowalski, said)
+    # What the character did is judged against the whole meeting, as before.
+    assert not encounters.claims_about_user("Joel agreed to hold the watch for three days.", "Riley")

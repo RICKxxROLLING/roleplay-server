@@ -465,6 +465,19 @@ to meet you", "see you monday"; not "nice to meet you", which starts one). And o
 answered, a line that moves the user on their own (scene.moved, nobody with them) walks on by itself:
 the place is read from that line, the arrival goes before it, and the new person answers it.
 
+**Remembered details are checked against who said them (`encounters._from_user`, `summarizer.grounded`).**
+From the owner asking how to stop misremembering. Notes credited the user with what the character said or
+made up ("Riley shared that he was replacing Mrs. Kowalski"). A note line about the user (starting with
+their name, He or She, or naming them before a verb like said, promised, came) now needs 35% of its words
+from the user's own lines, besides the 45% from the whole meeting. On the 48 notes stored on the test box:
+all 11 true lines about the user kept (lowest 43%), all 9 invented ones dropped (highest 23%), plus 3
+half-true ones (the user's "keep this between us" turned into his promise). New facts in any chat must
+name only people and places that came up, and share a third of their words with the turns; of 100 stored
+facts, 94 already cleared 45%. Tried and not shipped: showing a returning person the last four messages of
+their previous meeting. Over 18 returns each way (Dina, Joel, Owen), Joel and Owen stayed on the deal
+either way and Dina drifted to her clockwork either way (2 of 6 on the antibiotics without, 3 of 6 with),
+and with it Owen invented a Seattle trip twice and Dina a stockpile at Red Rock Pass.
+
 **Your typed line gets its quotes and asterisks from the model, kept only if every word survives (`chat/tidy.py`).**
 Asked for by the owner, who types speech and actions together ("yeah okay ill try I smile"). Few-shot
 prompt at temperature 0.2; the server keeps the result only if the letters of every word are still there

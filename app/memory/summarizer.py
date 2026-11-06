@@ -364,7 +364,9 @@ async def update_facts(
         max_new_tokens=800,
         stop=list(get_format(settings.prompt_format).stops),
     )
-    facts = parse_facts(await get_client().generate(prompt, params), user_name)
+    source = " ".join([render_transcript(turns, card.name or "Character", user_name), existing,
+                       card.name or "", user_name])
+    facts = [f for f in parse_facts(await get_client().generate(prompt, params), user_name) if grounded(f, source)]
     if not facts:
         return existing
     old = [_BULLET.sub("", line).strip() for line in existing.splitlines() if line.strip()]
@@ -419,6 +421,24 @@ def specificity(fact: str, leads: set[str] = frozenset()) -> int:
 
 def _content_words(text: str) -> set[str]:
     return {w for w in re.findall(r"[a-z]+", text.lower()) if len(w) > 2 and w not in _STOPWORDS}
+
+
+#: A fact must share this much of its wording with the turns it came from (or the old list).
+FACT_SUPPORT = 0.34
+_NAME = re.compile(r"\b[A-Z][a-z]{2,}\b")
+
+
+def grounded(fact: str, source: str) -> bool:
+    """Whether a new fact came from what it was folded from. Any name in it must appear there,
+    and about a third of its words. Over 100 facts stored on the test box, 94 had at least 45% of
+    their words in their chat and the weakest were mood ("Dina and Riley acknowledge the unusual
+    nature of their reunion"), not inventions; so the word bar is low, and the names check is what
+    stops a made-up person or place reaching every later prompt."""
+    names = [w for w in _NAME.findall(fact) if w not in _GENERIC_CAPS]
+    if any(w not in source for w in names):
+        return False
+    words = _content_words(fact)
+    return not words or len(words & _content_words(source)) / len(words) >= FACT_SUPPORT
 
 
 def _covered(fact: str, new: list[str]) -> bool:

@@ -364,6 +364,9 @@ def test_pins_appear_in_story_order():
 # --- facts ------------------------------------------------------------------
 
 def test_a_fold_also_writes_the_fact_list(client, session, llm):
+    # The mock's facts have to come from the turns now (summarizer.grounded).
+    sse_events(client.post(f"/api/sessions/{session}/messages",
+                           json={"content": "Riley here. I found the ledger. Seraphine, you keep the archive key."}))
     flood(client, session)
     m = client.get(f"/api/sessions/{session}/memory").json()
     assert m["facts"].startswith("- Riley found the ledger.")
@@ -485,3 +488,12 @@ def test_specificity_ranks_commitments_above_filler():
     leads = {"Dina", "Riley"}
     assert specificity("Riley offers Dina the old Hendricks cabin.", leads) > 0
     assert specificity("Their bond is a poignant symbol of hope.", leads) < 0
+
+
+def test_a_fact_naming_someone_who_never_came_up_is_dropped():
+    from app.memory.summarizer import grounded
+
+    src = "Riley: We searched the lower stacks for the ledger. Seraphine: The archive key is mine."
+    assert grounded("Seraphine keeps the archive key.", src)
+    assert not grounded("Seraphine owes Marcus a favour.", src)
+    assert not grounded("Riley grew up on a horse farm in Montana.", src)
