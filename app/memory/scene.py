@@ -113,19 +113,24 @@ def build_scene_prompt(scene: dict, user_text: str, reply: str, char: str, user:
 # Dina went from the rug by the stove to a lookout tower she was only describing.
 _MOVEMENT = re.compile(
     r"\b(walk(s|ed|ing)?|head(s|ed|ing)? (to|toward|towards|out|back|home|inside|outside|over|up|down)|"
-    r"step(s|ped|ping)? (out|in|inside|outside|into|through)|arriv(e|es|ed|ing)|enter(s|ed|ing)?|"
+    r"head(s|ed|ing)? for|step(s|ped|ping)? (out|in|inside|outside|into|through)|arriv(e|es|ed|ing)|enter(s|ed|ing)?|"
     r"leav(e|es|ing)|left the|r(i|o)de(s)?|riding|follow(s|ed|ing)?|climb(s|ed|ing)?|"
     r"(go|goes|going|went) (to|inside|outside|out|back|home)|back (home|at|in|to)|"
     r"later|the next (morning|day)|that (evening|night)|meanwhile)\b", re.I)
 _QUOTED = re.compile(r'"[^"\n]*"|“[^”\n]*”')
 
 
-def moved(user_text: str, reply: str) -> bool:
-    """Whether the exchange moves anyone. Speech doesn't count: talking about a
-    place, or a walk, is not going there."""
-    # Nor does asking: "What would you do if you could leave tomorrow?" put Joel in his cabin.
-    asked = re.sub(r"[^.!?*\n]*\?", " ", _QUOTED.sub(" ", user_text))
-    return bool(_MOVEMENT.search(asked + "\n" + _QUOTED.sub(" ", reply)))
+def moved(user_text: str, reply: str = "") -> bool:
+    """Whether the user's line moves the scene. Only the user's: the owner saw places still
+    changing too fast, and over the 158 exchanges stored on the test box the reply's own
+    narration ("she walks over", "follows", "later") let the location change in 95 of them.
+    Counting the user's line alone, 34, and reading them, all but one were real moves ("we
+    walk down to the stables", "that afternoon we head out on patrol"); the one wasn't the
+    user ("Tommy rides up"). Speech counts here, since "let's go to the barn" is the user
+    saying they move; a question doesn't: "What would you do if you could leave tomorrow?"
+    put Joel in his cabin. `reply` stays in the signature for callers; it is not read."""
+    asked = re.sub(r"[^.!?*\n\"”]*\?", " ", user_text)
+    return bool(_MOVEMENT.search(asked))
 
 
 async def update_scene(

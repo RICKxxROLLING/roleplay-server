@@ -361,7 +361,7 @@ narration style's "always something new". Then 96 live replies, Dina and Joel, s
 only change: pushing on 9/48 with "something new to react to", 3/48 with "small ambient details
 drift through the background"; places per chat 3.5 vs 2.5; 736 vs 701 chars. Walk-ins were too
 rare in that run to compare. The style is a per-server setting, so the owner applies it. Greetings that plant a task
-pull the same way: Dina's library raid kept resurfacing beside the stove.
+pull the same way: Dina's library raid kept resurfacing beside the stove. Then, from the owner seeing places still change too fast: only the user's own line moves the scene now, speech included and questions not. Over the 158 exchanges stored on the test box the old rule let the location change in 95, the new one in 34, all but one a real move by the user (the one: "Tommy rides up").
 
 **A swipe must exclude its reply from retrieval, not only from history.** Retrieval skips what is
 already in the prompt, and a swipe takes the replaced reply out first, so that reply became a

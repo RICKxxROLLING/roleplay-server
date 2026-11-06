@@ -54,8 +54,14 @@ def test_location_changes_only_when_someone_moves():
     from app.memory.scene import moved
 
     assert moved("*I walk over to the stables.*", "He nods.")
-    assert moved("Hi.", "*She steps outside into the snow.*")
-    assert moved("Hi.", "*The next morning she is up early.*")
+    # Only the user's line moves the scene, whatever the reply narrates.
+    assert not moved("Hi.", "*She steps outside into the snow.*")
+    assert not moved("Hi.", "*The next morning she is up early.*")
+    assert not moved("*I top up your mug.*", "*She walks over and follows him to the window.*")
+    assert moved('"Let\'s go to the barn."', "*She nods.*")
+    assert moved("*The next morning I walk her through town.*")
+    assert moved('"Thanks." *I head for the door.*')
+    assert not moved('"Would you ever walk out on Jackson?"')
     # Mentioning a place, or talking about going somewhere, moves nobody.
     assert not moved("Tell me about the stables.", '*She smiles.* "I walked there once, and the lookout tower too."')
     assert not moved("*I top up your cocoa.*", "*She takes the mug by the stove.*")
@@ -69,8 +75,12 @@ def test_a_mentioned_place_does_not_replace_the_location(client, session, llm):
     scene = client.get(f"/api/sessions/{session}").json()["scene"]
     # A quiet line moves neither the place nor, now, the clock (chat/pacing.py).
     assert scene["location"] == "the flooded archive" and scene["time"] != "night"
+    # Her walking there alone doesn't move the scene; the user going does.
     llm.replies = ["*She walks to the lookout tower.*"]
     sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": "Hm."}))
+    assert client.get(f"/api/sessions/{session}").json()["scene"]["location"] == "the flooded archive"
+    llm.replies = ["*She follows.*"]
+    sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": "*We walk up to the lookout tower.*"}))
     assert client.get(f"/api/sessions/{session}").json()["scene"]["location"] == "the lookout tower"
 
 
