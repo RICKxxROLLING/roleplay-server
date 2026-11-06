@@ -58,6 +58,7 @@ AGAIN = ("{{char}} and {{user}} have met before. {{user}} has just walked up, an
          "and speaks to {{user}} first, out loud.")
 REMEMBER = "What {{char}} remembers of {{user}}: {notes}"
 # Without a greeting to copy, some openings dropped the quote marks around speech.
+ARRIVED = "{{user}} has just arrived where {{char}} is. {{char}} notices {{user}} and answers {{user}}."
 FORMAT_LINE = 'Spoken words go in "double quotes" and actions in *asterisks*.'
 # Prototype: a spoken goodbye 4 of 6 without "out loud", 0 of 6 with no line, and nobody followed.
 # Live, the plain line left Joel and Owen watching in silence. Offline, three people, 18 tries:
@@ -117,7 +118,18 @@ _LEAVE_SAID = re.compile(
     r"i'?ll let you get back to it|see you (?:around|later|tomorrow|soon|then)|take care)\b(?=\s*[,.!…\"”]|\s*$)"
     # Said anywhere in the line, not only at its end: "I'll see you in three days."
     r"|\bi'?ll see you (?:in|on|at|next|around|later|tomorrow|soon|then)\b", re.I)
+# Goodbyes that are goodbyes wherever they sit in the line. Riley writes without quote marks
+# ("alright I think this is where we split it was nice to meet you Marcus", "thanks again ill see
+# you monday"), and neither counted live, so Marcus carried on alone and then took over the
+# next scene. Not "nice to meet you": that's how a meeting starts.
+_LEAVE_PHRASE = re.compile(
+    r"\b(?:where we (?:split|part)|(?:it )?(?:was|been) (?:nice|good|great|lovely|a pleasure) "
+    r"(?:to meet|meeting|talking|to talk|to see|seeing) you|(?:nice|good|great) (?:meeting|talking to|seeing) you|"
+    r"see (?:you|ya) (?:on )?(?:mon|tues|wednes|thurs|fri|satur|sun)day|"
+    r"see (?:you|ya) (?:next week|at school|at work|in the morning|tonight|around|later|soon|tomorrow)|"
+    r"catch (?:you|ya) (?:later|around)|i'?m (?:heading|going|off) (?:home|out|back))\b", re.I)
 _QUOTED = re.compile(r'"[^"]*"|“[^”]*”')
+_SENTENCE = re.compile(r"[^.!?\n]+[.!?]*")
 #: Going to another part of the same room, or staying, isn't leaving.
 _LEAVE_NOT = re.compile(r"\b(?:never|won'?t|wouldn'?t|couldn'?t|can'?t|don'?t|didn'?t|not)\s+(?:\w+\s+)?(?:leave|go)\b", re.I)
 
@@ -185,8 +197,16 @@ def is_leaving(text: str) -> bool:
     narration = _QUOTED.sub(" ", words)
     if _LEAVE_ACT.search(narration) and not _LEAVE_NOT.search(narration):
         return True
-    return any(not q.rstrip('"” ').endswith("?") and _LEAVE_SAID.search(q.strip('"“” '))
-               for q in _QUOTED.findall(words))
+    # With no quote marks at all, the whole line may be speech, so it's read sentence by sentence.
+    said = _QUOTED.findall(words) or _SENTENCE.findall(words)
+    return any(_said(q) for q in said)
+
+
+def _said(text: str) -> bool:
+    text = text.strip(' "“”')
+    if not text or text.endswith("?"):
+        return False
+    return bool(_LEAVE_SAID.search(text) or _LEAVE_PHRASE.search(text))
 
 
 def leaving(session: ChatSession) -> bool:
@@ -217,6 +237,13 @@ def tail_note(session: ChatSession, card: CharacterCard, exclude_ids: set[int] |
     if encounter is None:
         return ""
     known = met_before(session, encounter) or _knows_user(card, _user(session))
+    here = [m for m in messages_of(session, encounter) if m.id not in (exclude_ids or ())]
+    if not any(m.role == "assistant" for m in here) and any(m.role == "user" for m in here):
+        # The user walked in by themselves (see `should_walk_on`): they spoke, so this answers.
+        notes = " ".join(remembered(session, encounter.character, db).split()) if met_before(session, encounter) else ""
+        before = (REMEMBER.replace("{notes}", notes) + " " if notes else "") + (
+            "{{char}} and {{user}} have met before." if met_before(session, encounter) else "" if known else NEVER_MET)
+        return " ".join(p for p in (before, ARRIVED, FORMAT_LINE) if p)
     if is_opening(session, exclude_ids):
         if met_before(session, encounter):
             notes = " ".join(remembered(session, encounter.character, db).split())
@@ -387,6 +414,35 @@ def next_time(session: ChatSession) -> str:
     if now not in TIMES:
         return TIMES[0]
     return now if len(session.encounters) % 2 else TIMES[(TIMES.index(now) + 1) % len(TIMES)]
+
+
+WHERE_NOW = """{setting}
+
+{user} writes: {text}
+
+Where is {user} now? Answer with just the place."""
+_TOGETHER = re.compile(r"\b(?:with (?:him|her|them|you)|follow\w*|together|we|us|let'?s)\b", re.I)
+
+
+def should_walk_on(session: ChatSession, text: str) -> bool:
+    """Whether the user has said goodbye, been answered, and is now going somewhere on their own:
+    then the chat walks on for them, rather than the last person following them into the next
+    scene (seen live: Marcus took over the user's classroom and taught them as a student)."""
+    from ..memory.scene import moved
+
+    encounter = group.current_encounter(session)
+    here = messages_of(session, encounter)
+    users = [m for m in here if m.role == "user"]
+    return bool(users and here[-1].role == "assistant" and is_leaving(users[-1].content)
+                and moved(text) and not _TOGETHER.search(text))
+
+
+async def where_now(session: ChatSession, text: str) -> str:
+    """The place the user's own line puts them, or "" to leave it to the person they meet."""
+    user = _user(session)
+    prompt = _ask(WHERE_NOW.format(setting=_setting(session), user=user, text=text.strip()[:400]), f"{user} is in the")
+    place = clean_place("the" + await get_client().generate(prompt, _params(16, 0.7, 1.0)))
+    return place if place and not re.search(r"\d", place) else ""
 
 
 async def walk_on(db, session: ChatSession, place: str = "", wanted: int | None = None) -> Encounter:

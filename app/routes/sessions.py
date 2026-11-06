@@ -361,7 +361,7 @@ def _stream_response(
 
 
 @router.post("/{session_id}/messages")
-def send_message(
+async def send_message(
     session_id: int, body: MessageIn, db: DbSession = Depends(get_db)
 ) -> StreamingResponse:
     s = db.get(ChatSession, session_id)
@@ -372,6 +372,15 @@ def send_message(
     if body.speaker_id is not None and not group.by_id(s, body.speaker_id):
         raise HTTPException(400, "That character is not in this chat")
     _someone_here(s)
+    # Said goodbye, got one back, and now off somewhere alone: the world moves on with them.
+    if s.world_id is not None and body.speaker_id is None and encounters.should_walk_on(s, body.content):
+        try:
+            await encounters.walk_on(db, s, await encounters.where_now(s, body.content))
+        except encounters.NobodyHere:
+            pass  # Nobody else in the world: they stay with the person they were with.
+        except Exception as exc:
+            db.rollback()
+            raise HTTPException(502, f"The model didn't answer, so you're still here. Try again. ({type(exc).__name__})") from exc
 
     # Marked like the replies, so a thread renders as one phone conversation.
     db.add(Message(session_id=s.id, role="user", content=body.content.strip(),

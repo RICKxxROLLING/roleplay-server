@@ -456,6 +456,14 @@ without; "I'll see you in three days", "gotta run" and "goodnight" count as leav
 voice; message ownership is worked out in one pass. Known and left: Walk on isn't refused
 server-side while a reply streams (the UI disables it), and two world chats created at the same
 instant could make two hosts.
+Then, from a live Maple Hollow chat the owner sent: they write without quote marks, so "this is where
+we split, it was nice to meet you Marcus" and "ill see you monday" weren't goodbyes (the rule only read
+speech inside quotes), Marcus never got the goodbye line, and when the owner walked into their own
+classroom Marcus took that scene over too and taught them as a student. A line with no quotes is now
+read sentence by sentence for goodbyes, with phrases that only end a meeting ("where we split", "was nice
+to meet you", "see you monday"; not "nice to meet you", which starts one). And once a goodbye has been
+answered, a line that moves the user on their own (scene.moved, nobody with them) walks on by itself:
+the place is read from that line, the arrival goes before it, and the new person answers it.
 
 **The look is "Manuscript": a warm dark book, not a chat app (`web/tailwind.config.js`).** The owner chose it from three directions, for long reading. Tailwind's `slate` is overridden with warm tones and `ink` is the ground, so every panel follows from the tokens; keep any `slate` step used for text at 4.5:1 on `ink-950`. Literata and Inter are bundled with `@fontsource`, never a Google Fonts link, because the server makes no outside calls to show a page. Everything about a chat beyond who and where lives in the scene panel in `ChatView.jsx`, beside the story from `lg` and sliding over below it. Messages have no avatars, which also ended a 404 per message for characters without a picture.
 

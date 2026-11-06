@@ -392,3 +392,61 @@ def test_recall_and_pins_only_reach_the_speakers_own_meetings(client, world):
         hana = s.encounters[0].character
         assert encounters.private_ids(s, cole) == hana_lines
         assert encounters.private_ids(s, hana) == cole_lines
+
+
+@pytest.mark.parametrize("text", [
+    # Riley's own lines from a live Maple Hollow chat, written without quote marks.
+    "alright I think this is where we split it was nice to meet you Marcus",
+    "thanks again ill see you monday",
+    "Good talking to you, catch you later.",
+])
+def test_a_goodbye_without_quote_marks_is_noticed(text):
+    assert encounters.is_leaving(text)
+
+
+@pytest.mark.parametrize("text", [
+    "Hi, nice to meet you!", "yeah okay ill try I smile", "will do thanks and I dig into my plate",
+    "I throw a twenty on top and follow him out, I can walk with you for a moment",
+])
+def test_ordinary_plain_lines_are_not_goodbyes(text):
+    assert not encounters.is_leaving(text)
+
+
+def test_leaving_then_going_somewhere_walks_on_by_itself(client, world, llm, monkeypatch):
+    sid = start(client, world)
+    respond(client, sid)
+    say(client, sid, "this is where we split, it was nice to meet you Hana")
+    assert get(client, sid)["leaving"]
+    real = llm.generate
+
+    async def places(prompt, params):
+        if "Where is" in prompt and "now?" in prompt:
+            return " fence line by the north field"
+        return await real(prompt, params)
+
+    monkeypatch.setattr(llm, "generate", places, raising=False)
+    say(client, sid, "I walk over to the fence line and take a look around")
+    got = get(client, sid)
+    assert len(got["encounters"]) == 2
+    assert got["encounters"][-1]["place"] == "the fence line by the north field"
+    assert got["character_name"] == "Cole Weaver"
+    roles = [m["role"] for m in got["messages"][-3:]]
+    assert roles == ["narrator", "user", "assistant"]
+    assert got["messages"][-1]["speaker_name"] == "Cole Weaver"
+    prompt = chat_prompts(llm)[-1]
+    assert "has just arrived where Cole Weaver is" in prompt and "speaks first" not in prompt
+
+
+def test_going_somewhere_together_doesnt_walk_on(client, world, llm):
+    sid = start(client, world)
+    respond(client, sid)
+    say(client, sid, '"Goodbye, Hana."')
+    say(client, sid, "*I follow her out to the street.*")
+    assert len(get(client, sid)["encounters"]) == 1
+
+
+def test_moving_without_a_goodbye_stays_with_them(client, world, llm):
+    sid = start(client, world)
+    respond(client, sid)
+    say(client, sid, "*I walk over to the shelf by the window.*")
+    assert len(get(client, sid)["encounters"]) == 1
