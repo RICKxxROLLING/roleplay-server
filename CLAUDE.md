@@ -465,6 +465,15 @@ to meet you", "see you monday"; not "nice to meet you", which starts one). And o
 answered, a line that moves the user on their own (scene.moved, nobody with them) walks on by itself:
 the place is read from that line, the arrival goes before it, and the new person answers it.
 
+**Your typed line gets its quotes and asterisks from the model, kept only if every word survives (`chat/tidy.py`).**
+Asked for by the owner, who types speech and actions together ("yeah okay ill try I smile"). Few-shot
+prompt at temperature 0.2; the server keeps the result only if the letters of every word are still there
+in order (spaces may move), cuts off anything added after the last word, and refuses unclosed marks or a
+quote nested in a quote. Lines already holding quotes or asterisks, and texts, are left alone. On the 16
+plain lines of the owner's Maple Hollow chat: 13 formatted, 3 kept as typed (a changed word, a dropped
+"and"); of the 13, one put speech in asterisks, which the server can't tell. Settings switch, on by
+default; off in the test suite so other tests' scripted replies aren't used up by it.
+
 **The look is "Manuscript": a warm dark book, not a chat app (`web/tailwind.config.js`).** The owner chose it from three directions, for long reading. Tailwind's `slate` is overridden with warm tones and `ink` is the ground, so every panel follows from the tokens; keep any `slate` step used for text at 4.5:1 on `ink-950`. Literata and Inter are bundled with `@fontsource`, never a Google Fonts link, because the server makes no outside calls to show a page. Everything about a chat beyond who and where lives in the scene panel in `ChatView.jsx`, beside the story from `lg` and sliding over below it. Messages have no avatars, which also ended a 404 per message for characters without a picture.
 
 **The narrator is mostly quiet, and the server writes half of each line (`chat/narrator.py`).** A

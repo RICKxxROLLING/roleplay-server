@@ -25,6 +25,7 @@ PERSISTABLE: dict[str, type] = {
     "prompt_format": str,
     "narration_style": str,
     "guard_user_actions": bool,
+    "tidy_user_lines": bool,
     "redo_first_person": bool,
     "context_tokens": int,
     "max_new_tokens": int,

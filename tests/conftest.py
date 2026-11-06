@@ -30,6 +30,8 @@ os.environ["RP_KEEP_RECENT_MESSAGES"] = "4"
 os.environ["RP_AUTONOMY_SCHEDULER"] = "false"
 # Off so ordinary tests keep their message counts; test_narrator.py turns it on.
 os.environ["RP_NARRATOR_DEFAULT"] = "false"
+# Off so ordinary tests see their typed lines and model calls unchanged; test_tidy.py turns it on.
+os.environ["RP_TIDY_USER_LINES"] = "false"
 # Some CI images export a SOCKS proxy that httpx can't construct a client for.
 for var in ("ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy"):
     os.environ.pop(var, None)
@@ -172,6 +174,11 @@ class MockLLM(LLMClient):
 
     async def generate_stream(self, prompt, params):
         self.prompts.append(prompt)
+        if "You format lines for a roleplay chat" in prompt:
+            # chat/tidy.py: nothing usable by default, so a typed line is saved as typed and
+            # the scripted replies below aren't used up by it.
+            yield ""
+            return
         if "you are the narrator" in prompt.lower():
             self.narrator_calls.append(prompt)
             # Distinct by default: the narrator refuses a line much like a recent one.
@@ -273,6 +280,7 @@ def llm(monkeypatch):
     import app.chat.autonomy as autonomy
     import app.chat.choices as choices_mod
     import app.chat.encounters as encounters_mod
+    import app.chat.tidy as tidy_mod
     import app.chat.narrator as narrator_mod
     import app.chat.orchestrator as orch
     import app.chat.rhythm as rhythm_mod
@@ -283,7 +291,7 @@ def llm(monkeypatch):
     import app.routes.system as system
 
     mock = MockLLM()
-    for module in (autonomy, choices_mod, creator, encounters_mod, narrator_mod, orch, people_mod, rhythm_mod, scene, summarizer, system, thoughts_mod, trust_mod):
+    for module in (autonomy, choices_mod, creator, encounters_mod, narrator_mod, tidy_mod, orch, people_mod, rhythm_mod, scene, summarizer, system, thoughts_mod, trust_mod):
         monkeypatch.setattr(module, "get_client", lambda: mock)
     return mock
 

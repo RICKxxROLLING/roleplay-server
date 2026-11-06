@@ -124,6 +124,22 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
               </span>
             </span>
           </label>
+          <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={s.tidy_user_lines ?? true}
+              onChange={(e) => update("tidy_user_lines", e.target.checked)}
+              className="accent-accent w-4 h-4 mt-0.5"
+            />
+            <span>
+              Add quotes and asterisks to what you type
+              <span className="block text-xs text-slate-600">
+                Puts your speech in quotes and your actions in asterisks, so the
+                character can tell them apart. Your words are never changed; if
+                they would be, your line is kept exactly as typed.
+              </span>
+            </span>
+          </label>
 
           <label className="flex items-start gap-2.5 text-sm cursor-pointer">
             <input
