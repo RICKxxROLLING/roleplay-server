@@ -50,6 +50,8 @@ def test_heading_home_is_still_a_goodbye():
     ('"I\'ll walk you through the plan."', False),
     ('"Did you follow the tracks?"', False),
     ("I'll think about it later", False),
+    ("*I'm going back to what you said about the lake.*", False),
+    ("*I go back to the stables.*", True),
     ('"Let\'s go to the barn."', True),
     ('"Come on, I\'m heading over to the stables."', True),
     ("*Later, once JJ is asleep, I bring two mugs out to the porch.*", True),

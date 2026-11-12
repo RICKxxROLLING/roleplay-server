@@ -125,6 +125,9 @@ _SPEECH_MOVE = re.compile(
     r"\b(?:let'?s (?:go|head|walk|ride|get (?:going|out|back|inside)|step)|come on|come with me|follow me|"
     r"i'?m (?:going|heading|walking) (?:to|over|out|back|home|inside|outside)|we should (?:go|head))\b", re.I)
 _QUOTED = re.compile(r'"[^"\n]*"|“[^”\n]*”')
+_BACK_TO_TALK = re.compile(
+    r"\b(?:(?:go|goes|going|went|get|getting|come|coming|circle|circling)\s+)?back to "
+    r"(?:what|that|your|my|our|the (?:question|point|subject|topic|part|thing))\b[^.!?*\n]*", re.I)
 
 
 def moved(user_text: str, reply: str = "") -> bool:
@@ -138,6 +141,9 @@ def moved(user_text: str, reply: str = "") -> bool:
     it" go nowhere; a question never does: "What would you do if you could leave tomorrow?"
     put Joel in his cabin. `reply` stays in the signature for callers; it is not read."""
     asked = re.sub(r"[^.!?*\n\"”]*\?", " ", user_text)
+    # Going back to a subject isn't going anywhere. Seen live: "I'm going back to what you said
+    # about the lake", formatted as an action, moved the scene from the diner to Pine Lake.
+    asked = _BACK_TO_TALK.sub(" ", asked)
     doing = _QUOTED.sub(" ", asked)
     said = " ".join(_QUOTED.findall(asked))
     return bool(_MOVEMENT.search(doing) or _TIME_JUMP.search(doing) or _SPEECH_MOVE.search(said))
