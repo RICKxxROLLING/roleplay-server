@@ -141,6 +141,12 @@ def _without_label(text: str, card: CharacterCard) -> str:
     return reply[len(prefix) :].strip() if reply.startswith(prefix) else reply
 
 
+def _unnest(text: str) -> str:
+    """Speech wrapped twice, "'Goodbye, Riley.'", becomes "Goodbye, Riley." Seen live when a
+    tail line asked for a goodbye in double quotes."""
+    return re.sub(r'"\'([^"\n]*?)\'"', r'"\1"', text)
+
+
 def _whole_sentences(text: str) -> str:
     """Trim a reply the token cap cut off back to its last complete sentence. Live,
     11 of 24 replies at the pacing cap stopped mid-sentence. A reply with no
@@ -337,7 +343,7 @@ async def stream_reply(
                 yield {"type": "token", "text": piece}
             tokens.observe(settings.model, len(built.text), client.last_prompt_tokens)
 
-            raw = _without_label("".join(collected), card)
+            raw = _unnest(_without_label("".join(collected), card))
             if settings.slow_pacing and not is_texting:
                 raw = _whole_sentences(raw)
             # Before persisting: once one reply narrating the user is in

@@ -478,6 +478,23 @@ their previous meeting. Over 18 returns each way (Dina, Joel, Owen), Joel and Ow
 either way and Dina drifted to her clockwork either way (2 of 6 on the antibiotics without, 3 of 6 with),
 and with it Owen invented a Seattle trip twice and Dina a stockpile at Red Rock Pass.
 
+**Second review, 2026-11-12 (tests/test_review_two.py).** Ten findings in the work above. Fixed: a
+capitalised word that opens a sentence was taken for a made-up name, dropping true facts and notes ("After
+the patrol..."), so names are compared without case and common openers are exempt (98 of 100 stored facts
+pass; the two lost are "Objects:" and "Thursdays"); a note line opening He/She counts as the user's only
+when that pronoun can't be the character's; after a goodbye, turning back ("wait", "walk back over", their
+name) no longer walks on; "I'm going back to what you said" is no goodbye; the user's speech moves the scene
+only when it says they're going ("let's go", "come on", "I'm heading to"), and "later" only where it opens
+a sentence (40 of 180 stored exchanges move, all by reading real moves bar "Tommy rides up"); the streak
+uses the viewer's date; "for a moment" has its own label; the typed-line check covers every alphabet and
+skips multi-paragraph lines, and its pass holds the writing-first scheduler. Also: Walk on answers 409
+while anything is generating; the place a user walks into is read with what they said earlier in the
+meeting ("my new classroom": elementary or high school 6 of 6 from the line alone, the middle school 5 of
+5 with it); speech wrapped twice ("'Goodbye.'") is unwrapped; the journal pass is told the user is a man
+or a woman, after entries called a man "her". Left: the location doesn't follow a character who leads
+the user somewhere unless the user's line says they go, which is the owner's rule, and pacing already
+cuts such exits from replies.
+
 **Your typed line gets its quotes and asterisks from the model, kept only if every word survives (`chat/tidy.py`).**
 Asked for by the owner, who types speech and actions together ("yeah okay ill try I smile"). Few-shot
 prompt at temperature 0.2; the server keeps the result only if the letters of every word are still there

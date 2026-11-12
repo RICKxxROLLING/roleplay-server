@@ -29,7 +29,7 @@ from ..config import settings
 from ..db.models import Character, ChatSession, Encounter, Message, PersonMemory
 from ..llm import GenerationParams, get_client
 from ..memory.scene import blank
-from ..memory.summarizer import _content_words, merge_facts, parse_facts
+from ..memory.summarizer import _content_words, merge_facts, parse_facts, unknown_names
 from ..prompt.formats import get_format
 from . import group, narrator
 
@@ -129,7 +129,8 @@ _LEAVE_PHRASE = re.compile(
     r"(?:to meet|meeting|talking|to talk|to see|seeing) you|(?:nice|good|great) (?:meeting|talking to|seeing) you|"
     r"see (?:you|ya) (?:on )?(?:mon|tues|wednes|thurs|fri|satur|sun)day|"
     r"see (?:you|ya) (?:next week|at school|at work|in the morning|tonight|around|later|soon|tomorrow)|"
-    r"catch (?:you|ya) (?:later|around)|i'?m (?:heading|going|off) (?:home|out|back))\b", re.I)
+    # Not "I'm going back": "I'm going back to what you said about the lake" stays put.
+    r"catch (?:you|ya) (?:later|around)|i'?m (?:heading (?:home|out|off|back)|going home|off home))\b", re.I)
 _QUOTED = re.compile(r'"[^"]*"|“[^”]*”')
 _SENTENCE = re.compile(r"[^.!?\n]+[.!?]*")
 #: Going to another part of the same room, or staying, isn't leaving.
@@ -370,7 +371,7 @@ def _supported(line: str, transcript: str) -> bool:
     (the 45% used here), all side details, as losing a real line costs less than a false memory
     going back into prompts. It can't catch one wrong word: the model called Dina his sister in
     all 8 notes of one scene, which is why notes can be edited."""
-    if not all(w in transcript for w in _NAME_WORD.findall(line) if w not in ("The", "They", "She", "His", "Her", "Their")):
+    if unknown_names(line, transcript):
         return False
     words = _content_words(line) - _NOTE_FILLER
     return not words or len(words & _content_words(transcript)) / len(words) >= NOTE_SUPPORT
@@ -381,11 +382,14 @@ _USER_FILLER = frozenset({"came", "coming", "remembers", "recalls", "promised", 
                           "gave", "visited", "shared", "mentioned", "explained"})
 
 
-def claims_about_user(line: str, user: str) -> bool:
+def claims_about_user(line: str, user: str, pronoun: str | None = None) -> bool:
     """Whether a note line says what the user said, did or is. "Riley shared that he was replacing
-    Mrs. Kowalski": the model hands the user what the character said, or what it made up."""
+    Mrs. Kowalski": the model hands the user what the character said, or what it made up.
+    `pronoun` is the user's ("he" or "she") when it can't also be the character's: a line that
+    opens "She agreed..." about Rosa is hers, not a claim about a man she was talking to."""
     first = re.escape(user.split()[0])
-    return bool(re.match(rf"(?:He|She|{first})\b", line) or re.search(rf"\b{first}\b[^.]{{0,40}}?\b{_CLAIM}\b", line))
+    opens = f"{pronoun.capitalize()}|{first}" if pronoun else first
+    return bool(re.match(rf"(?:{opens})\b", line) or re.search(rf"\b{first}\b[^.]{{0,40}}?\b{_CLAIM}\b", line))
 
 
 def _from_user(line: str, user_words: str) -> bool:
@@ -416,8 +420,13 @@ async def write_note(session: ChatSession, encounter: Encounter, db) -> None:
     raw = await get_client().generate(prompt, params)
     source = f"{transcript} {session.summary or ''} {person.name} {user}"
     said = " ".join(m.content for m in messages_of(session, encounter) if m.role == "user")
+    from .guard import infer_pronoun
+
+    theirs = infer_pronoun((person.card or {}).get("description") or "")
+    mine = infer_pronoun(session.persona.description) if session.persona else None
+    pronoun = mine if mine and mine != theirs else None
     new = [f for f in parse_facts(raw, user)
-           if _supported(f, source) and (not claims_about_user(f, user) or _from_user(f, said))]
+           if _supported(f, source) and (not claims_about_user(f, user, pronoun) or _from_user(f, said))]
     if not new:
         return
     row = db.get(PersonMemory, (session.id, person.id))
@@ -441,12 +450,18 @@ def next_time(session: ChatSession) -> str:
     return now if len(session.encounters) % 2 else TIMES[(TIMES.index(now) + 1) % len(TIMES)]
 
 
+# With the line alone, "my new classroom" became an elementary school for someone who had said
+# they teach at the middle school, so what they said earlier in the meeting comes first.
 WHERE_NOW = """{setting}
-
+{earlier}
 {user} writes: {text}
 
 Where is {user} now? Answer with just the place."""
 _TOGETHER = re.compile(r"\b(?:with (?:him|her|them|you)|follow\w*|together|we|us|let'?s)\b", re.I)
+#: Going back to the person just left, or not quite gone: "wait, I walk back over".
+_TURNING_BACK = re.compile(
+    r"\b(?:wait|hold on|actually|one more thing|back (?:over|in|inside|to (?:him|her|them|you))|"
+    r"turn(?:s|ed)? (?:back|around)|return\w*|(?:to|toward|towards|at) (?:him|her|them))\b", re.I)
 
 
 def should_walk_on(session: ChatSession, text: str) -> bool:
@@ -458,14 +473,20 @@ def should_walk_on(session: ChatSession, text: str) -> bool:
     encounter = group.current_encounter(session)
     here = messages_of(session, encounter)
     users = [m for m in here if m.role == "user"]
-    return bool(users and here[-1].role == "assistant" and is_leaving(users[-1].content)
-                and moved(text) and not _TOGETHER.search(text))
+    if not (users and here[-1].role == "assistant" and is_leaving(users[-1].content)):
+        return False
+    name = encounter.character.name.split()[0] if encounter and encounter.character else ""
+    about_them = bool(name and re.search(rf"(?<!\w){re.escape(name)}(?!\w)", text, re.I))
+    return bool(moved(text) and not _TOGETHER.search(text) and not _TURNING_BACK.search(text) and not about_them)
 
 
 async def where_now(session: ChatSession, text: str) -> str:
     """The place the user's own line puts them, or "" to leave it to the person they meet."""
     user = _user(session)
-    prompt = _ask(WHERE_NOW.format(setting=_setting(session), user=user, text=text.strip()[:400]), f"{user} is in the")
+    said = [m.content.strip()[:200] for m in messages_of(session, group.current_encounter(session)) if m.role == "user"][-6:]
+    earlier = f"\nEarlier, {user} said:\n" + "\n".join(f"- {s}" for s in said) + "\n" if said else ""
+    prompt = _ask(WHERE_NOW.format(setting=_setting(session), earlier=earlier, user=user, text=text.strip()[:400]),
+                  f"{user} is in the")
     place = clean_place("the" + await get_client().generate(prompt, _params(16, 0.7, 1.0)))
     return place if place and not re.search(r"\d", place) else ""
 

@@ -35,7 +35,8 @@ you're can't there's i've we're oh yeah okay ok well just really got get like kn
 TICS = {
     "smirks": r"\bsmirk\w*", "chuckles": r"\bchuckl\w*", "sighs": r"\bsigh\w*",
     "grins": r"\bgrin\w*", "eyes sparkle": r"\beyes?\b[^.]{0,20}\bsparkl\w*", "raises an eyebrow": r"\beyebrow\w*",
-    "blushes": r"\bblush\w*", "a beat passes": r"\b(?:a beat|a moment passes|for a moment)\b",
+    "blushes": r"\bblush\w*", "pauses for a moment": r"\b(?:for a moment|a moment passes)\b",
+    "a beat": r"\ba beat\b",
 }
 
 
@@ -57,8 +58,9 @@ def _words(text: str) -> list[str]:
     return _WORD.findall(text.replace("*", " "))
 
 
-def _streaks(days: set[dt.date]) -> tuple[int, int]:
-    """Longest run of consecutive days played, and the run ending today or yesterday."""
+def _streaks(days: set[dt.date], today: dt.date | None = None) -> tuple[int, int]:
+    """Longest run of consecutive days played, and the run ending today or yesterday. `today` is
+    the viewer's date: the server's own is already tomorrow on a US evening."""
     if not days:
         return 0, 0
     ordered = sorted(days)
@@ -66,7 +68,7 @@ def _streaks(days: set[dt.date]) -> tuple[int, int]:
     for a, b in zip(ordered, ordered[1:]):
         run = run + 1 if (b - a).days == 1 else 1
         best = max(best, run)
-    today = dt.date.today()
+    today = today or dt.date.today()
     current = 0
     day = today if today in days else today - dt.timedelta(days=1)
     while day in days:
@@ -132,7 +134,7 @@ def stats(tz: str = "", db: DbSession = Depends(get_db)) -> dict:
             totals["narrator_lines"] += 1
 
     today = dt.datetime.now(zone).date()
-    best_streak, current_streak = _streaks(days_played)
+    best_streak, current_streak = _streaks(days_played, today)
 
     # Where each character stands with you: their best chat, since trust is per chat.
     standing: dict[int, dict] = {}

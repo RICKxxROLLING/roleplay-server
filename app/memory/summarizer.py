@@ -426,6 +426,20 @@ def _content_words(text: str) -> set[str]:
 #: A fact must share this much of its wording with the turns it came from (or the old list).
 FACT_SUPPORT = 0.34
 _NAME = re.compile(r"\b[A-Z][a-z]{2,}\b")
+#: Words that open a sentence with a capital and name nobody.
+_OPENERS = frozenset("""After Before Both During When While Later Then Once Since Initial Plans Despite Although
+Because Each Every Some Most Many All This That These Those There Now Today Tonight Tomorrow Yesterday Earlier
+Finally Together Neither Either Nobody Everyone Someone Instead However Meanwhile Still Also Only Even Until
+What Where Why How Who Whose With Without From Upon Over Under For And But Yet Nor Not His Her Their She They
+The Its Our Your You Mrs Miss Sir Lady Lord""".split())
+
+
+def unknown_names(line: str, source: str) -> list[str]:
+    """Capitalised words in `line` that the source never uses. Compared without case, since a
+    fact may open "After the patrol" where the chat said "after the patrol": the first check
+    took "After" for a made-up name and dropped true facts."""
+    low = source.lower()
+    return [w for w in _NAME.findall(line) if w not in _OPENERS and w.lower() not in low]
 
 
 def grounded(fact: str, source: str) -> bool:
@@ -434,8 +448,7 @@ def grounded(fact: str, source: str) -> bool:
     their words in their chat and the weakest were mood ("Dina and Riley acknowledge the unusual
     nature of their reunion"), not inventions; so the word bar is low, and the names check is what
     stops a made-up person or place reaching every later prompt."""
-    names = [w for w in _NAME.findall(fact) if w not in _GENERIC_CAPS]
-    if any(w not in source for w in names):
+    if unknown_names(fact, source):
         return False
     words = _content_words(fact)
     return not words or len(words & _content_words(source)) / len(words) >= FACT_SUPPORT

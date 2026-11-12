@@ -32,7 +32,7 @@ from ..prompt.formats import ALL_MARKERS, get_format
 # loved him" over a mug of cocoa. It also lost whose journal it was: Garrick's
 # first entry was written as Riley ("my new master"). Hence: whose journal, in
 # plain words, and an opinion that moves only as far as the exchange moved it.
-THOUGHTS_PROMPT = """You are {char}, writing in your own private journal about {user}. \
+THOUGHTS_PROMPT = """You are {char}, writing in your own private journal about {user}{who}. \
 This just happened between you:
 
 {exchange}
@@ -81,21 +81,23 @@ def parse_thought(raw: str, char_name: str) -> Thought | None:
     return Thought(journal=journal, view=view)
 
 
-def build_thoughts_prompt(user_text: str, reply: str, char: str, user: str, view: str) -> str:
+def build_thoughts_prompt(user_text: str, reply: str, char: str, user: str, view: str, pronoun: str | None = None) -> str:
     fmt = get_format(settings.prompt_format)
     exchange = f"{user}: {user_text.strip()[-800:]}\n{char}: {reply.strip()[-1500:]}"
-    body = THOUGHTS_PROMPT.format(char=char, user=user, exchange=exchange,
+    # Without it, a man's journal entries called him "her" within a few replies (seen live).
+    who = {"he": ", a man", "she": ", a woman"}.get(pronoun or "", "")
+    body = THOUGHTS_PROMPT.format(char=char, user=user, who=who, exchange=exchange,
                                   view=view or "nothing much yet -- you are still forming an opinion")
     return fmt.user.format(text=body) + fmt.joiner + fmt.response_open + "Journal:"
 
 
-async def think(user_text: str, reply: str, char: str, user: str, view: str) -> Thought | None:
+async def think(user_text: str, reply: str, char: str, user: str, view: str, pronoun: str | None = None) -> Thought | None:
     params = GenerationParams(
         temperature=0.8, top_p=0.95, top_k=40, repeat_penalty=1.05,
         context_tokens=settings.context_tokens, max_new_tokens=160,
         stop=list(get_format(settings.prompt_format).stops),
     )
-    raw = await get_client().generate(build_thoughts_prompt(user_text, reply, char, user, view), params)
+    raw = await get_client().generate(build_thoughts_prompt(user_text, reply, char, user, view, pronoun), params)
     return parse_thought("Journal:" + raw, char)
 
 
@@ -119,11 +121,13 @@ def latest_view(db, session_id: int, character_id: int, exclude_message_ids=()) 
 async def after_reply(db, session, speaker, reply_message, user_text: str, user_name: str) -> bool:
     """Write the speaker's journal entry for `reply_message`. A swipe of that
     message replaces its entry. Best-effort: False when nothing usable came back."""
+    from ..chat.guard import infer_pronoun
     from ..db.models import CharacterThought
 
     prev = latest_view(db, session.id, speaker.id, exclude_message_ids={reply_message.id})
     thought = await think(user_text or f"(nothing -- {speaker.name} wrote first)",
-                          reply_message.content, speaker.name, user_name, prev)
+                          reply_message.content, speaker.name, user_name, prev,
+                          infer_pronoun(session.persona.description) if session.persona else None)
     if thought is None:
         return False
     db.query(CharacterThought).filter(CharacterThought.message_id == reply_message.id).delete()

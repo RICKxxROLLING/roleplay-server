@@ -115,8 +115,15 @@ _MOVEMENT = re.compile(
     r"\b(walk(s|ed|ing)?|head(s|ed|ing)? (to|toward|towards|out|back|home|inside|outside|over|up|down)|"
     r"head(s|ed|ing)? for|step(s|ped|ping)? (out|in|inside|outside|into|through)|arriv(e|es|ed|ing)|enter(s|ed|ing)?|"
     r"leav(e|es|ing)|left the|r(i|o)de(s)?|riding|follow(s|ed|ing)?|climb(s|ed|ing)?|"
-    r"(go|goes|going|went) (to|inside|outside|out|back|home)|back (home|at|in|to)|"
-    r"later|the next (morning|day)|that (evening|night)|meanwhile)\b", re.I)
+    r"(go|goes|going|went) (to|inside|outside|out|back|home)|back (home|at|in|to))\b", re.I)
+# A jump in time moves the scene only where it opens a sentence: "*Later, once JJ is asleep*",
+# not "I'll think about it later".
+_TIME_JUMP = re.compile(
+    r"(?:^|[.!?*\n]\s*)(?:later|the next (?:morning|day)|that (?:morning|afternoon|evening|night)|meanwhile)\b", re.I)
+# Speech that says the user is going, as against speech that mentions going.
+_SPEECH_MOVE = re.compile(
+    r"\b(?:let'?s (?:go|head|walk|ride|get (?:going|out|back|inside)|step)|come on|come with me|follow me|"
+    r"i'?m (?:going|heading|walking) (?:to|over|out|back|home|inside|outside)|we should (?:go|head))\b", re.I)
 _QUOTED = re.compile(r'"[^"\n]*"|“[^”\n]*”')
 
 
@@ -126,11 +133,14 @@ def moved(user_text: str, reply: str = "") -> bool:
     narration ("she walks over", "follows", "later") let the location change in 95 of them.
     Counting the user's line alone, 34, and reading them, all but one were real moves ("we
     walk down to the stables", "that afternoon we head out on patrol"); the one wasn't the
-    user ("Tommy rides up"). Speech counts here, since "let's go to the barn" is the user
-    saying they move; a question doesn't: "What would you do if you could leave tomorrow?"
+    user ("Tommy rides up"). Speech counts only when it says they're going ("let's go to the
+    barn", "come on"), since "we can talk about the stables later" and "I'll walk you through
+    it" go nowhere; a question never does: "What would you do if you could leave tomorrow?"
     put Joel in his cabin. `reply` stays in the signature for callers; it is not read."""
     asked = re.sub(r"[^.!?*\n\"”]*\?", " ", user_text)
-    return bool(_MOVEMENT.search(asked))
+    doing = _QUOTED.sub(" ", asked)
+    said = " ".join(_QUOTED.findall(asked))
+    return bool(_MOVEMENT.search(doing) or _TIME_JUMP.search(doing) or _SPEECH_MOVE.search(said))
 
 
 async def update_scene(

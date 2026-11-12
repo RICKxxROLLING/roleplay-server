@@ -45,7 +45,8 @@ _SEGMENT = re.compile(r'"[^"]*"|\*[^*]*\*|[^"*]+')
 
 
 def _letters(text: str) -> str:
-    return "".join(re.findall(r"[a-z0-9]", text.lower()))
+    # Every letter and digit of any alphabet, so a word in Russian or with an accent is checked too.
+    return "".join(re.findall(r"[^\W_]", text.lower()))
 
 
 def judge(line: str, formatted: str) -> str:
@@ -76,7 +77,9 @@ def judge(line: str, formatted: str) -> str:
 
 
 def needs_tidying(line: str) -> bool:
-    return bool(line.strip()) and '"' not in line and "“" not in line and "*" not in line and len(line) <= MAX_CHARS
+    # One paragraph only: the answer is read from one line, so more could never pass.
+    return (bool(line.strip()) and '"' not in line and "“" not in line and "*" not in line
+            and "\n" not in line.strip() and len(line) <= MAX_CHARS)
 
 
 async def tidy(line: str) -> str:
@@ -88,9 +91,14 @@ async def tidy(line: str) -> str:
     params = GenerationParams(temperature=0.2, top_p=0.9, top_k=40, repeat_penalty=1.0,
                               context_tokens=settings.context_tokens, max_new_tokens=240,
                               stop=[*fmt.stops, "\nLine:"])
+    from . import autonomy  # late: autonomy imports the orchestrator
+
+    autonomy.ACTIVE += 1  # The writing-first scheduler waits while anything is generating.
     try:
         raw = await get_client().generate(prompt, params)
     except Exception:
         return line  # Best effort: the message matters more than its marks.
+    finally:
+        autonomy.ACTIVE -= 1
     first = raw.strip().split("\n")[0].strip()
     return judge(line, first) or line

@@ -160,6 +160,11 @@ async def walk_on(session_id: int, body: WalkOnIn, db: DbSession = Depends(get_d
         raise HTTPException(404, "Session not found")
     if s.world_id is None:
         raise HTTPException(400, "Only a world chat can walk on")
+    from ..chat import autonomy
+
+    # A reply still being written would be saved into the next meeting, as the new person's line.
+    if autonomy.ACTIVE > 0:
+        raise HTTPException(409, "Something is still being written. Try again when it's done.")
     try:
         await encounters.walk_on(db, s, body.place, body.character_id)
     except encounters.NobodyHere as exc:
