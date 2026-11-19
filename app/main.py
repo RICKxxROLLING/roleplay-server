@@ -68,8 +68,11 @@ if settings.cors_origins:
 # "nothing under /api answers without a session", and that is only true if it
 # cannot be forgotten on a new route. Static files stay public because the
 # login screen has to load from somewhere; they contain no chat data.
+# /live is the container health check: it says only that the process answers. The richer
+# /health stayed behind the password, so once one was set every check got 401 and the
+# production container sat "unhealthy" for six days (seen over SSH, 17,676 failures).
 _OPEN_PATHS = (f"{API_PREFIX}/auth/status", f"{API_PREFIX}/auth/login",
-               f"{API_PREFIX}/auth/logout", f"{API_PREFIX}/auth/password")
+               f"{API_PREFIX}/auth/logout", f"{API_PREFIX}/auth/password", f"{API_PREFIX}/live")
 
 
 @app.middleware("http")
@@ -93,6 +96,13 @@ async def require_session(request: Request, call_next):
 # --- API lives under /api so it can never collide with a static asset path ---
 API = "/api"
 app.include_router(auth_routes.router, prefix=API)
+
+
+@app.get(f"{API}/live", include_in_schema=False)
+def live() -> dict:
+    """Open on purpose, for the container health check; says nothing about the chats."""
+    return {"ok": True}
+
 app.include_router(system.router, prefix=API)
 app.include_router(characters.router, prefix=API)
 app.include_router(personas.router, prefix=API)

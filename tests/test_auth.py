@@ -181,3 +181,11 @@ def test_expired_sessions_are_refused(client):
     db.close()
 
     assert client.get("/api/sessions").status_code == 401
+
+
+def test_the_container_health_check_answers_with_a_password_set(client):
+    set_first_password(client)
+    client.cookies.clear()
+    assert client.get("/api/health").status_code == 401
+    r = client.get("/api/live")
+    assert r.status_code == 200 and r.json() == {"ok": True}
