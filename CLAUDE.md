@@ -519,6 +519,22 @@ had told her himself, though she kept the Saturday plan when asked; strangers
 still give themselves small details off their card (Sadie's cat-eye glasses), walk-ins are invented (Hank's
 son "Tommy"), and a reply can still put speech in asterisks.
 
+**A person looks the same in every picture (`images.look_of`, `Character.look`, `Persona.look`).** Owner
+report: characters changed between pictures and the plot got lost. Asked for one line describing everyone,
+the model described them afresh each time (Sadie: long straight hair and glasses, then short curls). Now
+each character and the persona get a look written once from the card (its stated age kept, one outfit,
+only what can be seen, the card's own words for how they look), saved and editable in the editors, and
+used word for word; the model only writes Place, Light and what each person is doing. That alone made
+it worse for two people: SDXL drew one person with both looks (a man in Sadie's overalls). So with two
+or more, the whole-frame text (shot, count, place, light) goes on node 2 and each person's look and action
+on their own strip (`ConditioningSetAreaPercentage`, core ComfyUI): same scene, three seeds, two people in
+0 of 3 before and 3 of 3 after, each in their own clothes. "medium shot" stops a long place description
+from shrinking everyone into a wide room shot, where faces lost who they were. The newest exchange goes
+in whole (it was cut at 500 characters). Live, five pictures over one visit kept Sadie's copper curls and
+overalls and the user's glasses, shirt and watch. Left: the model sometimes still frames it wide, and
+the look writer can drift from the card (it once wrote "chestnut" for "autumn leaves" hair), which is
+what the editable field is for.
+
 **ComfyUI starts on demand (`deploy/comfy-waker`).** Owner's choice, so the PC's graphics card is free when
 no pictures are wanted. The server can't start a Windows program, so a stdlib helper on the PC does: POST
 /start launches ComfyUI headless with the Desktop app's own Python and folders (17 s to answer on the RX 9060
