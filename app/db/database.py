@@ -50,6 +50,7 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     ("characters", "host", "BOOLEAN NOT NULL DEFAULT 0"),
     ("sessions", "world_id", "INTEGER REFERENCES worlds(id)"),
     ("encounters", "sky", "VARCHAR(120) NOT NULL DEFAULT ''"),
+    ("encounters", "visiting", "BOOLEAN NOT NULL DEFAULT 0"),
 ]
 
 

@@ -111,6 +111,15 @@ About {name}: {about}
 Write one or two short sentences setting the scene at {place}, {time}. {name} is there, busy with something \
 that suits them. It is quiet and ordinary, and nobody is in danger. Say nothing about anyone else arriving."""
 
+EMPTY_ARRIVAL = """{setting}
+
+Write one or two short sentences setting the scene at {place}, {time}, before anyone is there: how the \
+empty place looks and sounds. It is quiet and ordinary. Name nobody."""
+#: The user's own place: live, Marcus answered the owner of a repair shop from inside it as its owner.
+VISITOR = ("This is {{user}}'s own place, not {{char}}'s: {{char}} doesn't live or work here. {{char}} has "
+           "just come by, steps in at the door, and speaks to {{user}} out loud.")
+VISITING = "This is {{user}}'s own place; {{char}} is a visitor here."
+
 _PREPOSITION = re.compile(r"^(at|in|on|by|near|outside|inside|under|behind|beside|along|across|up|down)\b", re.I)
 _NAME_WORD = re.compile(r"\b[A-Z][a-z]{2,}\b")
 _LEAVE_ACT = re.compile(
@@ -261,7 +270,7 @@ def _tail_note(session, encounter, card, exclude_ids, db) -> str:
         notes = " ".join(remembered(session, encounter.character, db).split()) if met_before(session, encounter) else ""
         before = (REMEMBER.replace("{notes}", notes) + " " if notes else "") + (
             "{{char}} and {{user}} have met before." if met_before(session, encounter) else "" if known else NEVER_MET)
-        return " ".join(p for p in (before, ARRIVED, FORMAT_LINE) if p)
+        return " ".join(p for p in (before, VISITOR if encounter.visiting else ARRIVED, FORMAT_LINE) if p)
     if is_opening(session, exclude_ids):
         if met_before(session, encounter):
             notes = " ".join(remembered(session, encounter.character, db).split())
@@ -269,7 +278,8 @@ def _tail_note(session, encounter, card, exclude_ids, db) -> str:
         reason = f", {encounter.reason}" if encounter.reason else ""
         first = f"{FIRST_WORD}{reason}."
         return " ".join(p for p in ("" if known else NEVER_MET, first, FORMAT_LINE) if p)
-    parts = ["" if known else NEVER_MET_LATER, GOODBYE if leaving(session) else ""]
+    parts = [VISITING if encounter.visiting else "", "" if known else NEVER_MET_LATER,
+             GOODBYE if leaving(session) else ""]
     return " ".join(p for p in parts if p)
 
 
@@ -362,20 +372,37 @@ def _opener(place: str) -> str:
     return f"{place[0].upper()}{place[1:]}," if _PREPOSITION.match(place) else f"At {place},"
 
 
-async def arrival_line(session: ChatSession, person: Character, place: str, time: str, sky: str = "") -> str:
+async def arrival_line(session: ChatSession, person: Character, place: str, time: str, sky: str = "",
+                       visiting: bool = False) -> str:
     """Always something, as the chat can't go on without it. Names only the user are refused,
-    since a line with them in it writes what they're doing."""
+    since a line with them in it writes what they're doing. At the user's own place nobody is
+    there yet, so the person met can't be written in as its owner."""
     user = _user(session)
     names = [user, user.split()[0]] if user != "You" else []
+    if visiting:
+        names.append(person.name.split()[0])
     opener = _opener(place)
-    prompt = _ask(ARRIVAL.format(setting=_setting(session), name=person.name, about=_about(person),
-                                 place=place, time=f"{time}, the weather {sky}" if sky else time), opener)
+    when = f"{time}, the weather {sky}" if sky else time
+    ask = (EMPTY_ARRIVAL.format(setting=_setting(session), place=place, time=when) if visiting else
+           ARRIVAL.format(setting=_setting(session), name=person.name, about=_about(person), place=place, time=when))
+    prompt = _ask(ask, opener)
     for _ in range(narrator.ATTEMPTS - 1):
         line = narrator.judge(f"{opener}{await get_client().generate(prompt, _params(70))}".rstrip(), names,
                               event=True, scene_time=time)
         if line:
             return line
-    return f"{opener} {person.name} is there, this {time}."
+    return f"{opener} it is quiet, this {time}." if visiting else f"{opener} {person.name} is there, this {time}."
+
+
+#: "unlock the door of my shop": the place is the user's, so whoever turns up is visiting.
+_OWN_PLACE = re.compile(
+    r"\bmy (?:own |new |old |little )?(?:shop|store|house|home|place|apartment|flat|room|bedroom|office|"
+    r"workshop|garage|cabin|farm|barn|classroom|studio|garden|yard|porch|kitchen|bar|diner|caf[eé]|"
+    r"restaurant|bakery|clinic|stall|booth|trailer|tent|boat|quarters|cell|lab|forge|tavern|inn)\b", re.I)
+
+
+def own_place(text: str) -> bool:
+    return bool(_OWN_PLACE.search(text))
 
 
 def _supported(line: str, transcript: str) -> bool:
@@ -514,7 +541,8 @@ async def where_now(session: ChatSession, text: str) -> str:
     return place if place and not re.search(r"\d", place) else ""
 
 
-async def walk_on(db, session: ChatSession, place: str = "", wanted: int | None = None) -> Encounter:
+async def walk_on(db, session: ChatSession, place: str = "", wanted: int | None = None,
+                  visiting: bool = False) -> Encounter:
     """End this encounter and start the next. Every model call comes before any write, so if the
     backend is down the user is still standing where they were."""
     place = " ".join(place.split())[:60]
@@ -523,7 +551,7 @@ async def walk_on(db, session: ChatSession, place: str = "", wanted: int | None 
     time = next_time(session)
     sky = next_sky(session, time)
     place = place or await choose_place(session, person, time)
-    line = await arrival_line(session, person, place, time, sky)
+    line = await arrival_line(session, person, place, time, sky, visiting)
     if current is not None:
         await write_note(session, current, db)
         current.ended = True
@@ -539,7 +567,7 @@ async def walk_on(db, session: ChatSession, place: str = "", wanted: int | None 
     scene.update(location=place, time=time)
     session.scene = scene
     session.scene_prev = dict(scene)
-    encounter = Encounter(session_id=session.id, character_id=person.id, place=place, time=time, sky=sky,
+    encounter = Encounter(session_id=session.id, character_id=person.id, place=place, time=time, sky=sky, visiting=visiting,
                           reason=random.choice(REASONS), start_id=message.id)
     db.add(encounter)
     db.commit()

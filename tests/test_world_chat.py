@@ -474,6 +474,21 @@ def test_leaving_then_going_somewhere_walks_on_by_itself(client, world, llm, mon
     assert "has just arrived where Cole Weaver is" in prompt and "speaks first" not in prompt
 
 
+def test_whoever_turns_up_at_your_own_place_is_a_visitor(client, world, llm):
+    sid = start(client, world)
+    respond(client, sid)
+    say(client, sid, "this is where we split, it was nice to meet you Hana")
+    say(client, sid, "i walk over to elm street and unlock the door of my shop")
+    got = get(client, sid)
+    assert len(got["encounters"]) == 2
+    with SessionLocal() as db:
+        assert db.get(ChatSession, sid).encounters[-1].visiting
+    prompt = chat_prompts(llm)[-1]
+    assert "own place, not Cole Weaver's" in prompt and "has just arrived where" not in prompt
+    say(client, sid, "oh hey, come in")
+    assert "Cole Weaver is a visitor here" in chat_prompts(llm)[-1]
+
+
 def test_going_somewhere_together_doesnt_walk_on(client, world, llm):
     sid = start(client, world)
     respond(client, sid)

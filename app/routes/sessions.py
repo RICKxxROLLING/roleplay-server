@@ -392,7 +392,8 @@ async def send_message(
     # Said goodbye, got one back, and now off somewhere alone: the world moves on with them.
     if s.world_id is not None and body.speaker_id is None and encounters.should_walk_on(s, text):
         try:
-            await encounters.walk_on(db, s, await encounters.where_now(s, text))
+            await encounters.walk_on(db, s, await encounters.where_now(s, text),
+                                     visiting=encounters.own_place(text))
         except encounters.NobodyHere:
             pass  # Nobody else in the world: they stay with the person they were with.
         except Exception as exc:

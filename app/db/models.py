@@ -187,6 +187,9 @@ class Encounter(Base):
     #: The day's weather, chosen by the server and kept until the day turns over, so the next
     #: person doesn't contradict the last (live: "the whole sky is gray", then "not a cloud").
     sky: Mapped[str] = mapped_column(String(120), default="")
+    #: The place is the user's own ("my shop"), so the person met there is a visitor. Live, Marcus
+    #: greeted the owner in their own repair shop with "Welcome to my humble abode".
+    visiting: Mapped[bool] = mapped_column(default=False)
     #: Why they speak first, kept so a swipe of their opening has the same reason.
     reason: Mapped[str] = mapped_column(Text, default="")
     start_id: Mapped[int] = mapped_column(default=0)
