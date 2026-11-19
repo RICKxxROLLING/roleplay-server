@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, streamTurn } from "../api";
-import { Textarea } from "./ui";
+import { Input, Textarea } from "./ui";
 
 const SLIDERS = [
   { key: "temperature", min: 0.1, max: 2, step: 0.05, hint: "Higher = more creative, less coherent" },
@@ -17,6 +17,63 @@ const PROMPT_FORMATS = [
   { value: "llama3", label: "Llama 3 (Stheno, Lumimaid, L3 tunes)" },
   { value: "chatml", label: "ChatML (Qwen, many Nemo tunes)" },
 ];
+
+/**
+ * Pictures come from ComfyUI on another machine on the home network (app/images.py). The
+ * address is saved on blur, then checked, so the panel says straight away whether it answers.
+ */
+function Pictures({ s, setS, update }) {
+  const [state, setState] = useState(null);
+  const check = () => api.pictureStatus().then(setState).catch((e) => setState({ ok: false, error: e.message, checkpoints: [] }));
+  useEffect(() => {
+    check();
+  }, []);
+  return (
+    <div className="space-y-2">
+      <label htmlFor="comfyui-url" className="text-sm block">Pictures (ComfyUI)</label>
+      <Input
+        id="comfyui-url"
+        value={s.comfyui_url ?? ""}
+        placeholder="http://10.2.1.123:8188"
+        onChange={(e) => setS((prev) => ({ ...prev, comfyui_url: e.target.value }))}
+        onBlur={async (e) => {
+          await update("comfyui_url", e.target.value.trim());
+          check();
+        }}
+      />
+      {state && (
+        <p className={`text-xs ${state.ok ? "text-emerald-300" : "text-slate-500"}`}>
+          {state.ok ? `Connected. ${state.checkpoints.length} model${state.checkpoints.length === 1 ? "" : "s"} found.` : state.error}
+        </p>
+      )}
+      {state?.ok && state.checkpoints.length > 0 && (
+        <select
+          value={s.comfyui_checkpoint ?? ""}
+          onChange={(e) => update("comfyui_checkpoint", e.target.value)}
+          aria-label="Picture model"
+          className="w-full bg-ink-950 border border-ink-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:border-accent/60"
+        >
+          <option value="">First one found</option>
+          {state.checkpoints.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+      )}
+      <Textarea
+        rows={2}
+        maxLength={1000}
+        aria-label="Leave out of pictures"
+        value={s.image_negative ?? ""}
+        onChange={(e) => setS((prev) => ({ ...prev, image_negative: e.target.value }))}
+        onBlur={(e) => update("image_negative", e.target.value)}
+      />
+      <p className="text-xs text-slate-600">
+        What pictures should leave out. ComfyUI runs on your own PC and has no password, so keep
+        it on your home network only. Nobody written as under 18 is ever pictured.
+      </p>
+    </div>
+  );
+}
 
 export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }) {
   const [s, setS] = useState(null);
@@ -107,6 +164,8 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
               {" {{char}}"} and {"{{user}}"} for names. Leave blank to add nothing.
             </p>
           </div>
+
+          <Pictures s={s} setS={setS} update={update} />
 
           <label className="flex items-start gap-2.5 text-sm cursor-pointer">
             <input

@@ -109,6 +109,11 @@ class SettingsPatch(BaseModel):
     narration_style: str | None = Field(None, max_length=2000)
     guard_user_actions: bool | None = None
     tidy_user_lines: bool | None = None
+    comfyui_url: str | None = Field(None, max_length=300)
+    comfyui_checkpoint: str | None = Field(None, max_length=300)
+    image_negative: str | None = Field(None, max_length=1000)
+    image_steps: int | None = Field(None, ge=1, le=80)
+    image_cfg: float | None = Field(None, ge=1, le=20)
     redo_first_person: bool | None = None
 
     temperature: float | None = None

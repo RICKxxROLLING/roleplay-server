@@ -152,6 +152,37 @@ function VoicePicker({ characterId, voice, effective }) {
   );
 }
 
+/** A portrait drawn by ComfyUI from the card, kept as their avatar (app/images.py). */
+function Portrait({ characterId, onChanged }) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(null);
+  const [stamp, setStamp] = useState(0);
+  async function make() {
+    setBusy(true);
+    setNote(null);
+    try {
+      await api.makePortrait(characterId);
+      setStamp(Date.now());
+      onChanged?.();
+    } catch (e) {
+      setNote(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Field label="Portrait" hint="drawn from the description by ComfyUI on your PC">
+      <div className="flex items-center gap-3">
+        {stamp > 0 && (
+          <img src={`${api.avatarUrl(characterId)}?t=${stamp}`} alt="" className="w-16 h-24 object-cover rounded-md bg-ink-800" />
+        )}
+        <Button onClick={make} disabled={busy}>{busy ? "Painting… up to a minute" : "Make a portrait"}</Button>
+        {note && <span className="text-xs text-rose-300">{note}</span>}
+      </div>
+    </Field>
+  );
+}
+
 export default function CharacterEditor({ open, onClose, characterId, onChanged }) {
   const [card, setCard] = useState(null);
   const [form, setForm] = useState({});
@@ -284,6 +315,8 @@ export default function CharacterEditor({ open, onClose, characterId, onChanged 
           </Field>
 
           <VoicePicker characterId={characterId} voice={voice.voice} effective={voice.effective} />
+
+          <Portrait characterId={characterId} onChanged={onChanged} />
 
           <DailyRhythm characterId={characterId} initial={day} />
 

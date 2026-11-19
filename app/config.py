@@ -72,6 +72,13 @@ class Settings(BaseSettings):
     guard_user_actions: bool = True
     # Speech in quotes and actions in asterisks, added to your typed lines (chat/tidy.py).
     tidy_user_lines: bool = True
+    # Pictures from ComfyUI on another machine on the home network (app/images.py). Empty: off.
+    comfyui_url: str = ""
+    # A checkpoint file name as ComfyUI lists it; empty takes the first one it has.
+    comfyui_checkpoint: str = ""
+    image_negative: str = "nsfw, nudity, text, watermark, signature, lowres, blurry, deformed hands, extra fingers"
+    image_steps: int = 25
+    image_cfg: float = 6.5
     # Regenerate once when a reply's narration slips into first person on a
     # card whose greeting is not. ~1 reply in 5 on Stheno, and a stored slip is
     # copied by every reply after it. Costs one extra generation when it fires.

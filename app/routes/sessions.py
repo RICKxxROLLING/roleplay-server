@@ -321,12 +321,20 @@ def get_session(session_id: int, db: DbSession = Depends(get_db)) -> dict:
         "leaving": bool(world_chat and person and encounters.leaving(s)),
         "awaiting_opening": bool(world_chat and person and encounters.is_opening(s)),
         "persona_id": s.persona_id,
+        "pictures": _pictures(s, db),
         "summary": s.summary,
         "scene": s.scene,
         "cast": _cast(s),
         **_autonomy_status(s),
         "messages": [_serialise(m, s) for m in s.messages],
     }
+
+
+def _pictures(s: ChatSession, db: DbSession) -> list[dict]:
+    from ..db.models import Picture
+    from .pictures import picture_out
+
+    return [picture_out(p) for p in db.query(Picture).filter(Picture.session_id == s.id).order_by(Picture.id)]
 
 
 def _stream_response(
@@ -916,6 +924,12 @@ def delete_session(session_id: int, db: DbSession = Depends(get_db)) -> dict:
     db.query(CharacterThought).filter(CharacterThought.session_id == session_id).delete()
     db.query(Standing).filter(Standing.session_id == session_id).delete()
     db.query(PersonMemory).filter(PersonMemory.session_id == session_id).delete()
+    from ..db.models import Picture
+
+    for pic in db.query(Picture).filter(Picture.session_id == session_id).all():
+        if os.path.exists(pic.path):
+            os.remove(pic.path)
+        db.delete(pic)
     db.delete(s)
     db.commit()
     return {"ok": True}

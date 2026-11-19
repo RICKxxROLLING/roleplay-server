@@ -202,6 +202,20 @@ class PersonMemory(Base):
     notes: Mapped[str] = mapped_column(Text, default="")
 
 
+class Picture(Base):
+    """A picture of a chat's moment from ComfyUI (app/images.py), shown after a message. Kept
+    out of `messages`, so no prompt, summary or recall ever reads it. New table."""
+
+    __tablename__ = "pictures"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("sessions.id"), index=True)
+    after_message_id: Mapped[int] = mapped_column(default=0)
+    path: Mapped[str] = mapped_column(String(500))
+    prompt: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+
+
 class SessionMember(Base):
     """A character taking part in a group chat alongside the session's own.
 

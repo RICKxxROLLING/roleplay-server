@@ -116,6 +116,10 @@ export const api = {
   },
   choices: (id, refresh = false) =>
     j(`/sessions/${id}/choices`, { method: "POST", body: JSON.stringify({ refresh }) }),
+  pictureStatus: () => j("/pictures/status"),
+  takePicture: (id) => j(`/sessions/${id}/pictures`, { method: "POST" }),
+  deletePicture: (id) => j(`/pictures/${id}`, { method: "DELETE" }),
+  makePortrait: (id) => j(`/characters/${id}/portrait`, { method: "POST" }),
   stats: (tz) => j(`/stats?tz=${encodeURIComponent(tz || "")}`),
   createWorldChat: (body) =>
     j("/sessions/world", { method: "POST", body: JSON.stringify(body) }),

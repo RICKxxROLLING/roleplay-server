@@ -78,6 +78,7 @@ app/
   chat/rhythm.py        each character's day, for writing first
   chat/voices.py, listen.py  Piper read-aloud and Whisper speech input, on the CPU
   chat/transfer.py      chat export and import
+  images.py             pictures from ComfyUI on another machine on the LAN (docs/pictures.md)
   db/                   SQLAlchemy models + additive migrations
   routes/               characters, personas, sessions, system, worlds
 web/src/components/     React UI
@@ -503,6 +504,19 @@ quote nested in a quote. Lines already holding quotes or asterisks, and texts, a
 plain lines of the owner's Maple Hollow chat: 13 formatted, 3 kept as typed (a changed word, a dropped
 "and"); of the 13, one put speech in asterisks, which the server can't tell. Settings switch, on by
 default; off in the test suite so other tests' scripted replies aren't used up by it.
+
+**Pictures come from ComfyUI on another machine on the home network (`app/images.py`).** The 2080
+can't hold an image model and Stheno at once, so the owner's PC (RX 9060 XT, 16 GB) runs ComfyUI and
+this server sends it a plain txt2img graph over the LAN: inside the no-cloud rule, but ComfyUI has no
+password, so it must never be exposed past the LAN (docs/pictures.md has a firewall rule for the server
+only). The browser never talks to ComfyUI; pictures are saved under the data folder and served from
+/api. A scene's image prompt is written by the chat model from the scene, the cast's descriptions and
+the last four lines, then judged (one line, at least three phrases, names replaced since an image model
+doesn't know them) with the style words added by the server so they can't drift. Pictures live in
+their own table (`Picture`), placed after a message, so no prompt, summary or recall ever reads them;
+deleting a chat deletes them. Anyone whose card reads as under 18 (`trust.is_minor`) is never
+pictured, in a scene or a portrait. Portraits replace the avatar. Not yet run against a real ComfyUI:
+tested against a fake one that speaks its HTTP API (/object_info, /prompt, /history, /view).
 
 **The look is "Manuscript": a warm dark book, not a chat app (`web/tailwind.config.js`).** The owner chose it from three directions, for long reading. Tailwind's `slate` is overridden with warm tones and `ink` is the ground, so every panel follows from the tokens; keep any `slate` step used for text at 4.5:1 on `ink-950`. Literata and Inter are bundled with `@fontsource`, never a Google Fonts link, because the server makes no outside calls to show a page. Everything about a chat beyond who and where lives in the scene panel in `ChatView.jsx`, beside the story from `lg` and sliding over below it. Messages have no avatars, which also ended a 404 per message for characters without a picture.
 

@@ -138,6 +138,30 @@ export default function ChatView({
     }
   }
 
+  // A picture of this moment from ComfyUI on the owner's PC (app/images.py). It sits after the
+  // latest message and never enters a prompt.
+  const [painting, setPainting] = useState(false);
+  async function takePicture() {
+    setPainting(true);
+    setError(null);
+    try {
+      const p = await api.takePicture(sessionId);
+      setSession((s) => ({ ...s, pictures: [...(s.pictures || []), p] }));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setPainting(false);
+    }
+  }
+  async function removePicture(id) {
+    try {
+      await api.deletePicture(id);
+      setSession((s) => ({ ...s, pictures: (s.pictures || []).filter((p) => p.id !== id) }));
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   // "Something happens": the narrator posts one small event, then the character
   // answers it through the usual stream.
   const [narrating, setNarrating] = useState(false);
@@ -467,6 +491,14 @@ export default function ChatView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meeting, sessionId]);
 
+  // Pictures sit after the message they were taken at, or the nearest one before it if that's gone.
+  const picturesAfter = {};
+  const ids = (session?.messages || []).map((m) => m.id).filter((id) => typeof id === "number");
+  for (const p of session?.pictures || []) {
+    const at = ids.filter((id) => id <= p.after_message_id).at(-1) ?? ids[0];
+    if (at !== undefined) (picturesAfter[at] ||= []).push(p);
+  }
+
   // Chapter headings: each meeting's sits above the first message still in it.
   const chapters = {};
   for (const e of session?.encounters || []) {
@@ -552,6 +584,16 @@ export default function ChatView({
                     onDirty?.();
                   }}
                 />
+                {(picturesAfter[m.id] || []).map((p) => (
+                  <figure key={`pic-${p.id}`} className="my-2">
+                    <img src={p.url} alt={p.prompt} loading="lazy" className="w-full rounded-lg bg-ink-850" />
+                    <figcaption className="flex justify-end">
+                      <button onClick={() => removePicture(p.id)} className="text-xs text-slate-500 hover:text-rose-300 py-1">
+                        remove picture
+                      </button>
+                    </figcaption>
+                  </figure>
+                ))}
               </Fragment>
             ))}
 
@@ -925,6 +967,18 @@ export default function ChatView({
                 }}
               >
                 {narrating ? "Thinking…" : "Something happens"}
+              </PanelLink>
+            )}
+            {(session?.mode || "story") === "story" && (
+              <PanelLink
+                disabled={busy || painting}
+                title="A picture of this moment, from ComfyUI on your PC"
+                onClick={() => {
+                  setPanelOpen(false);
+                  takePicture();
+                }}
+              >
+                {painting ? "Painting… up to a minute" : "Picture this"}
               </PanelLink>
             )}
             {(session?.mode || "story") === "story" && session?.world_id && !worldChat && (

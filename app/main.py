@@ -16,7 +16,7 @@ from .db import SessionLocal, init_db
 from .llm import get_client
 from . import auth
 from .routes import auth as auth_routes
-from .routes import bundle, characters, personas, push, sessions, stats, system, voices, worlds
+from .routes import bundle, characters, personas, pictures, push, sessions, stats, system, voices, worlds
 
 
 @asynccontextmanager
@@ -102,6 +102,7 @@ app.include_router(push.router, prefix=API)
 app.include_router(bundle.router, prefix=API)
 app.include_router(voices.router, prefix=API)
 app.include_router(stats.router, prefix=API)
+app.include_router(pictures.router, prefix=API)
 
 
 # --- Static UI (built by the Docker web stage into /app/static) ---

@@ -281,6 +281,7 @@ def llm(monkeypatch):
     import app.chat.choices as choices_mod
     import app.chat.encounters as encounters_mod
     import app.chat.tidy as tidy_mod
+    import app.images as images_mod
     import app.chat.narrator as narrator_mod
     import app.chat.orchestrator as orch
     import app.chat.rhythm as rhythm_mod
@@ -291,7 +292,7 @@ def llm(monkeypatch):
     import app.routes.system as system
 
     mock = MockLLM()
-    for module in (autonomy, choices_mod, creator, encounters_mod, narrator_mod, tidy_mod, orch, people_mod, rhythm_mod, scene, summarizer, system, thoughts_mod, trust_mod):
+    for module in (autonomy, choices_mod, creator, encounters_mod, images_mod, narrator_mod, tidy_mod, orch, people_mod, rhythm_mod, scene, summarizer, system, thoughts_mod, trust_mod):
         monkeypatch.setattr(module, "get_client", lambda: mock)
     return mock
 

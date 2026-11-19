@@ -37,6 +37,8 @@ L3-8B-Stheno-v3.2 on an 8 GB RTX 2080; the measurements behind each choice are i
 - **Choices** — three things you could do next, above the type box.
 - **Read aloud and speak instead of typing** — Piper voices and Whisper, both on the server's
   CPU, nothing sent out.
+- **Pictures** — a picture of the moment, or a portrait for a character, from ComfyUI running on
+  another PC on your network. See [`docs/pictures.md`](docs/pictures.md).
 - **Import and export a chat** — move one chat between installs, or keep a copy. Bundles load
   whole worlds and casts at once.
 
