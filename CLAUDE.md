@@ -507,7 +507,15 @@ cap just after an opening asterisk kept the bare "*"; every person invented thei
 gray", then "not a cloud in the sky"), so the server picks the day's weather (`Encounter.sky`, kept until the
 clock goes round to morning) for the arrival line and every tail; the tracker moved Hank's morning to
 afternoon over two lines and dropped him from "present", so a world chat's scene keeps the encounter's time
-and person; "Thanks, Hank, I'll probably be back next week for more" wasn't a goodbye. Left: strangers
+and person; "Thanks, Hank, I'll probably be back next week for more" wasn't a goodbye; the owner
+unlocked their own repair shop and Marcus greeted them from inside it as its owner, so a line naming
+the user's own place ("my shop", "my house", `encounters.own_place`) starts at an empty place and the
+person comes in as a visitor (replayed: Marcus stopped in the doorway, "Mind if I join you?"); pictures
+replaced names with "a person" and drew Marcus as a woman, so names become "a man" or "a woman" from the
+card, greeting or their own replies (`images.who`), and scenes get the day's sky, after a drizzly
+midday came out as "late afternoon sun". Left: two people in one picture still swap details (Sadie
+wore the user's glasses); a returning Sadie said she'd "heard through the grapevine" what the user
+had told her himself, though she kept the Saturday plan when asked; strangers
 still give themselves small details off their card (Sadie's cat-eye glasses), walk-ins are invented (Hank's
 son "Tommy"), and a reply can still put speech in asterisks.
 
