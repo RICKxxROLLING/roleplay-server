@@ -30,6 +30,22 @@ New-NetFirewallRule -DisplayName "ComfyUI from roleplay server" -Direction Inbou
 
 ComfyUI has no password. Never forward port 8188 on your router or put it behind Cloudflare.
 
+## 4. Keep nothing on the PC
+
+The server never asks ComfyUI to save a picture. It uses ComfyUI's **Save Image (Websocket)**
+node, which sends the finished picture straight back over the connection without writing a file,
+and then deletes the job from ComfyUI's history so the prompt isn't kept there either. If that
+node is missing, the server refuses to make pictures rather than let ComfyUI save them.
+
+To add the node, if your ComfyUI doesn't have it yet: copy `websocket_image_save.py` from the
+`custom_nodes` folder of ComfyUI's source (github.com/comfyanonymous/ComfyUI) into your ComfyUI's
+own `custom_nodes` folder, then restart ComfyUI. Settings in the roleplay app says **Connected**
+only once the node is there.
+
+What still stays on the PC: the model files you installed, and whatever ComfyUI's console window
+prints while it runs (job progress). Don't open ComfyUI's own page in a browser to run these
+prompts by hand, since that page keeps its own copies.
+
 ## 4. Connect it
 
 In the roleplay app, open **Settings → Pictures (ComfyUI)** and enter the PC's address, such as

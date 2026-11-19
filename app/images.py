@@ -12,6 +12,7 @@ server judges it; nothing reaches ComfyUI for a scene with a character written a
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import random
 import re
@@ -27,7 +28,6 @@ from .prompt.formats import get_format
 
 #: How long one picture may take, end to end. A first run loads the checkpoint, which is slow.
 TIMEOUT_S = 240
-POLL_S = 1.5
 SCENE_SIZE = (1216, 832)
 PORTRAIT_SIZE = (832, 1216)
 MAX_PROMPT_CHARS = 600
@@ -38,8 +38,26 @@ def _http(timeout: float) -> httpx.AsyncClient:
     return httpx.AsyncClient(timeout=timeout)
 
 
+def _ws(url: str):
+    """ComfyUI's live connection, where the finished picture arrives. One place, for tests."""
+    from websockets.asyncio.client import connect
+
+    return connect(url, max_size=64 * 1024 * 1024, open_timeout=10)
+
+
 class ImagesUnavailable(RuntimeError):
     """ComfyUI can't be used right now, in words for the owner."""
+
+
+#: ComfyUI's own node that sends the picture back over the live connection instead of writing
+#: a file. Without it ComfyUI's SaveImage keeps every picture in its output folder, with the
+#: prompt written into the PNG, so the owner's PC would hold a copy of every scene. The owner
+#: asked that nothing of a chat stays on that PC, so no picture is made without this node.
+PRIVATE_NODE = "SaveImageWebsocket"
+_SAVE_ID = "7"
+NOT_PRIVATE = ("ComfyUI on your PC can't send pictures back without saving them there, so no picture is "
+               "made. Add ComfyUI's \"Save Image (Websocket)\" node: copy websocket_image_save.py into its "
+               "custom_nodes folder and restart it (see docs/pictures.md).")
 
 
 def _base() -> str:
@@ -50,24 +68,27 @@ def _base() -> str:
 
 
 async def status() -> dict:
-    """Whether ComfyUI answers, and which checkpoints it has, for the Settings panel."""
+    """Whether ComfyUI answers, its checkpoints, and whether it can work without keeping files."""
     try:
         base = _base()
     except ImagesUnavailable as exc:
-        return {"ok": False, "configured": False, "error": str(exc), "checkpoints": []}
+        return {"ok": False, "configured": False, "private": False, "error": str(exc), "checkpoints": []}
     try:
         async with _http(6) as http:
             r = await http.get(f"{base}/object_info/CheckpointLoaderSimple")
             r.raise_for_status()
             names = r.json()["CheckpointLoaderSimple"]["input"]["required"]["ckpt_name"][0]
+            node = await http.get(f"{base}/object_info/{PRIVATE_NODE}")
+            private = node.status_code == 200 and PRIVATE_NODE in (node.json() or {})
     except Exception as exc:  # anything at all: the PC is off, asleep, or not ComfyUI
-        return {"ok": False, "configured": True, "checkpoints": [],
+        return {"ok": False, "configured": True, "private": False, "checkpoints": [],
                 "error": f"ComfyUI didn't answer at {base}. Is the PC on and ComfyUI running? ({type(exc).__name__})"}
-    return {"ok": True, "configured": True, "checkpoints": list(names), "error": None}
+    return {"ok": private, "configured": True, "private": private, "checkpoints": list(names),
+            "error": None if private else NOT_PRIVATE}
 
 
 def graph(positive: str, negative: str, size: tuple[int, int], checkpoint: str, seed: int) -> dict:
-    """ComfyUI's API-format graph for a plain txt2img: the nodes every install has."""
+    """ComfyUI's API-format graph for a plain txt2img, ending in the node that saves nothing."""
     w, h = size
     return {
         "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": checkpoint}},
@@ -79,51 +100,75 @@ def graph(positive: str, negative: str, size: tuple[int, int], checkpoint: str, 
             "seed": seed, "steps": settings.image_steps, "cfg": settings.image_cfg,
             "sampler_name": "dpmpp_2m", "scheduler": "karras", "denoise": 1.0}},
         "6": {"class_type": "VAEDecode", "inputs": {"samples": ["5", 0], "vae": ["1", 2]}},
-        "7": {"class_type": "SaveImage", "inputs": {"images": ["6", 0], "filename_prefix": "roleplay"}},
+        _SAVE_ID: {"class_type": PRIVATE_NODE, "inputs": {"images": ["6", 0]}},
     }
 
 
 async def render(positive: str, size: tuple[int, int]) -> bytes:
-    """One PNG from ComfyUI, or ImagesUnavailable with the reason."""
+    """One PNG from ComfyUI, or ImagesUnavailable with the reason.
+
+    The picture comes back over the live connection and is never written on the PC; then the
+    job is deleted from ComfyUI's history, the in-memory list of past prompts its /history
+    serves, so the prompt text doesn't stay there either until ComfyUI restarts."""
     base = _base()
+    found = await status()
+    if not found["private"]:
+        raise ImagesUnavailable(found["error"] or NOT_PRIVATE)
     checkpoint = (settings.comfyui_checkpoint or "").strip()
     if not checkpoint:
-        found = await status()
-        if not found["ok"]:
-            raise ImagesUnavailable(found["error"])
         if not found["checkpoints"]:
             raise ImagesUnavailable("ComfyUI has no checkpoints installed. Put a model in its models/checkpoints folder.")
         checkpoint = found["checkpoints"][0]
+    client_id = uuid.uuid4().hex
     body = {"prompt": graph(positive, settings.image_negative, size, checkpoint, random.randrange(2**32)),
-            "client_id": uuid.uuid4().hex}
+            "client_id": client_id}
+    ws_url = re.sub(r"^http", "ws", base) + f"/ws?clientId={client_id}"
     try:
-        async with _http(30) as http:
+        async with _ws(ws_url) as ws, _http(30) as http:
             r = await http.post(f"{base}/prompt", json=body)
             if r.status_code >= 400:
                 raise ImagesUnavailable(f"ComfyUI refused the picture: {r.text[:300]}")
             prompt_id = r.json()["prompt_id"]
-            waited = 0.0
-            while waited < TIMEOUT_S:
-                await asyncio.sleep(POLL_S)
-                waited += POLL_S
-                h = (await http.get(f"{base}/history/{prompt_id}")).json()
-                done = h.get(prompt_id)
-                if not done:
-                    continue
-                for out in (done.get("outputs") or {}).values():
-                    for img in out.get("images") or []:
-                        pic = await http.get(f"{base}/view", params={
-                            "filename": img["filename"], "subfolder": img.get("subfolder", ""),
-                            "type": img.get("type", "output")})
-                        pic.raise_for_status()
-                        return pic.content
-                messages = (done.get("status") or {}).get("messages") or []
-                raise ImagesUnavailable(f"ComfyUI finished without a picture. {messages[-1] if messages else ''}".strip())
+            try:
+                picture = await asyncio.wait_for(_collect(ws, prompt_id), TIMEOUT_S)
+            finally:
+                # Best effort: the prompt goes from ComfyUI's history whether or not it worked.
+                try:
+                    await http.post(f"{base}/history", json={"delete": [prompt_id]})
+                except Exception:
+                    pass
     except ImagesUnavailable:
         raise
+    except asyncio.TimeoutError as exc:
+        raise ImagesUnavailable("ComfyUI took too long. The first picture after starting it is the slowest; try again.") from exc
     except Exception as exc:
         raise ImagesUnavailable(f"Lost touch with ComfyUI at {base} ({type(exc).__name__}).") from exc
-    raise ImagesUnavailable("ComfyUI took too long. The first picture after starting it is the slowest; try again.")
+    if not picture:
+        raise ImagesUnavailable("ComfyUI finished without sending a picture back.")
+    return picture
+
+
+async def _collect(ws, prompt_id: str) -> bytes:
+    """The picture's bytes from the live connection, once ComfyUI says the job is done. Binary
+    frames carry an 8-byte header (message type, image format); only those sent while the save
+    node runs are the picture, as sampling previews arrive the same way."""
+    current, picture = None, b""
+    while True:
+        msg = await ws.recv()
+        if isinstance(msg, (bytes, bytearray)):
+            if current == _SAVE_ID:
+                picture += bytes(msg[8:])
+            continue
+        event = json.loads(msg)
+        data = event.get("data") or {}
+        if data.get("prompt_id") not in (None, prompt_id):
+            continue
+        if event.get("type") == "executing":
+            current = data.get("node")
+            if current is None and data.get("prompt_id") == prompt_id:
+                return picture
+        elif event.get("type") == "execution_error":
+            raise ImagesUnavailable(f"ComfyUI hit an error: {data.get('exception_message', 'unknown')}"[:300])
 
 
 def save(data: bytes) -> str:

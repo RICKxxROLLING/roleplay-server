@@ -1,21 +1,32 @@
-"""Pictures from ComfyUI, against a fake ComfyUI that speaks its HTTP API."""
+"""Pictures from ComfyUI, against a fake ComfyUI that speaks its HTTP API and live connection.
+
+The owner asked that nothing of a chat is kept on the PC running ComfyUI, so these tests also
+pin that the picture arrives over the connection (no SaveImage, no /view of a saved file), that
+each job is deleted from ComfyUI's history, and that an install that can't do this is refused.
+"""
 from __future__ import annotations
 
 import json
 
 import httpx
 import pytest
+
 from conftest import sse_events
 
 from app import images
 
 PNG = b"\x89PNG\r\n\x1a\nfake"
+HEADER = (2).to_bytes(4, "big") + (2).to_bytes(4, "big")
 
 
 class FakeComfy:
     def __init__(self):
         self.prompts: list[dict] = []
+        self.deleted: list[str] = []
         self.up = True
+        self.private = True
+        self.ws_urls: list[str] = []
+        self.views = 0
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         if not self.up:
@@ -24,16 +35,42 @@ class FakeComfy:
         if path == "/object_info/CheckpointLoaderSimple":
             return httpx.Response(200, json={"CheckpointLoaderSimple": {"input": {"required": {
                 "ckpt_name": [["sdxl_base.safetensors", "juggernaut.safetensors"], {}]}}}})
+        if path == "/object_info/SaveImageWebsocket":
+            return httpx.Response(200, json={"SaveImageWebsocket": {}} if self.private else {})
         if path == "/prompt":
             self.prompts.append(json.loads(request.content))
             return httpx.Response(200, json={"prompt_id": "p1", "number": 0})
-        if path == "/history/p1":
-            return httpx.Response(200, json={"p1": {"outputs": {"7": {"images": [
-                {"filename": "roleplay_0001.png", "subfolder": "", "type": "output"}]}}}})
+        if path == "/history" and request.method == "POST":
+            self.deleted += json.loads(request.content).get("delete", [])
+            return httpx.Response(200)
         if path == "/view":
-            assert request.url.params["filename"] == "roleplay_0001.png"
-            return httpx.Response(200, content=PNG)
+            self.views += 1
         return httpx.Response(404)
+
+    def socket(self, url: str):
+        self.ws_urls.append(url)
+        comfy = self
+
+        class Socket:
+            async def __aenter__(self):
+                # What ComfyUI sends: a preview while sampling, then the picture from the save node.
+                self.frames = [
+                    json.dumps({"type": "executing", "data": {"node": "5", "prompt_id": "p1"}}),
+                    HEADER + b"a latent preview",
+                    json.dumps({"type": "executing", "data": {"node": "7", "prompt_id": "p1"}}),
+                    HEADER + PNG,
+                    json.dumps({"type": "executing", "data": {"node": None, "prompt_id": "p1"}}),
+                ]
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            async def recv(self):
+                assert comfy.prompts, "the picture was read before the job was queued"
+                return self.frames.pop(0)
+
+        return Socket()
 
 
 @pytest.fixture
@@ -41,7 +78,7 @@ def comfy(client, monkeypatch):
     fake = FakeComfy()
     monkeypatch.setattr(images, "_http",
                         lambda timeout: httpx.AsyncClient(transport=httpx.MockTransport(fake.handler), timeout=timeout))
-    monkeypatch.setattr(images, "POLL_S", 0)
+    monkeypatch.setattr(images, "_ws", fake.socket)
     client.patch("/api/settings", json={"comfyui_url": "http://10.2.1.123:8188/"})
     return fake
 
@@ -65,10 +102,11 @@ def test_status_says_when_nothing_is_set_up(client):
 
 def test_status_lists_the_checkpoints(client, comfy):
     got = client.get("/api/pictures/status").json()
-    assert got["ok"] and got["checkpoints"] == ["sdxl_base.safetensors", "juggernaut.safetensors"]
+    assert got["ok"] and got["private"]
+    assert got["checkpoints"] == ["sdxl_base.safetensors", "juggernaut.safetensors"]
 
 
-def test_a_picture_of_this_moment(client, session, llm, comfy, describes):
+def test_a_picture_of_this_moment_leaves_nothing_on_the_pc(client, session, llm, comfy, describes):
     sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": "Hello."}))
     r = client.post(f"/api/sessions/{session}/pictures")
     assert r.status_code == 200, r.text
@@ -79,13 +117,26 @@ def test_a_picture_of_this_moment(client, session, llm, comfy, describes):
     sent = comfy.prompts[0]["prompt"]
     assert sent["1"]["inputs"]["ckpt_name"] == "sdxl_base.safetensors"
     assert sent["4"]["inputs"]["width"] == 1216 and "nsfw" in sent["3"]["inputs"]["text"]
+    # Nothing saved on the PC: no SaveImage node, no file fetched, and the job's history removed.
+    assert not any(n["class_type"] in ("SaveImage", "PreviewImage") for n in sent.values())
+    assert sent["7"]["class_type"] == "SaveImageWebsocket"
+    assert comfy.views == 0 and comfy.deleted == ["p1"]
+    assert comfy.ws_urls == [f"ws://10.2.1.123:8188/ws?clientId={comfy.prompts[0]['client_id']}"]
+    # The picture is the save node's frame, not the sampling preview.
     assert client.get(pic["url"]).content == PNG
     got = client.get(f"/api/sessions/{session}").json()
     assert got["pictures"][0]["after_message_id"] == got["messages"][-1]["id"]
-    # Never part of a prompt.
-    assert all("image prompt" not in p.lower() or "Write an image prompt" in p for p in llm.prompts)
     assert client.delete(pic["url"]).status_code == 200
     assert client.get(f"/api/sessions/{session}").json()["pictures"] == []
+
+
+def test_an_install_that_would_keep_files_is_refused(client, session, comfy, describes):
+    comfy.private = False
+    got = client.get("/api/pictures/status").json()
+    assert not got["ok"] and not got["private"] and "Save Image (Websocket)" in got["error"]
+    r = client.post(f"/api/sessions/{session}/pictures")
+    assert r.status_code == 503 and "custom_nodes" in r.json()["detail"]
+    assert comfy.prompts == []
 
 
 def test_the_chosen_checkpoint_is_used(client, session, comfy, describes):

@@ -8,6 +8,8 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "sqlalchemy>=2.0",
     "httpx>=0.27",
+    # ComfyUI sends finished pictures over its live connection (app/images.py).
+    "websockets>=13",
     "pillow>=10.0",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",

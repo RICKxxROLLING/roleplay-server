@@ -515,7 +515,12 @@ the last four lines, then judged (one line, at least three phrases, names replac
 doesn't know them) with the style words added by the server so they can't drift. Pictures live in
 their own table (`Picture`), placed after a message, so no prompt, summary or recall ever reads them;
 deleting a chat deletes them. Anyone whose card reads as under 18 (`trust.is_minor`) is never
-pictured, in a scene or a portrait. Portraits replace the avatar. Not yet run against a real ComfyUI:
+pictured, in a scene or a portrait. Portraits replace the avatar. Nothing of a chat is kept on the PC, at the owner's request: the graph
+ends in ComfyUI's SaveImageWebsocket node, so the PNG comes back over /ws (binary frames, 8-byte
+header, only those sent while the save node runs; sampling previews come the same way) and no file is
+written, and each job is then deleted from ComfyUI's in-memory history. An install without that node is
+refused outright rather than falling back to SaveImage, which would keep every picture, prompt and all,
+in its output folder. Checked with the real websockets client against a local stand-in server. Not yet run against a real ComfyUI:
 tested against a fake one that speaks its HTTP API (/object_info, /prompt, /history, /view).
 
 **The look is "Manuscript": a warm dark book, not a chat app (`web/tailwind.config.js`).** The owner chose it from three directions, for long reading. Tailwind's `slate` is overridden with warm tones and `ink` is the ground, so every panel follows from the tokens; keep any `slate` step used for text at 4.5:1 on `ink-950`. Literata and Inter are bundled with `@fontsource`, never a Google Fonts link, because the server makes no outside calls to show a page. Everything about a chat beyond who and where lives in the scene panel in `ChatView.jsx`, beside the story from `lg` and sliding over below it. Messages have no avatars, which also ended a 404 per message for characters without a picture.
