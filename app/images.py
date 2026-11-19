@@ -285,11 +285,29 @@ age, build, face, hair, clothes, expression, and a simple background that suits 
 STYLE = "detailed digital painting, cinematic lighting, high quality"
 
 
-def clean(raw: str, names: list[str]) -> str:
-    """One line of phrases, names taken out (an image model doesn't know them), or ""."""
+_HE = re.compile(r"\b(?:he|him|his|himself|man|boy|guy|father|son|husband|brother)\b", re.I)
+_SHE = re.compile(r"\b(?:she|her|hers|herself|woman|girl|lady|mother|daughter|wife|sister)\b", re.I)
+
+
+def who(text: str) -> str:
+    """"a man", "a woman" or "a person", from how a card or persona speaks of them. Names became
+    "a person" at first, and Marcus, a 35-year-old teacher, was drawn as a woman."""
+    he, she = len(_HE.findall(text or "")), len(_SHE.findall(text or ""))
+    if he and not she or he >= 3 * max(she, 1):
+        return "a man"
+    if she and not he or she >= 3 * max(he, 1):
+        return "a woman"
+    return "a person"
+
+
+def clean(raw: str, names: list[str] | dict[str, str]) -> str:
+    """One line of phrases, names taken out (an image model doesn't know them), or "". `names`
+    may map each name to what stands in for it ("a man"); a plain list uses "a person"."""
     line = raw.strip().split("\n")[0].strip(' "*')
-    for n in sorted({p for full in names for p in (full, full.split()[0]) if p}, key=len, reverse=True):
-        line = re.sub(rf"(?<!\w){re.escape(n)}(?!\w)", "a person", line, flags=re.I)
+    stand_in = names if isinstance(names, dict) else {n: "a person" for n in names}
+    parts = {p: stand_in[full] for full in stand_in for p in (full, full.split()[0]) if p}
+    for n in sorted(parts, key=len, reverse=True):
+        line = re.sub(rf"(?<!\w){re.escape(n)}(?!\w)", parts[n], line, flags=re.I)
     line = re.sub(r"\s+", " ", line)[:MAX_PROMPT_CHARS].rstrip(", ")
     return line if len(line.split(",")) >= 3 else ""
 
@@ -315,15 +333,24 @@ async def scene_prompt(session, cast, user: str, recent: list[tuple[str, str]]) 
     world = group.world_of(session)
     scene = session.scene or {}
     where = ", ".join(str(scene[k]) for k in ("location", "time", "weather") if scene.get(k) and scene[k] != "unknown")
-    people = "\n".join(f"- {c.name}: {' '.join(((c.card or {}).get('description') or '').split())[:400]}" for c in cast)
+    about = {c.name: " ".join(((c.card or {}).get(k) or "") for k in ("description", "personality")) for c in cast}
+    stand_in = {}
+    for c in cast:
+        # The card first, greeting included; else how their own replies speak of them ("She
+        # glances up"), as Sadie's card never says.
+        stand_in[c.name] = who(about[c.name] + " " + ((c.card or {}).get("first_mes") or ""))
+        if stand_in[c.name] == "a person":
+            stand_in[c.name] = who(" ".join(text for name, text in recent if name == c.name))
+    people = "\n".join(f"- {c.name}, {stand_in[c.name]}: {' '.join(about[c.name].split())[:400]}" for c in cast)
     persona = session.persona.description if session.persona else ""
     if persona:
-        people += f"\n- {user}: {' '.join(persona.replace('{{user}}', user).split())[:400]}"
+        stand_in[user] = who(persona)
+        people += f"\n- {user}, {stand_in[user]}: {' '.join(persona.replace('{{user}}', user).split())[:400]}"
     body = SCENE_ASK.format(setting=f"Setting: {world.description[:600]}" if world and world.description else "",
                             people=people, where=where or "unknown",
-                            transcript="\n".join(f"{who}: {text[:500]}" for who, text in recent[-4:]))
+                            transcript="\n".join(f"{name}: {text[:500]}" for name, text in recent[-4:]))
     for _ in range(2):
-        line = clean(await _ask(body), [c.name for c in cast] + [user])
+        line = clean(await _ask(body), stand_in)
         if line:
             return f"{line}, {STYLE}"
     raise ImagesUnavailable("Couldn't describe this moment for a picture. Try again.")
@@ -334,8 +361,10 @@ async def portrait_prompt(character) -> str:
     world = character.world
     body = PORTRAIT_ASK.format(setting=f"Setting: {world.description[:600]}" if world and world.description else "",
                                name=character.name, about=" ".join((card.get("description") or "").split())[:700])
+    person = who(" ".join((card.get(k) or "") for k in ("description", "personality", "first_mes")))
     for _ in range(2):
-        line = clean(await _ask(body), [character.name])
+        line = clean(await _ask(body), {character.name: person})
         if line:
-            return f"portrait, {line}, {STYLE}"
+            # The image model is told who it is first: "a person" leaves it to guess.
+            return f"portrait of {person}, {line}, {STYLE}"
     raise ImagesUnavailable("Couldn't describe them for a portrait. Try again.")

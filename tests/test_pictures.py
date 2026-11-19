@@ -121,7 +121,7 @@ def test_a_picture_of_this_moment_leaves_nothing_on_the_pc(client, session, llm,
     assert r.status_code == 200, r.text
     pic = r.json()
     # Names out (an image model doesn't know them), the first line only, the house style on.
-    assert "Seraphine" not in pic["prompt"] and "a person at the counter" in pic["prompt"]
+    assert "Seraphine" not in pic["prompt"] and "a woman at the counter" in pic["prompt"]
     assert "more" not in pic["prompt"] and pic["prompt"].endswith(images.STYLE)
     sent = comfy.prompts[0]["prompt"]
     assert sent["1"]["inputs"]["ckpt_name"] == "sdxl_base.safetensors"
@@ -213,6 +213,32 @@ def test_a_portrait_becomes_the_avatar(client, comfy, llm, monkeypatch):
     assert comfy.prompts[0]["prompt"]["4"]["inputs"]["height"] == 1216
     assert client.get(f"/api/characters/{cid}/avatar").content == PNG
     assert next(c for c in client.get("/api/characters").json() if c["id"] == cid)["has_avatar"]
+
+
+def test_names_become_a_man_or_a_woman():
+    # Live: Marcus, with one "He" in his card, was "a person" and drawn as a woman.
+    marcus = ("Marcus Bell is a 35-year-old high school science teacher. Tall, rumpled cardigan. "
+              "He moved back to Maple Hollow to look after his dad.")
+    assert images.who(marcus) == "a man"
+    assert images.who("Sadie Wren is a 24-year-old barista. Freckles, overalls.") == "a person"
+    assert images.who("*She glances up at Riley and sets down her brush.*") == "a woman"
+    assert images.clean("a shop, Marcus holding coffee, Riley at the door, rain", {"Marcus Bell": "a man", "Riley": "a man"}) \
+        == "a shop, a man holding coffee, a man at the door, rain"
+
+
+def test_a_portrait_says_who_it_is(client, comfy, llm, monkeypatch):
+    cid = client.post("/api/characters", json={"name": "Marcus Bell", "description":
+                      "Marcus, 35, teaches science. He coaches soccer and looks after his dad."}).json()["id"]
+    real = llm.generate
+
+    async def gen(prompt, params):
+        if "portrait of Marcus" in prompt:
+            return " tall, rumpled cardigan, coffee mug, warm smile, classroom behind"
+        return await real(prompt, params)
+
+    monkeypatch.setattr(llm, "generate", gen, raising=False)
+    assert client.post(f"/api/characters/{cid}/portrait").status_code == 200
+    assert comfy.prompts[0]["prompt"]["2"]["inputs"]["text"].startswith("portrait of a man, tall")
 
 
 def test_a_useless_description_is_refused(client, session, comfy, llm, monkeypatch):
