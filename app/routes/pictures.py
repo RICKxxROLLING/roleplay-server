@@ -42,17 +42,17 @@ async def picture_of_this_moment(session_id: int, db: DbSession = Depends(get_db
               for m in s.messages if m.role in ("user", "assistant", "narrator")][-6:]
     autonomy.ACTIVE += 1  # The writing-first scheduler waits while the chat model is busy.
     try:
-        prompt = await images.scene_prompt(s, cast, user, recent)
+        scene = await images.scene_prompt(s, cast, user, recent)
     except images.ImagesUnavailable as exc:
         raise HTTPException(502, str(exc)) from exc
     finally:
         autonomy.ACTIVE -= 1
     db.commit()  # Any look written for this picture is kept, whether or not ComfyUI answers.
     try:
-        data = await images.render(prompt, images.SCENE_SIZE)
+        data = await images.render(scene.frame, images.SCENE_SIZE, scene.people)
     except images.ImagesUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
-    p = Picture(session_id=s.id, after_message_id=s.messages[-1].id, path=images.save(data), prompt=prompt)
+    p = Picture(session_id=s.id, after_message_id=s.messages[-1].id, path=images.save(data), prompt=scene.text)
     db.add(p)
     db.commit()
     return picture_out(p)

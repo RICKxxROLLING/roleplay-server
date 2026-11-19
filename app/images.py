@@ -17,6 +17,7 @@ import os
 import random
 import re
 import uuid
+from typing import NamedTuple
 
 import httpx
 
@@ -153,9 +154,36 @@ DETAIL_DENOISE = 0.4
 DETAIL_STEPS = 20
 
 
-def graph(positive: str, negative: str, size: tuple[int, int], checkpoint: str, seed: int) -> dict:
+#: Each person drawn in their own strip of the frame, overlapping a little so they can stand
+#: close. One prompt naming two people gave one person with both their details: same scene,
+#: same three seeds, two people in 0 of 3 (Sadie wore Riley's glasses each time), and in 3 of 3
+#: with each in their own area, everyone in their own clothes. ComfyUI's own nodes, no add-ons.
+AREA_OVERLAP = 0.1
+_COUNT = {2: "two", 3: "three", 4: "four"}
+
+
+def _people_conditioning(g: dict, people: list[str]) -> list:
+    """Each person's text in their own strip, combined with the whole-frame text in node 2."""
+    pos: list = ["2", 0]
+    n = len(people)
+    for i, text in enumerate(people):
+        x = max(0.0, i / n - AREA_OVERLAP / 2)
+        width = min(1.0 - x, 1 / n + AREA_OVERLAP)
+        g[f"p{i}"] = {"class_type": "CLIPTextEncode", "inputs": {"text": text, "clip": ["1", 1]}}
+        g[f"a{i}"] = {"class_type": "ConditioningSetAreaPercentage", "inputs": {
+            "conditioning": [f"p{i}", 0], "width": round(width, 3), "height": 1.0, "x": round(x, 3), "y": 0.0,
+            "strength": 1.0}}
+        g[f"c{i}"] = {"class_type": "ConditioningCombine", "inputs": {"conditioning_1": pos,
+                                                                     "conditioning_2": [f"a{i}", 0]}}
+        pos = [f"c{i}", 0]
+    return pos
+
+
+def graph(positive: str, negative: str, size: tuple[int, int], checkpoint: str, seed: int,
+          people: list[str] | None = None) -> dict:
     """ComfyUI's API-format graph for a txt2img, with the detail pass when it's on, ending in
-    the node that saves nothing."""
+    the node that saves nothing. With `people`, `positive` is the whole frame (place, light,
+    style) and each person's text gets their own part of it."""
     w, h = size
     g = {
         "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": checkpoint}},
@@ -169,12 +197,15 @@ def graph(positive: str, negative: str, size: tuple[int, int], checkpoint: str, 
         "6": {"class_type": "VAEDecode", "inputs": {"samples": ["5", 0], "vae": ["1", 2]}},
         _SAVE_ID: {"class_type": PRIVATE_NODE, "inputs": {"images": ["6", 0]}},
     }
+    if people and len(people) > 1:
+        pos = _people_conditioning(g, people)
+        g["5"]["inputs"]["positive"] = pos
     if settings.image_detail:
         g["8"] = {"class_type": "ImageScaleBy", "inputs": {"image": ["6", 0], "upscale_method": "lanczos",
                                                             "scale_by": DETAIL_SCALE}}
         g["9"] = {"class_type": "VAEEncode", "inputs": {"pixels": ["8", 0], "vae": ["1", 2]}}
         g["10"] = {"class_type": "KSampler", "inputs": {
-            "model": ["1", 0], "positive": ["2", 0], "negative": ["3", 0], "latent_image": ["9", 0],
+            "model": ["1", 0], "positive": g["5"]["inputs"]["positive"], "negative": ["3", 0], "latent_image": ["9", 0],
             "seed": seed, "steps": DETAIL_STEPS, "cfg": settings.image_cfg,
             "sampler_name": "dpmpp_2m", "scheduler": "karras", "denoise": DETAIL_DENOISE}}
         g["11"] = {"class_type": "VAEDecode", "inputs": {"samples": ["10", 0], "vae": ["1", 2]}}
@@ -182,7 +213,7 @@ def graph(positive: str, negative: str, size: tuple[int, int], checkpoint: str, 
     return g
 
 
-async def render(positive: str, size: tuple[int, int]) -> bytes:
+async def render(positive: str, size: tuple[int, int], people: list[str] | None = None) -> bytes:
     """One PNG from ComfyUI, or ImagesUnavailable with the reason.
 
     The picture comes back over the live connection and is never written on the PC; then the
@@ -199,7 +230,7 @@ async def render(positive: str, size: tuple[int, int]) -> bytes:
             raise ImagesUnavailable("ComfyUI has no checkpoints installed. Put a model in its models/checkpoints folder.")
         checkpoint = found["checkpoints"][0]
     client_id = uuid.uuid4().hex
-    body = {"prompt": graph(positive, settings.image_negative, size, checkpoint, random.randrange(2**32)),
+    body = {"prompt": graph(positive, settings.image_negative, size, checkpoint, random.randrange(2**32), people),
             "client_id": client_id}
     ws_url = re.sub(r"^http", "ws", base) + f"/ws?clientId={client_id}"
     try:
@@ -287,7 +318,8 @@ About {name}: {about}
 Describe how {name} looks, for a painter who must paint {name} the same way in every picture. \
 One line of 8 to 12 short comma-separated phrases, only things a painter can see: {opening}age, \
 build, skin, face, hair colour and style, eyes, one outfit they usually wear, and anything that \
-marks them out. Keep to what is written above, adding only what fits it. No names."""
+marks them out. Whatever is written above about how {name} looks goes in, in its own words; add \
+only what fits it. No names."""
 # Prototype, Sadie's card says 24: the look said "late 20s", added "quirky, expressive,
 # vibrant", and gave two outfits ("overalls at the café, scarves at market"). So the card's
 # age is stated and kept, and the asking is for one outfit and only what can be seen.
@@ -404,7 +436,15 @@ def _parse(raw: str, keys: list[str]) -> dict[str, str]:
     return got
 
 
-async def scene_prompt(session, cast, user: str, recent: list[tuple[str, str]]) -> str:
+class Scene(NamedTuple):
+    """`text` is the whole prompt as one line, kept with the picture; `frame` and `people` are
+    what ComfyUI is sent when there are two or more, each person in their own area."""
+    text: str
+    frame: str
+    people: list[str]
+
+
+async def scene_prompt(session, cast, user: str, recent: list[tuple[str, str]]) -> Scene:
     """Place and light from the model, then each person as their saved look and what the model
     says they're doing. Looks are saved on the characters and persona; the caller commits."""
     from .chat import group
@@ -442,9 +482,14 @@ async def scene_prompt(session, cast, user: str, recent: list[tuple[str, str]]) 
         doing = {name: _unname(got[name], stand_in) for name, _, _ in people if got.get(name)}
         if place and doing:
             # Only people the model put in the moment; each as the same words every time.
-            parts = [place, _unname(got.get("Light", ""), stand_in)]
-            parts += [f"{look}, {doing[name]}" for name, _, look in people if name in doing]
-            return ", ".join(p for p in parts if p) + f", {STYLE}"
+            frame = ", ".join(p for p in (place, _unname(got.get("Light", ""), stand_in)) if p)
+            each = [f"{look}, {doing[name]}" for name, _, look in people if name in doing]
+            text = ", ".join([frame, *each]) + f", {STYLE}"
+            if len(each) < 2:
+                return Scene(text, text, [])
+            who_ = " and ".join(person for name, person, _ in people if name in doing)
+            count = _COUNT.get(len(each), str(len(each)))
+            return Scene(text, f"{count} people, {who_}, {frame}, {STYLE}", [f"{e}, {STYLE}" for e in each])
     raise ImagesUnavailable("Couldn't describe this moment for a picture. Try again.")
 
 

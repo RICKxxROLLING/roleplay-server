@@ -293,6 +293,37 @@ def test_your_persona_gets_a_look_too(client, comfy, describes):
     assert client.get("/api/personas").json()[0]["look"]
 
 
+def test_two_people_each_get_their_own_part_of_the_picture(client, comfy, llm, monkeypatch):
+    pid = client.post("/api/personas", json={"name": "Riley", "description": "Riley is a quiet man. He fixes radios."}).json()["id"]
+    cid = client.post("/api/characters", json={"name": "Seraphine", "description": "Seraphine, 40, keeps the shop. She hums."}).json()["id"]
+    sid = client.post("/api/sessions", json={"character_id": cid, "persona_id": pid}).json()["id"]
+    sse_events(client.post(f"/api/sessions/{sid}/messages", json={"content": "Hello."}))
+    real = llm.generate
+
+    async def gen(prompt, params):
+        if "Describe how Seraphine looks" in prompt:
+            return " a woman, red hair in a bun, nose ring, denim overalls, freckles"
+        if "Describe how Riley looks" in prompt:
+            return " a man, short brown hair, glasses, chambray shirt, silver watch"
+        if "Describe the moment" in prompt:
+            return " a small shop\nLight: grey rain light\nSeraphine: behind the counter, smiling\nRiley: at the counter, holding a mug"
+        return await real(prompt, params)
+
+    monkeypatch.setattr(llm, "generate", gen, raising=False)
+    assert client.post(f"/api/sessions/{sid}/pictures").status_code == 200
+    g = comfy.prompts[0]["prompt"]
+    assert g["2"]["inputs"]["text"].startswith("two people, a woman and a man, a small shop, grey rain light")
+    assert "glasses" not in g["2"]["inputs"]["text"]
+    areas = [n["inputs"] for n in g.values() if n["class_type"] == "ConditioningSetAreaPercentage"]
+    assert [(a["x"], a["width"]) for a in areas] == [(0.0, 0.6), (0.45, 0.55)]
+    assert "nose ring" in g["p0"]["inputs"]["text"] and "glasses" not in g["p0"]["inputs"]["text"]
+    assert "glasses" in g["p1"]["inputs"]["text"] and "nose ring" not in g["p1"]["inputs"]["text"]
+    # Both passes draw with the areas, and the one-line prompt is what's kept with the picture.
+    assert g["5"]["inputs"]["positive"] == g["10"]["inputs"]["positive"] == ["c1", 0]
+    got = client.get(f"/api/sessions/{sid}").json()["pictures"][0]
+    assert "nose ring" in got["prompt"] and "glasses" in got["prompt"]
+
+
 def test_a_useless_description_is_refused(client, session, comfy, llm, monkeypatch):
     real = llm.generate
 
