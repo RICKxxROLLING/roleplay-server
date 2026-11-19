@@ -60,6 +60,9 @@ def test_a_wrong_format_keeps_the_line_as_typed(client, session, llm):
      '"Maybe, I don\'t really know anyone in town yet though." *I rub the back of my neck.* "Who would we even talk to?"'),
     ("i laugh quietly and take a sip. its really good", '*i laugh quietly and take a sip.* "It\'s really good."',
      '*I laugh quietly and take a sip.* "It\'s really good."'),
+    ("saturday then, bring your brushes. i finish my cocoa and set the mug down",
+     '"Saturday then, bring your brushes. I finish my cocoa and set the mug down."',
+     '"Saturday then, bring your brushes." *I finish my cocoa and set the mug down.*'),
     # Speech that only opens with one of those verbs stays speech.
     ("i take it youre new here", '"I take it you\'re new here."', '"I take it you\'re new here."'),
 ])

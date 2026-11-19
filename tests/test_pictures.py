@@ -130,7 +130,7 @@ def test_a_picture_of_this_moment_leaves_nothing_on_the_pc(client, session, llm,
     pic = r.json()
     # Place and light, then the person as their saved look and what they're doing; names out
     # (an image model doesn't know them) and the house style on.
-    assert pic["prompt"].startswith("a general store, shelves of jars, morning light, a woman, tall, olive skin")
+    assert pic["prompt"].startswith("medium shot, a general store, shelves of jars, morning light, a woman, tall, olive skin")
     assert "silver ring, at the counter, smiling as a woman wipes it down" in pic["prompt"]
     assert "Seraphine" not in pic["prompt"] and "more" not in pic["prompt"] and pic["prompt"].endswith(images.STYLE)
     sent = comfy.prompts[0]["prompt"]
@@ -312,7 +312,7 @@ def test_two_people_each_get_their_own_part_of_the_picture(client, comfy, llm, m
     monkeypatch.setattr(llm, "generate", gen, raising=False)
     assert client.post(f"/api/sessions/{sid}/pictures").status_code == 200
     g = comfy.prompts[0]["prompt"]
-    assert g["2"]["inputs"]["text"].startswith("two people, a woman and a man, a small shop, grey rain light")
+    assert g["2"]["inputs"]["text"].startswith("medium shot, two people in the foreground, a woman and a man, a small shop, grey rain light")
     assert "glasses" not in g["2"]["inputs"]["text"]
     areas = [n["inputs"] for n in g.values() if n["class_type"] == "ConditioningSetAreaPercentage"]
     assert [(a["x"], a["width"]) for a in areas] == [(0.0, 0.6), (0.45, 0.55)]

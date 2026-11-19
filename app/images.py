@@ -159,6 +159,9 @@ DETAIL_STEPS = 20
 #: same three seeds, two people in 0 of 3 (Sadie wore Riley's glasses each time), and in 3 of 3
 #: with each in their own area, everyone in their own clothes. ComfyUI's own nodes, no add-ons.
 AREA_OVERLAP = 0.1
+#: Live, a long description of the place gave a wide shot of the whole room, and at that size
+#: the faces lost who they were (Sadie came out blonde). People are the point of these pictures.
+SHOT = "medium shot"
 _COUNT = {2: "two", 3: "three", 4: "four"}
 
 
@@ -486,10 +489,11 @@ async def scene_prompt(session, cast, user: str, recent: list[tuple[str, str]]) 
             each = [f"{look}, {doing[name]}" for name, _, look in people if name in doing]
             text = ", ".join([frame, *each]) + f", {STYLE}"
             if len(each) < 2:
-                return Scene(text, text, [])
+                return Scene(f"{SHOT}, {text}", f"{SHOT}, {text}", [])
             who_ = " and ".join(person for name, person, _ in people if name in doing)
             count = _COUNT.get(len(each), str(len(each)))
-            return Scene(text, f"{count} people, {who_}, {frame}, {STYLE}", [f"{e}, {STYLE}" for e in each])
+            return Scene(f"{SHOT}, {text}", f"{SHOT}, {count} people in the foreground, {who_}, {frame}, {STYLE}",
+                         [f"{e}, {STYLE}" for e in each])
     raise ImagesUnavailable("Couldn't describe this moment for a picture. Try again.")
 
 

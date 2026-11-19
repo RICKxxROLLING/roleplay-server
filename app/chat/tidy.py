@@ -85,7 +85,9 @@ _ACTION = re.compile(
     r"I (?!take it\b|look forward\b|stand by\b|sit on it\b|turn \w+ down\b)"
     r"(rub|take|smile|grin|glance|look|wave|lean|nod|laugh|chuckle|sigh|sit|stand|push|pull|shrug|"
     r"head|walk|step|turn|pick|put|set|hand|reach|sip|wrap|grab|scratch|open|close|point|tap|lift|"
-    r"raise|lower|hold|hug|kneel|crouch|wipe|stretch|yawn|blush|wince|frown|stare|watch)\b")
+    r"raise|lower|hold|hug|kneel|crouch|wipe|stretch|yawn|blush|wince|frown|stare|watch|"
+    # "I finish my cocoa and set the mug down", quoted live.
+    r"finish|drink|eat|pour|toss|wink|nudge|shake|unlock|lock|knock|place|offer|show)\b")
 _SENTENCE = re.compile(r"(?<=[.!?])\s+")
 
 
