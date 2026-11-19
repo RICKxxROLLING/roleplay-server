@@ -153,6 +153,10 @@ def _whole_sentences(text: str) -> str:
     complete sentence is kept as it is, and open asterisks or quotes are closed
     by cutting to before them."""
     text = text.rstrip()
+    # The cap can land right after an action opens: '...along the way!"\n\n*' was saved live.
+    # An unmatched last asterisk with nothing after it is that opening, not a closing one.
+    if text.endswith("*") and text.count("*") % 2:
+        text = text[:-1].rstrip()
     if not text or text[-1] in '.!?…"”*':
         return text
     ends = [m.end() for m in re.finditer(r'[.!?…]["”*]*(?=\s)', text)]
@@ -434,6 +438,15 @@ async def stream_reply(
                 session.persona.name if session.persona else "You",
                 keep_time=settings.slow_pacing and not pacing.time_may_move(user_text, long_gap),
             )
+            encounter = group.current_encounter(session) if session.world_id is not None else None
+            if encounter is not None:
+                # A world chat's clock is the server's (`encounters.next_time`): live, Hank's
+                # meeting went from morning to afternoon over two lines about wire, and the
+                # tracker left him out of who was present in his own shop.
+                new_scene = dict(new_scene, time=encounter.time or new_scene.get("time"))
+                here = str(new_scene.get("present") or "")
+                if encounter.character and encounter.character.name not in here:
+                    new_scene["present"] = ", ".join(p for p in (encounter.character.name, here) if p)
             session.scene_prev = base
             session.scene = new_scene
             db.commit()

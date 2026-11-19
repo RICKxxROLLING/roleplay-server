@@ -27,11 +27,20 @@ class FakeComfy:
         self.private = True
         self.ws_urls: list[str] = []
         self.views = 0
+        self.starts = 0
 
     def handler(self, request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if request.url.port == 8190:  # the helper on the PC (deploy/comfy-waker)
+            if path == "/start":
+                self.starts += 1
+                self.up = True
+                return httpx.Response(200, json={"comfyui": "starting"})
+            return httpx.Response(200, json={"comfyui": "running" if self.up else "stopped"})
         if not self.up:
             raise httpx.ConnectError("down")
-        path = request.url.path
+        if path == "/queue":
+            return httpx.Response(200, json={"queue_running": [], "queue_pending": []})
         if path == "/object_info/CheckpointLoaderSimple":
             return httpx.Response(200, json={"CheckpointLoaderSimple": {"input": {"required": {
                 "ckpt_name": [["sdxl_base.safetensors", "juggernaut.safetensors"], {}]}}}})
@@ -159,6 +168,19 @@ def test_the_chosen_checkpoint_is_used(client, session, comfy, describes):
     client.patch("/api/settings", json={"comfyui_checkpoint": "juggernaut.safetensors"})
     client.post(f"/api/sessions/{session}/pictures")
     assert comfy.prompts[0]["prompt"]["1"]["inputs"]["ckpt_name"] == "juggernaut.safetensors"
+
+
+def test_a_stopped_comfyui_is_started_by_the_helper_for_a_picture(client, session, comfy, describes):
+    client.get("/api/pictures/status")  # seen once while running: its models are remembered
+    comfy.up = False
+    client.patch("/api/settings", json={"comfyui_waker_url": "http://10.2.1.123:8190"})
+    got = client.get("/api/pictures/status").json()
+    # Opening Settings doesn't start it; it says it's stopped and still offers the models.
+    assert got["asleep"] and "starts by itself" in got["error"] and comfy.starts == 0
+    assert got["checkpoints"] == ["sdxl_base.safetensors", "juggernaut.safetensors"]
+    r = client.post(f"/api/sessions/{session}/pictures")
+    assert r.status_code == 200, r.text
+    assert comfy.starts == 1 and comfy.deleted == ["p1"]
 
 
 def test_a_pc_that_is_off_says_so(client, session, comfy, describes):

@@ -496,6 +496,28 @@ or a woman, after entries called a man "her". Left: the location doesn't follow 
 the user somewhere unless the user's line says they go, which is the owner's rule, and pacing already
 cuts such exits from replies.
 
+**Full test chat with pictures, 2026-11-19 (Maple Hollow: Sadie, then Hank).** Characters held their cards
+(Sadie's overalls, freckles and autumn hair; Hank's flannel and plain talk) and Sadie kept the Saturday plan.
+What broke, each fixed and pinned by a test: the tidy pass quoted whole lines when an action sat between two
+bits of speech ("...though. i rub the back of my neck who would..."), 3 of 3 with or without an example of
+that shape, so sentences opening "I" plus a verb of the body come out of quotes server-side (not "I take it",
+"I look forward"), and a lone "i" is capitalised; that same quoting made "I walk down Main Street to the
+hardware store" speech, so the walk-on never fired and Sadie narrated the user leaving; a reply cut by the
+cap just after an opening asterisk kept the bare "*"; every person invented their own sky ("the whole sky is
+gray", then "not a cloud in the sky"), so the server picks the day's weather (`Encounter.sky`, kept until the
+clock goes round to morning) for the arrival line and every tail; the tracker moved Hank's morning to
+afternoon over two lines and dropped him from "present", so a world chat's scene keeps the encounter's time
+and person; "Thanks, Hank, I'll probably be back next week for more" wasn't a goodbye. Left: strangers
+still give themselves small details off their card (Sadie's cat-eye glasses), walk-ins are invented (Hank's
+son "Tommy"), and a reply can still put speech in asterisks.
+
+**ComfyUI starts on demand (`deploy/comfy-waker`).** Owner's choice, so the PC's graphics card is free when
+no pictures are wanted. The server can't start a Windows program, so a stdlib helper on the PC does: POST
+/start launches ComfyUI headless with the Desktop app's own Python and folders (17 s to answer on the RX 9060
+XT), and it is stopped after 15 idle minutes, counted from the last /start or a job in ComfyUI's queue. It
+answers only the server's address, sends ComfyUI's console output nowhere and never stops a ComfyUI it
+didn't start. Settings asks the helper whether ComfyUI is merely stopped, so opening Settings never starts it.
+
 **Your typed line gets its quotes and asterisks from the model, kept only if every word survives (`chat/tidy.py`).**
 Asked for by the owner, who types speech and actions together ("yeah okay ill try I smile"). Few-shot
 prompt at temperature 0.2; the server keeps the result only if the letters of every word are still there

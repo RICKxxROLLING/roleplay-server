@@ -41,12 +41,23 @@ function Pictures({ s, setS, update }) {
           check();
         }}
       />
+      <Input
+        id="comfyui-waker"
+        aria-label="Helper that starts ComfyUI"
+        value={s.comfyui_waker_url ?? ""}
+        placeholder="Helper, to start it on demand: http://10.2.1.123:8190"
+        onChange={(e) => setS((prev) => ({ ...prev, comfyui_waker_url: e.target.value }))}
+        onBlur={async (e) => {
+          await update("comfyui_waker_url", e.target.value.trim());
+          check();
+        }}
+      />
       {state && (
-        <p className={`text-xs ${state.ok ? "text-emerald-300" : "text-slate-500"}`}>
+        <p className={`text-xs ${state.ok || state.asleep ? "text-emerald-300" : "text-slate-500"}`}>
           {state.ok ? `Connected. ${state.checkpoints.length} model${state.checkpoints.length === 1 ? "" : "s"} found.` : state.error}
         </p>
       )}
-      {state?.ok && state.checkpoints.length > 0 && (
+      {(state?.ok || state?.asleep) && state.checkpoints.length > 0 && (
         <select
           value={s.comfyui_checkpoint ?? ""}
           onChange={(e) => update("comfyui_checkpoint", e.target.value)}

@@ -1,0 +1,15 @@
+{
+  "port": 8190,
+  "allow": ["10.2.1.75"],
+  "idle_minutes": 15,
+  "comfyui_url": "http://127.0.0.1:8188",
+  "cwd": "D:\\Comfy-Desktop\\ComfyUI-Installs\\ComfyUI",
+  "command": [
+    "D:\\Comfy-Desktop\\ComfyUI-Installs\\ComfyUI\\ComfyUI\\.venv\\Scripts\\python.exe", "-s", "ComfyUI\\main.py",
+    "--listen", "0.0.0.0", "--port", "8188",
+    "--extra-model-paths-config", "C:\\Users\\YOU\\AppData\\Roaming\\Comfy Desktop\\instance-model-paths\\inst-XXXX.yaml",
+    "--input-directory", "D:\\Comfy-Desktop\\ComfyUI-Shared\\input",
+    "--output-directory", "D:\\Comfy-Desktop\\ComfyUI-Shared\\output"
+  ],
+  "env": {}
+}

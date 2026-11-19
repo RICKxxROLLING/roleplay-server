@@ -27,6 +27,7 @@ PERSISTABLE: dict[str, type] = {
     "guard_user_actions": bool,
     "tidy_user_lines": bool,
     "comfyui_url": str,
+    "comfyui_waker_url": str,
     "comfyui_checkpoint": str,
     "image_negative": str,
     "image_steps": int,

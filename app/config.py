@@ -74,6 +74,9 @@ class Settings(BaseSettings):
     tidy_user_lines: bool = True
     # Pictures from ComfyUI on another machine on the home network (app/images.py). Empty: off.
     comfyui_url: str = ""
+    # The helper on that PC that starts ComfyUI on demand and stops it when idle
+    # (deploy/comfy-waker), such as http://10.2.1.123:8190. Empty: ComfyUI is left to the owner.
+    comfyui_waker_url: str = ""
     # A checkpoint file name as ComfyUI lists it; empty takes the first one it has.
     comfyui_checkpoint: str = ""
     image_negative: str = ("nsfw, nudity, text, watermark, signature, lowres, blurry, deformed hands, extra fingers, "

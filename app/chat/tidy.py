@@ -76,6 +76,47 @@ def judge(line: str, formatted: str) -> str:
     return out
 
 
+#: A sentence inside speech that is really something done: "I" and a verb of the body. Live, the
+#: model quoted the whole of "maybe, i dont really know anyone in town yet though. i rub the back of
+#: my neck who would we even talk to", 3 of 3 times, with or without an example of an action
+#: between two bits of speech. Phrases that open speech with these verbs ("I take it", "I look
+#: forward", "I stand by") are left as speech.
+_ACTION = re.compile(
+    r"I (?!take it\b|look forward\b|stand by\b|sit on it\b|turn \w+ down\b)"
+    r"(rub|take|smile|grin|glance|look|wave|lean|nod|laugh|chuckle|sigh|sit|stand|push|pull|shrug|"
+    r"head|walk|step|turn|pick|put|set|hand|reach|sip|wrap|grab|scratch|open|close|point|tap|lift|"
+    r"raise|lower|hold|hug|kneel|crouch|wipe|stretch|yawn|blush|wince|frown|stare|watch)\b")
+_SENTENCE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _actions_out_of_speech(out: str) -> str:
+    """Sentences of action inside a quote become their own *action*, between the speech."""
+    parts = []
+    for seg in _SEGMENT.findall(out):
+        if not (seg.startswith('"') and seg.endswith('"') and len(seg) > 1):
+            parts.append(seg)
+            continue
+        speech: list[str] = []
+        for sentence in _SENTENCE.split(seg[1:-1]):
+            if _ACTION.match(sentence):
+                if speech:
+                    parts.append('"' + " ".join(speech) + '" ')
+                    speech = []
+                parts.append("*" + sentence + "* ")
+            else:
+                speech.append(sentence)
+        if speech:
+            parts.append('"' + " ".join(speech) + '"')
+    return re.sub(r"\s+", " ", "".join(parts)).strip()
+
+
+def _capitals(out: str) -> str:
+    """'i' as a word, and the first letter of each quote or action, in capitals. Letters only
+    change case, so `judge` still finds every word."""
+    out = re.sub(r"(?<![\w'])i(?=\b|')", "I", out)
+    return re.sub(r'(^|["*]\s?|[.!?]\s)([a-z])', lambda m: m.group(1) + m.group(2).upper(), out)
+
+
 def needs_tidying(line: str) -> bool:
     # One paragraph only: the answer is read from one line, so more could never pass.
     return (bool(line.strip()) and '"' not in line and "“" not in line and "*" not in line
@@ -101,4 +142,8 @@ async def tidy(line: str) -> str:
     finally:
         autonomy.ACTIVE -= 1
     first = raw.strip().split("\n")[0].strip()
-    return judge(line, first) or line
+    out = judge(line, first)
+    if not out:
+        return line
+    # Re-judged after the repairs, so they can never lose or change a word.
+    return judge(line, _capitals(_actions_out_of_speech(out))) or out

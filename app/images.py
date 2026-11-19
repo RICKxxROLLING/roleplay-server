@@ -67,8 +67,59 @@ def _base() -> str:
     return url
 
 
+#: How long a stopped ComfyUI may take to answer once the helper starts it. 17 s on the owner's PC.
+WAKE_S = 120
+#: The models ComfyUI last listed, so Settings can still offer them while it's stopped.
+_known: list[str] = []
+
+
+def _waker() -> str:
+    return (settings.comfyui_waker_url or "").strip().rstrip("/")
+
+
+async def _waker_says() -> str:
+    """The helper's word on ComfyUI ("running", "starting", "stopped"), or "" if it doesn't answer."""
+    if not _waker():
+        return ""
+    try:
+        async with _http(4) as http:
+            r = await http.get(f"{_waker()}/status")
+            return r.json().get("comfyui", "") if r.status_code == 200 else ""
+    except Exception:
+        return ""
+
+
+async def wake() -> None:
+    """Ask the helper on the PC (deploy/comfy-waker) to start ComfyUI, and wait until it answers.
+    Also counts as activity, so it isn't stopped between two pictures."""
+    if not _waker():
+        return
+    try:
+        async with _http(6) as http:
+            await http.post(f"{_waker()}/start")
+    except Exception as exc:
+        raise ImagesUnavailable(f"The helper on your PC didn't answer at {_waker()}. Is the PC on? "
+                                f"({type(exc).__name__})") from exc
+    deadline = asyncio.get_event_loop().time() + WAKE_S
+    while asyncio.get_event_loop().time() < deadline:
+        if await _probe():
+            return  # Answering; `status` then says whether it can work privately.
+        await asyncio.sleep(2)
+    raise ImagesUnavailable("ComfyUI didn't start on your PC in time. Try again in a moment.")
+
+
+async def _probe() -> bool:
+    """ComfyUI answers at all, private node or not."""
+    try:
+        async with _http(3) as http:
+            return (await http.get(f"{_base()}/queue")).status_code == 200
+    except Exception:
+        return False
+
+
 async def status() -> dict:
     """Whether ComfyUI answers, its checkpoints, and whether it can work without keeping files."""
+    global _known
     try:
         base = _base()
     except ImagesUnavailable as exc:
@@ -81,8 +132,14 @@ async def status() -> dict:
             node = await http.get(f"{base}/object_info/{PRIVATE_NODE}")
             private = node.status_code == 200 and PRIVATE_NODE in (node.json() or {})
     except Exception as exc:  # anything at all: the PC is off, asleep, or not ComfyUI
+        if await _waker_says():
+            # Stopped on purpose: it starts again when a picture is asked for.
+            return {"ok": False, "configured": True, "private": False, "asleep": True, "checkpoints": _known,
+                    "error": "ComfyUI is stopped on your PC to keep its graphics card free. It starts by itself "
+                             "when you ask for a picture, which makes that first one slower."}
         return {"ok": False, "configured": True, "private": False, "checkpoints": [],
                 "error": f"ComfyUI didn't answer at {base}. Is the PC on and ComfyUI running? ({type(exc).__name__})"}
+    _known = list(names)
     return {"ok": private, "configured": True, "private": private, "checkpoints": list(names),
             "error": None if private else NOT_PRIVATE}
 
@@ -132,6 +189,7 @@ async def render(positive: str, size: tuple[int, int]) -> bytes:
     job is deleted from ComfyUI's history, the in-memory list of past prompts its /history
     serves, so the prompt text doesn't stay there either until ComfyUI restarts."""
     base = _base()
+    await wake()
     found = await status()
     if not found["private"]:
         raise ImagesUnavailable(found["error"] or NOT_PRIVATE)

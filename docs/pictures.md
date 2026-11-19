@@ -46,7 +46,36 @@ What still stays on the PC: the model files you installed, and whatever ComfyUI'
 prints while it runs (job progress). Don't open ComfyUI's own page in a browser to run these
 prompts by hand, since that page keeps its own copies.
 
-## 4. Connect it
+## 5. Optional: start ComfyUI only when needed
+
+ComfyUI keeps its model in the graphics card's memory while it runs. To have it start when a
+picture is asked for and stop after 15 idle minutes, run the small helper in
+`deploy/comfy-waker` on the PC instead of leaving ComfyUI open:
+
+1. Copy `comfy_waker.py` and `comfy_waker.example.json` to a folder on the PC, and rename the
+   JSON to `comfy_waker.json`. Fill in the command that starts your ComfyUI: for ComfyUI Desktop,
+   its install's Python, `ComfyUI\main.py`, `--listen 0.0.0.0 --port 8188`, and the same model,
+   input and output folders the Desktop app passes (Task Manager's Details tab shows them while
+   Desktop runs it). Keep `"allow"` to the server's address.
+2. Allow the server to reach it, from an administrator PowerShell:
+   ```powershell
+   New-NetFirewallRule -DisplayName "ComfyUI helper from roleplay server" -Direction Inbound -Protocol TCP -LocalPort 8190 -RemoteAddress 10.2.1.75 -Action Allow
+   ```
+3. Start it with Windows, hidden (an ordinary PowerShell is enough). Use any Python on the PC;
+   ComfyUI's own `pythonw.exe` has no window:
+   ```powershell
+   $py = "D:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\.venv\Scripts\pythonw.exe"
+   $act = New-ScheduledTaskAction -Execute $py -Argument '"D:\Comfy-Desktop\comfy-waker\comfy_waker.py"' -WorkingDirectory "D:\Comfy-Desktop\comfy-waker"
+   Register-ScheduledTask -TaskName "ComfyUI helper" -Action $act -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME) -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit 0)
+   ```
+4. In the roleplay app, enter the helper's address (`http://10.2.1.123:8190`) under the ComfyUI
+   address in **Settings → Pictures**. While ComfyUI is stopped the panel says so, and the first
+   picture after that takes longer: about 17 s to start, plus loading the model.
+
+The helper never stops a ComfyUI it didn't start, so opening the Desktop app yourself still
+works. Close the Desktop app while the helper runs, though, or the two will both want port 8188.
+
+## 6. Connect it
 
 In the roleplay app, open **Settings → Pictures (ComfyUI)** and enter the PC's address, such as
 `http://10.2.1.123:8188`. The panel says **Connected** and lists your models; pick one, or

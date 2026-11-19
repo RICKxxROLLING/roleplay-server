@@ -80,6 +80,10 @@ REASONS = [
     "asking {{user}} for directions",
 ]
 TIMES = ["morning", "midday", "afternoon", "evening", "night"]
+#: Plain enough to suit any world, from a small town to a city of neon or a train at night.
+SKIES = ["clear and bright", "grey and overcast", "drizzling on and off", "windy, with clouds moving fast",
+         "cold and still", "warm and hazy", "foggy, clearing slowly", "cool, with a light breeze"]
+SKY_LINE = "The weather today: {sky}."
 
 # --- Passes -----------------------------------------------------------------------------
 # A plain "keep names, objects, numbers" lost the reason behind the deal. Asking for the why
@@ -130,7 +134,12 @@ _LEAVE_PHRASE = re.compile(
     r"see (?:you|ya) (?:on )?(?:mon|tues|wednes|thurs|fri|satur|sun)day|"
     r"see (?:you|ya) (?:next week|at school|at work|in the morning|tonight|around|later|soon|tomorrow)|"
     # Not "I'm going back": "I'm going back to what you said about the lake" stays put.
-    r"catch (?:you|ya) (?:later|around)|i'?m (?:heading (?:home|out|off|back)|going home|off home))\b", re.I)
+    r"catch (?:you|ya) (?:later|around)|i'?m (?:heading (?:home|out|off|back)|going home|off home)|"
+    # "Thanks, Hank, I'll probably be back next week for more", live, after paying. Not "I'll come
+    # back to that later", which is about the talk.
+    r"i'?ll (?:probably |likely |definitely |maybe |surely )?(?:be|come|stop|swing|drop|pop) (?:back|by|in)(?! to\b)"
+    r"[\w ,']{0,25}?\b(?:next (?:week|time)|tomorrow|soon|sometime|another (?:day|time)|"
+    r"(?:mon|tues|wednes|thurs|fri|satur|sun)day))\b", re.I)
 _QUOTED = re.compile(r'"[^"]*"|“[^”]*”')
 _SENTENCE = re.compile(r"[^.!?\n]+[.!?]*")
 #: Going to another part of the same room, or staying, isn't leaving.
@@ -235,10 +244,16 @@ def met_before(session: ChatSession, encounter: Encounter) -> bool:
 
 
 def tail_note(session: ChatSession, card: CharacterCard, exclude_ids: set[int] | None = None, db=None) -> str:
-    """The encounter's line for the prompt's tail."""
+    """The encounter's line for the prompt's tail, after the day's weather."""
     encounter = group.current_encounter(session)
     if encounter is None:
         return ""
+    note = _tail_note(session, encounter, card, exclude_ids, db)
+    sky = SKY_LINE.format(sky=encounter.sky) if encounter.sky else ""
+    return " ".join(p for p in (sky, note) if p)
+
+
+def _tail_note(session, encounter, card, exclude_ids, db) -> str:
     known = met_before(session, encounter) or _knows_user(card, _user(session))
     here = [m for m in messages_of(session, encounter) if m.id not in (exclude_ids or ())]
     if not any(m.role == "assistant" for m in here) and any(m.role == "user" for m in here):
@@ -347,14 +362,14 @@ def _opener(place: str) -> str:
     return f"{place[0].upper()}{place[1:]}," if _PREPOSITION.match(place) else f"At {place},"
 
 
-async def arrival_line(session: ChatSession, person: Character, place: str, time: str) -> str:
+async def arrival_line(session: ChatSession, person: Character, place: str, time: str, sky: str = "") -> str:
     """Always something, as the chat can't go on without it. Names only the user are refused,
     since a line with them in it writes what they're doing."""
     user = _user(session)
     names = [user, user.split()[0]] if user != "You" else []
     opener = _opener(place)
     prompt = _ask(ARRIVAL.format(setting=_setting(session), name=person.name, about=_about(person),
-                                 place=place, time=time), opener)
+                                 place=place, time=f"{time}, the weather {sky}" if sky else time), opener)
     for _ in range(narrator.ATTEMPTS - 1):
         line = narrator.judge(f"{opener}{await get_client().generate(prompt, _params(70))}".rstrip(), names,
                               event=True, scene_time=time)
@@ -450,6 +465,14 @@ def next_time(session: ChatSession) -> str:
     return now if len(session.encounters) % 2 else TIMES[(TIMES.index(now) + 1) % len(TIMES)]
 
 
+def next_sky(session: ChatSession, time: str) -> str:
+    """The last encounter's weather, or a new day's when the clock has gone round to morning."""
+    last = session.encounters[-1] if session.encounters else None
+    if last and last.sky and not (time == TIMES[0] and last.time != TIMES[0]):
+        return last.sky
+    return random.choice(SKIES)
+
+
 # With the line alone, "my new classroom" became an elementary school for someone who had said
 # they teach at the middle school, so what they said earlier in the meeting comes first.
 WHERE_NOW = """{setting}
@@ -498,8 +521,9 @@ async def walk_on(db, session: ChatSession, place: str = "", wanted: int | None 
     person = choose_person(session, place, wanted)
     current = group.current_encounter(session)
     time = next_time(session)
+    sky = next_sky(session, time)
     place = place or await choose_place(session, person, time)
-    line = await arrival_line(session, person, place, time)
+    line = await arrival_line(session, person, place, time, sky)
     if current is not None:
         await write_note(session, current, db)
         current.ended = True
@@ -515,7 +539,7 @@ async def walk_on(db, session: ChatSession, place: str = "", wanted: int | None 
     scene.update(location=place, time=time)
     session.scene = scene
     session.scene_prev = dict(scene)
-    encounter = Encounter(session_id=session.id, character_id=person.id, place=place, time=time,
+    encounter = Encounter(session_id=session.id, character_id=person.id, place=place, time=time, sky=sky,
                           reason=random.choice(REASONS), start_id=message.id)
     db.add(encounter)
     db.commit()

@@ -184,6 +184,9 @@ class Encounter(Base):
     character_id: Mapped[int] = mapped_column(ForeignKey("characters.id"))
     place: Mapped[str] = mapped_column(String(200), default="")
     time: Mapped[str] = mapped_column(String(80), default="")
+    #: The day's weather, chosen by the server and kept until the day turns over, so the next
+    #: person doesn't contradict the last (live: "the whole sky is gray", then "not a cloud").
+    sky: Mapped[str] = mapped_column(String(120), default="")
     #: Why they speak first, kept so a swipe of their opening has the same reason.
     reason: Mapped[str] = mapped_column(Text, default="")
     start_id: Mapped[int] = mapped_column(default=0)

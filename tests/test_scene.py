@@ -92,6 +92,8 @@ def test_replies_cut_by_the_cap_end_on_a_whole_sentence():
     assert _whole_sentences('"Well. I never really thought') == '"Well."'
     assert _whole_sentences("All done.") == "All done."
     assert _whole_sentences("no sentence end here") == "no sentence end here"
+    # Cut right after an action opened, as saved live.
+    assert _whole_sentences('*She grins.* "Along the way!"\n\n*') == '*She grins.* "Along the way!"'
 
 
 def test_the_scene_is_editable(client, session, llm):

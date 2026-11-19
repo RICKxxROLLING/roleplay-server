@@ -110,6 +110,7 @@ class SettingsPatch(BaseModel):
     guard_user_actions: bool | None = None
     tidy_user_lines: bool | None = None
     comfyui_url: str | None = Field(None, max_length=300)
+    comfyui_waker_url: str | None = Field(None, max_length=300)
     comfyui_checkpoint: str | None = Field(None, max_length=300)
     image_negative: str | None = Field(None, max_length=1000)
     image_steps: int | None = Field(None, ge=1, le=80)

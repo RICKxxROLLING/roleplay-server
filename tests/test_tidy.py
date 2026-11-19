@@ -53,5 +53,29 @@ def test_a_wrong_format_keeps_the_line_as_typed(client, session, llm):
     assert client.get(f"/api/sessions/{session}").json()["messages"][-2]["content"] == "hello there friend"
 
 
+@pytest.mark.parametrize("line, formatted, want", [
+    # Seen live: the action in the middle quoted with the speech, 3 of 3 times.
+    ("maybe, i dont really know anyone in town yet though. i rub the back of my neck who would we even talk to",
+     '"Maybe, I don\'t really know anyone in town yet though. I rub the back of my neck. Who would we even talk to?"',
+     '"Maybe, I don\'t really know anyone in town yet though." *I rub the back of my neck.* "Who would we even talk to?"'),
+    ("i laugh quietly and take a sip. its really good", '*i laugh quietly and take a sip.* "It\'s really good."',
+     '*I laugh quietly and take a sip.* "It\'s really good."'),
+    # Speech that only opens with one of those verbs stays speech.
+    ("i take it youre new here", '"I take it you\'re new here."', '"I take it you\'re new here."'),
+])
+def test_actions_come_out_of_speech_and_i_is_capital(client, session, llm, monkeypatch, line, formatted, want):
+    real = llm.generate
+
+    async def gen(prompt, params):
+        if "You format lines for a roleplay chat" in prompt:
+            return " " + formatted
+        return await real(prompt, params)
+
+    monkeypatch.setattr(llm, "generate", gen, raising=False)
+    client.patch("/api/settings", json={"tidy_user_lines": True})
+    sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": line}))
+    assert client.get(f"/api/sessions/{session}").json()["messages"][-2]["content"] == want
+
+
 def test_an_action_quoted_as_speech_is_refused():
     assert judge("I nod and grab my coat ok see you", "\"I nod and grab my coat. 'Ok, see you.'\"") == ""

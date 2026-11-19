@@ -103,6 +103,7 @@ class EncounterOut(BaseModel):
     character: str | None = None
     place: str = ""
     time: str = ""
+    sky: str = ""
     reason: str = ""
     #: Position in `messages` of the line it starts at.
     start: int = Field(0, ge=0)
@@ -201,7 +202,7 @@ def export_chat(db: DbSession, s: ChatSession) -> dict:
                    for r in standings if r.character_id in people],
         world=s.world.name if s.world else None,
         encounters=[EncounterOut(character=people[e.character_id].name if e.character_id in people else None,
-                                 place=e.place, time=e.time, reason=e.reason,
+                                 place=e.place, time=e.time, sky=e.sky or "", reason=e.reason,
                                  start=sum(m.id < e.start_id for m in s.messages), ended=bool(e.ended or e.character_id not in people))
                     for e in s.encounters],
         memories=[MemoryOut(character=people[r.character_id].name, notes=r.notes)
@@ -362,7 +363,7 @@ def import_chat(db: DbSession, data: ChatFile) -> dict:
     for e in data.encounters:
         if e.start < len(ids):
             who = people[e.character.lower()].id if e.character else GONE
-            db.add(Encounter(session_id=s.id, character_id=who, place=e.place, time=e.time,
+            db.add(Encounter(session_id=s.id, character_id=who, place=e.place, time=e.time, sky=e.sky,
                              reason=e.reason, start_id=ids[e.start], ended=e.ended or who == GONE))
     kept = set()
     for r in data.memories:

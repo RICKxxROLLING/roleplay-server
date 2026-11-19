@@ -162,6 +162,39 @@ def test_the_days_clock_is_the_servers(client, world, llm):
     assert times == ["morning", "midday", "midday"]
 
 
+def test_the_scene_keeps_the_meetings_time_and_person(client, world, llm, monkeypatch):
+    from app.chat import orchestrator
+
+    async def drifting(base, user_text, reply, card, user, keep_time=False):
+        return {"location": "the general store", "time": "afternoon", "weather": "indoors", "present": "You"}
+
+    monkeypatch.setattr(orchestrator, "update_scene", drifting)
+    sid = start(client, world)
+    respond(client, sid)
+    say(client, sid, "Some wire, please.")
+    scene = get(client, sid)["scene"]
+    assert scene["time"] == "morning" and scene["present"].startswith("Hana Brandt")
+
+
+def test_the_weather_holds_for_the_day_and_reaches_every_prompt(client, world, llm):
+    sid = start(client, world)
+    respond(client, sid)
+    with SessionLocal() as db:
+        sky = db.get(ChatSession, sid).encounters[0].sky
+    assert sky in encounters.SKIES
+    assert f"The weather today: {sky}." in chat_prompts(llm)[-1]
+    walk(client, sid, "Cole", world)
+    respond(client, sid)
+    assert f"The weather today: {sky}." in chat_prompts(llm)[-1]
+    with SessionLocal() as db:
+        s = db.get(ChatSession, sid)
+        assert [e.sky for e in s.encounters] == [sky, sky]
+        # A new day, a new draw: once the clock goes round to morning again.
+        s.encounters[-1].time = "night"
+        random_days = {encounters.next_sky(s, "morning") for _ in range(40)}
+    assert len(random_days) > 1
+
+
 def test_a_place_with_a_number_is_refused(client, world, llm, monkeypatch):
     real = llm.generate
     answers = [" 2nd Aid Station", " stadium hospital, tending patients"]
@@ -399,6 +432,9 @@ def test_recall_and_pins_only_reach_the_speakers_own_meetings(client, world):
     "alright I think this is where we split it was nice to meet you Marcus",
     "thanks again ill see you monday",
     "Good talking to you, catch you later.",
+    # Live, after paying Hank, tidied into quotes.
+    '"I\'ll be careful. I pay for the wire and solder. Thanks, Hank, I\'ll probably be back next week for more."',
+    "ill stop by again tomorrow",
 ])
 def test_a_goodbye_without_quote_marks_is_noticed(text):
     assert encounters.is_leaving(text)
@@ -407,6 +443,7 @@ def test_a_goodbye_without_quote_marks_is_noticed(text):
 @pytest.mark.parametrize("text", [
     "Hi, nice to meet you!", "yeah okay ill try I smile", "will do thanks and I dig into my plate",
     "I throw a twenty on top and follow him out, I can walk with you for a moment",
+    "I'll come back to that question later", "I'll be back with your coffee in a minute",
 ])
 def test_ordinary_plain_lines_are_not_goodbyes(text):
     assert not encounters.is_leaving(text)
