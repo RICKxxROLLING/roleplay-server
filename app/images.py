@@ -87,10 +87,20 @@ async def status() -> dict:
             "error": None if private else NOT_PRIVATE}
 
 
+#: The detail pass: the first picture scaled up 1.5x and sampled again lightly. At 1216x832 a
+#: face is a small part of the frame, and SDXL draws small eyes badly (uneven, smeared). Same
+#: scene, same seeds, Juggernaut XL: eyes came out even and sharp with it, and the picture kept
+#: its layout at this strength. 14 s became 35 s on the owner's RX 9060 XT.
+DETAIL_SCALE = 1.5
+DETAIL_DENOISE = 0.4
+DETAIL_STEPS = 20
+
+
 def graph(positive: str, negative: str, size: tuple[int, int], checkpoint: str, seed: int) -> dict:
-    """ComfyUI's API-format graph for a plain txt2img, ending in the node that saves nothing."""
+    """ComfyUI's API-format graph for a txt2img, with the detail pass when it's on, ending in
+    the node that saves nothing."""
     w, h = size
-    return {
+    g = {
         "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": checkpoint}},
         "2": {"class_type": "CLIPTextEncode", "inputs": {"text": positive, "clip": ["1", 1]}},
         "3": {"class_type": "CLIPTextEncode", "inputs": {"text": negative, "clip": ["1", 1]}},
@@ -102,6 +112,17 @@ def graph(positive: str, negative: str, size: tuple[int, int], checkpoint: str, 
         "6": {"class_type": "VAEDecode", "inputs": {"samples": ["5", 0], "vae": ["1", 2]}},
         _SAVE_ID: {"class_type": PRIVATE_NODE, "inputs": {"images": ["6", 0]}},
     }
+    if settings.image_detail:
+        g["8"] = {"class_type": "ImageScaleBy", "inputs": {"image": ["6", 0], "upscale_method": "lanczos",
+                                                            "scale_by": DETAIL_SCALE}}
+        g["9"] = {"class_type": "VAEEncode", "inputs": {"pixels": ["8", 0], "vae": ["1", 2]}}
+        g["10"] = {"class_type": "KSampler", "inputs": {
+            "model": ["1", 0], "positive": ["2", 0], "negative": ["3", 0], "latent_image": ["9", 0],
+            "seed": seed, "steps": DETAIL_STEPS, "cfg": settings.image_cfg,
+            "sampler_name": "dpmpp_2m", "scheduler": "karras", "denoise": DETAIL_DENOISE}}
+        g["11"] = {"class_type": "VAEDecode", "inputs": {"samples": ["10", 0], "vae": ["1", 2]}}
+        g[_SAVE_ID]["inputs"]["images"] = ["11", 0]
+    return g
 
 
 async def render(positive: str, size: tuple[int, int]) -> bytes:

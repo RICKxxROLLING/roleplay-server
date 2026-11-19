@@ -31,6 +31,7 @@ PERSISTABLE: dict[str, type] = {
     "image_negative": str,
     "image_steps": int,
     "image_cfg": float,
+    "image_detail": bool,
     "redo_first_person": bool,
     "context_tokens": int,
     "max_new_tokens": int,

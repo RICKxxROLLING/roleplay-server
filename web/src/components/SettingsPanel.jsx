@@ -59,6 +59,20 @@ function Pictures({ s, setS, update }) {
           ))}
         </select>
       )}
+      <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+        <input
+          type="checkbox"
+          checked={s.image_detail ?? true}
+          onChange={(e) => update("image_detail", e.target.checked)}
+          className="accent-accent w-4 h-4 mt-0.5"
+        />
+        <span>
+          Sharper faces
+          <span className="block text-xs text-slate-600">
+            A second pass at a larger size, so eyes and faces come out clean. About twice as slow.
+          </span>
+        </span>
+      </label>
       <Textarea
         rows={2}
         maxLength={1000}

@@ -114,6 +114,7 @@ class SettingsPatch(BaseModel):
     image_negative: str | None = Field(None, max_length=1000)
     image_steps: int | None = Field(None, ge=1, le=80)
     image_cfg: float | None = Field(None, ge=1, le=20)
+    image_detail: bool | None = None
     redo_first_person: bool | None = None
 
     temperature: float | None = None

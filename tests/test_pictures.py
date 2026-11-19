@@ -139,6 +139,22 @@ def test_an_install_that_would_keep_files_is_refused(client, session, comfy, des
     assert comfy.prompts == []
 
 
+def test_the_detail_pass_feeds_the_save_node_and_can_be_turned_off(client, session, comfy, describes):
+    # On by default: the picture is scaled up, sampled again lightly, and that is what's sent back.
+    client.post(f"/api/sessions/{session}/pictures")
+    sent = comfy.prompts[0]["prompt"]
+    assert sent["8"]["inputs"]["scale_by"] == images.DETAIL_SCALE
+    assert sent["10"]["inputs"]["denoise"] == images.DETAIL_DENOISE and sent["10"]["inputs"]["seed"] == sent["5"]["inputs"]["seed"]
+    assert sent["7"]["inputs"]["images"] == ["11", 0]
+    assert "asymmetrical eyes" in sent["3"]["inputs"]["text"]
+    # Still nothing that writes a file, with the extra nodes.
+    assert {n["class_type"] for n in sent.values()} & {"SaveImage", "PreviewImage"} == set()
+    client.patch("/api/settings", json={"image_detail": False})
+    client.post(f"/api/sessions/{session}/pictures")
+    plain = comfy.prompts[1]["prompt"]
+    assert "8" not in plain and plain["7"]["inputs"]["images"] == ["6", 0]
+
+
 def test_the_chosen_checkpoint_is_used(client, session, comfy, describes):
     client.patch("/api/settings", json={"comfyui_checkpoint": "juggernaut.safetensors"})
     client.post(f"/api/sessions/{session}/pictures")

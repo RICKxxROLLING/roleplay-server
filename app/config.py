@@ -76,9 +76,12 @@ class Settings(BaseSettings):
     comfyui_url: str = ""
     # A checkpoint file name as ComfyUI lists it; empty takes the first one it has.
     comfyui_checkpoint: str = ""
-    image_negative: str = "nsfw, nudity, text, watermark, signature, lowres, blurry, deformed hands, extra fingers"
+    image_negative: str = ("nsfw, nudity, text, watermark, signature, lowres, blurry, deformed hands, extra fingers, "
+                           "deformed eyes, asymmetrical eyes, cross-eyed, lazy eye, distorted face, bad anatomy")
     image_steps: int = 25
     image_cfg: float = 6.5
+    # A second, gentler pass at 1.5x the size, for faces and eyes (app/images.py). About 2.5x slower.
+    image_detail: bool = True
     # Regenerate once when a reply's narration slips into first person on a
     # card whose greeting is not. ~1 reply in 5 on Stheno, and a stored slip is
     # copied by every reply after it. Costs one extra generation when it fires.

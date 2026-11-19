@@ -520,8 +520,13 @@ ends in ComfyUI's SaveImageWebsocket node, so the PNG comes back over /ws (binar
 header, only those sent while the save node runs; sampling previews come the same way) and no file is
 written, and each job is then deleted from ComfyUI's in-memory history. An install without that node is
 refused outright rather than falling back to SaveImage, which would keep every picture, prompt and all,
-in its output folder. Checked with the real websockets client against a local stand-in server. Not yet run against a real ComfyUI:
-tested against a fake one that speaks its HTTP API (/object_info, /prompt, /history, /view).
+in its output folder. Run against the owner's real ComfyUI Desktop (Juggernaut XL, RX 9060 XT): a
+portrait in 52 s with the model loading, a scene in 15 s; afterwards its output folder was empty, its
+history held neither job, and no log or user file contained the prompts. Eyes came out uneven at
+1216x832, where a face is small, so a detail pass (`image_detail`, on by default) scales the picture
+1.5x and samples it again at 0.4 with the same seed, plus eye terms in the negative: same scene, two
+seeds, eyes even and sharp with it, the layout unchanged, 14 s to 35 s. The negative terms alone
+helped less. Known limit: two people in one prompt can merge into one (Dina got the user's glasses).
 
 **The look is "Manuscript": a warm dark book, not a chat app (`web/tailwind.config.js`).** The owner chose it from three directions, for long reading. Tailwind's `slate` is overridden with warm tones and `ink` is the ground, so every panel follows from the tokens; keep any `slate` step used for text at 4.5:1 on `ink-950`. Literata and Inter are bundled with `@fontsource`, never a Google Fonts link, because the server makes no outside calls to show a page. Everything about a chat beyond who and where lives in the scene panel in `ChatView.jsx`, beside the story from `lg` and sliding over below it. Messages have no avatars, which also ended a 404 per message for characters without a picture.
 
