@@ -39,7 +39,7 @@ async def picture_of_this_moment(session_id: int, db: DbSession = Depends(get_db
         raise HTTPException(400, "There's nothing to picture yet")
     user = s.persona.name if s.persona else "You"
     recent = [(user if m.role == "user" else group.speaker_name(s, m), m.content)
-              for m in s.messages if m.role in ("user", "assistant", "narrator")][-4:]
+              for m in s.messages if m.role in ("user", "assistant", "narrator")][-6:]
     autonomy.ACTIVE += 1  # The writing-first scheduler waits while the chat model is busy.
     try:
         prompt = await images.scene_prompt(s, cast, user, recent)
@@ -47,6 +47,7 @@ async def picture_of_this_moment(session_id: int, db: DbSession = Depends(get_db
         raise HTTPException(502, str(exc)) from exc
     finally:
         autonomy.ACTIVE -= 1
+    db.commit()  # Any look written for this picture is kept, whether or not ComfyUI answers.
     try:
         data = await images.render(prompt, images.SCENE_SIZE)
     except images.ImagesUnavailable as exc:
@@ -92,6 +93,7 @@ async def make_portrait(char_id: int, db: DbSession = Depends(get_db)) -> dict:
         raise HTTPException(502, str(exc)) from exc
     finally:
         autonomy.ACTIVE -= 1
+    db.commit()
     try:
         data = await images.render(prompt, images.PORTRAIT_SIZE)
     except images.ImagesUnavailable as exc:

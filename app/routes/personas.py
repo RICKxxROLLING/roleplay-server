@@ -20,13 +20,13 @@ def create_persona(body: PersonaIn, db: DbSession = Depends(get_db)) -> dict:
     db.add(p)
     db.commit()
     db.refresh(p)
-    return {"id": p.id, "name": p.name, "description": p.description}
+    return {"id": p.id, "name": p.name, "description": p.description, "look": p.look or ""}
 
 
 @router.get("")
 def list_personas(db: DbSession = Depends(get_db)) -> list[dict]:
     return [
-        {"id": p.id, "name": p.name, "description": p.description}
+        {"id": p.id, "name": p.name, "description": p.description, "look": p.look or ""}
         for p in db.query(Persona).order_by(Persona.name).all()
     ]
 
@@ -34,6 +34,8 @@ def list_personas(db: DbSession = Depends(get_db)) -> list[dict]:
 class PersonaPatch(BaseModel):
     name: str | None = None
     description: str | None = None
+    #: How you look in pictures (app/images.py). Empty is written afresh at the next picture.
+    look: str | None = None
 
 
 @router.patch("/{persona_id}")
@@ -47,7 +49,7 @@ def update_persona(
         setattr(p, k, v)
     db.commit()
     db.refresh(p)
-    return {"id": p.id, "name": p.name, "description": p.description}
+    return {"id": p.id, "name": p.name, "description": p.description, "look": p.look or ""}
 
 
 @router.delete("/{persona_id}")

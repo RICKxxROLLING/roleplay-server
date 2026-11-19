@@ -267,22 +267,45 @@ The people here:
 {people}
 
 Where and when: {where}
+{earlier}
+What has just happened:
+{latest}
 
-What just happened:
-{transcript}
+Describe the moment that has just happened for a painting, in exactly this form, one line each:
+Place: the place and what is around, in a few short phrases
+Light: the light and the time of day
+{forms}
+Plain comma-separated phrases. No names after the colons, no dialogue."""
+# Asked for one line of phrases about each person's whole look, the model described them afresh
+# every time: Sadie came out with long straight hair and glasses, then short curls. So how
+# someone looks is written once (`look_of`) and the same words go into every picture; the model
+# only says where they are and what they're doing.
+LOOK_ASK = """{setting}
 
-Write an image prompt for this moment, as one line of short comma-separated phrases: the place, \
-the light and time of day, then each person by how they look and what they are doing. No names, \
-no dialogue."""
+About {name}: {about}
+{age}
+Describe how {name} looks, for a painter who must paint {name} the same way in every picture. \
+One line of 8 to 12 short comma-separated phrases, only things a painter can see: {opening}age, \
+build, skin, face, hair colour and style, eyes, one outfit they usually wear, and anything that \
+marks them out. Keep to what is written above, adding only what fits it. No names."""
+# Prototype, Sadie's card says 24: the look said "late 20s", added "quirky, expressive,
+# vibrant", and gave two outfits ("overalls at the café, scarves at market"). So the card's
+# age is stated and kept, and the asking is for one outfit and only what can be seen.
+_AGE = re.compile(r"\b(\d{2})[- ]years?[- ]old\b|,\s*(\d{2}),", re.I)
 PORTRAIT_ASK = """{setting}
 
 About {name}: {about}
 
-Write an image prompt for a portrait of {name}, as one line of short comma-separated phrases: \
-age, build, face, hair, clothes, expression, and a simple background that suits them. No names."""
+For a portrait of {name}, write one line of short comma-separated phrases: their expression, how \
+they stand or sit, and a simple background that suits them. No names, nothing about their looks."""
 
 #: Words for a scene's style, kept out of what the model writes so it can't drift.
 STYLE = "detailed digital painting, cinematic lighting, high quality"
+MAX_LOOK_CHARS = 320
+#: The newest exchange is given whole: cut at 500 characters, the picture lost what the reply
+#: was about. Older lines only set the scene.
+LATEST_CHARS = 3000
+EARLIER_CHARS = 300
 
 
 _HE = re.compile(r"\b(?:he|him|his|himself|man|boy|guy|father|son|husband|brother)\b", re.I)
@@ -300,24 +323,27 @@ def who(text: str) -> str:
     return "a person"
 
 
-def clean(raw: str, names: list[str] | dict[str, str]) -> str:
-    """One line of phrases, names taken out (an image model doesn't know them), or "". `names`
-    may map each name to what stands in for it ("a man"); a plain list uses "a person"."""
-    line = raw.strip().split("\n")[0].strip(' "*')
-    stand_in = names if isinstance(names, dict) else {n: "a person" for n in names}
+def _unname(text: str, stand_in: dict[str, str]) -> str:
     parts = {p: stand_in[full] for full in stand_in for p in (full, full.split()[0]) if p}
     for n in sorted(parts, key=len, reverse=True):
-        line = re.sub(rf"(?<!\w){re.escape(n)}(?!\w)", parts[n], line, flags=re.I)
-    line = re.sub(r"\s+", " ", line)[:MAX_PROMPT_CHARS].rstrip(", ")
-    return line if len(line.split(",")) >= 3 else ""
+        text = re.sub(rf"(?<!\w){re.escape(n)}(?!\w)", parts[n], text, flags=re.I)
+    return re.sub(r"\s+", " ", text).strip(' ,."*')
 
 
-async def _ask(body: str) -> str:
+def clean(raw: str, names: list[str] | dict[str, str], least: int = 3, cap: int = MAX_PROMPT_CHARS) -> str:
+    """One line of phrases, names taken out (an image model doesn't know them), or "". `names`
+    may map each name to what stands in for it ("a man"); a plain list uses "a person"."""
+    stand_in = names if isinstance(names, dict) else {n: "a person" for n in names}
+    line = _unname(raw.strip().split("\n")[0], stand_in)[:cap].rstrip(", ")
+    return line if len(line.split(",")) >= least else ""
+
+
+async def _ask(body: str, opener: str = "") -> str:
     fmt = get_format(settings.prompt_format)
-    prompt = fmt.user.format(text=body) + fmt.joiner + fmt.response_open
+    prompt = fmt.user.format(text=body) + fmt.joiner + fmt.response_open + opener
     params = GenerationParams(temperature=0.6, top_p=0.9, top_k=40, repeat_penalty=1.05,
-                              context_tokens=settings.context_tokens, max_new_tokens=160, stop=list(fmt.stops))
-    return await get_client().generate(prompt, params)
+                              context_tokens=settings.context_tokens, max_new_tokens=220, stop=list(fmt.stops))
+    return opener + await get_client().generate(prompt, params)
 
 
 def minors(characters) -> list[str]:
@@ -326,8 +352,61 @@ def minors(characters) -> list[str]:
             if trust.is_minor(CharacterCard.model_validate(c.card or {"name": c.name}))]
 
 
+def _setting(world) -> str:
+    return f"Setting: {world.description[:600]}" if world and world.description else ""
+
+
+def _card_text(character) -> str:
+    card = character.card or {}
+    return " ".join(" ".join((card.get(k) or "").split()) for k in ("description", "personality"))
+
+
+def person_of(character, said: str = "") -> str:
+    """"a man" or "a woman" for a character: the card and greeting, else their own lines."""
+    found = who(_card_text(character) + " " + ((character.card or {}).get("first_mes") or ""))
+    return found if found != "a person" else who(said)
+
+
+async def look_of(target, name: str, about: str, person: str, world) -> str:
+    """How `target` (a Character or Persona) looks in pictures: its saved words, or new ones written
+    and saved now. The caller commits."""
+    if (getattr(target, "look", "") or "").strip():
+        return target.look.strip()
+    m = _AGE.search(about)
+    age = next((g for g in (m.groups() if m else ()) if g), "")
+    body = LOOK_ASK.format(setting=_setting(world), name=name, about=about[:900],
+                           age=f"{name} is {age} years old.\n" if age else "",
+                           opening="" if person != "a person" else "whether they are a man or a woman, then ")
+    for _ in range(2):
+        line = clean(await _ask(body), {name: person}, least=5, cap=MAX_LOOK_CHARS)
+        if line:
+            first = line.split(",")[0].lower()
+            if person != "a person" and not re.search(r"\b(?:man|woman)\b", first):
+                line = f"{person}, {line}"
+            if age and age not in line:
+                line = re.sub(r"^((?:an? )?(?:man|woman|person)),", rf"\1, {age} years old,", line, flags=re.I) \
+                    if re.match(r"(?:an? )?(?:man|woman|person),", line, re.I) else f"{age} years old, {line}"
+            target.look = line
+            return line
+    return person  # Nothing usable: the picture still says who, and the next one tries again.
+
+
+_FORM_LINE = re.compile(r"^\s*([^:\n]{1,60}):\s*(.+?)\s*$")
+
+
+def _parse(raw: str, keys: list[str]) -> dict[str, str]:
+    got: dict[str, str] = {}
+    lowered = {k.lower(): k for k in keys}
+    for line in raw.splitlines():
+        m = _FORM_LINE.match(line.strip("*- "))
+        if m and m.group(1).strip().lower() in lowered:
+            got.setdefault(lowered[m.group(1).strip().lower()], m.group(2))
+    return got
+
+
 async def scene_prompt(session, cast, user: str, recent: list[tuple[str, str]]) -> str:
-    world = None
+    """Place and light from the model, then each person as their saved look and what the model
+    says they're doing. Looks are saved on the characters and persona; the caller commits."""
     from .chat import group
 
     world = group.world_of(session)
@@ -338,38 +417,45 @@ async def scene_prompt(session, cast, user: str, recent: list[tuple[str, str]]) 
         # The tracker's weather is mostly "indoors"; without the day's sky a drizzly midday
         # was drawn as "late afternoon sun", live.
         where += f", the weather outside {meeting.sky}"
-    about = {c.name: " ".join(((c.card or {}).get(k) or "") for k in ("description", "personality")) for c in cast}
-    stand_in = {}
+    people: list[tuple[str, str, str]] = []  # name, "a man", look
     for c in cast:
-        # The card first, greeting included; else how their own replies speak of them ("She
-        # glances up"), as Sadie's card never says.
-        stand_in[c.name] = who(about[c.name] + " " + ((c.card or {}).get("first_mes") or ""))
-        if stand_in[c.name] == "a person":
-            stand_in[c.name] = who(" ".join(text for name, text in recent if name == c.name))
-    people = "\n".join(f"- {c.name}, {stand_in[c.name]}: {' '.join(about[c.name].split())[:400]}" for c in cast)
-    persona = session.persona.description if session.persona else ""
-    if persona:
-        stand_in[user] = who(persona)
-        people += f"\n- {user}, {stand_in[user]}: {' '.join(persona.replace('{{user}}', user).split())[:400]}"
-    body = SCENE_ASK.format(setting=f"Setting: {world.description[:600]}" if world and world.description else "",
-                            people=people, where=where or "unknown",
-                            transcript="\n".join(f"{name}: {text[:500]}" for name, text in recent[-4:]))
+        person = person_of(c, " ".join(text for name, text in recent if name == c.name))
+        people.append((c.name, person, await look_of(c, c.name, _card_text(c), person, world)))
+    persona = session.persona
+    if persona is not None and persona.description:
+        about = " ".join(persona.description.replace("{{user}}", user).split())
+        person = who(about)
+        people.append((user, person, await look_of(persona, user, about, person, world)))
+    stand_in = {name: person for name, person, _ in people}
+    latest, earlier = recent[-2:], recent[:-2]
+    body = SCENE_ASK.format(
+        setting=_setting(world), where=where or "unknown",
+        people="\n".join(f"- {name}, {person}: {look}" for name, person, look in people),
+        earlier=("\nEarlier:\n" + "\n".join(f"{n}: {t[:EARLIER_CHARS]}" for n, t in earlier) + "\n") if earlier else "",
+        latest="\n".join(f"{n}: {t[:LATEST_CHARS]}" for n, t in latest),
+        forms="\n".join(f"{name}: where {name} is and what {name} is doing, with their expression"
+                        for name, _, _ in people))
+    keys = ["Place", "Light", *[name for name, _, _ in people]]
     for _ in range(2):
-        line = clean(await _ask(body), stand_in)
-        if line:
-            return f"{line}, {STYLE}"
+        got = _parse(await _ask(body, "Place:"), keys)
+        place = _unname(got.get("Place", ""), stand_in)
+        doing = {name: _unname(got[name], stand_in) for name, _, _ in people if got.get(name)}
+        if place and doing:
+            # Only people the model put in the moment; each as the same words every time.
+            parts = [place, _unname(got.get("Light", ""), stand_in)]
+            parts += [f"{look}, {doing[name]}" for name, _, look in people if name in doing]
+            return ", ".join(p for p in parts if p) + f", {STYLE}"
     raise ImagesUnavailable("Couldn't describe this moment for a picture. Try again.")
 
 
 async def portrait_prompt(character) -> str:
-    card = character.card or {}
+    """Their saved look, so the avatar is the person in the pictures, with a pose and background."""
     world = character.world
-    body = PORTRAIT_ASK.format(setting=f"Setting: {world.description[:600]}" if world and world.description else "",
-                               name=character.name, about=" ".join((card.get("description") or "").split())[:700])
-    person = who(" ".join((card.get(k) or "") for k in ("description", "personality", "first_mes")))
+    person = person_of(character)
+    look = await look_of(character, character.name, _card_text(character), person, world)
+    body = PORTRAIT_ASK.format(setting=_setting(world), name=character.name, about=_card_text(character)[:700])
     for _ in range(2):
         line = clean(await _ask(body), {character.name: person})
         if line:
-            # The image model is told who it is first: "a person" leaves it to guess.
-            return f"portrait of {person}, {line}, {STYLE}"
+            return f"portrait of {look}, {line}, {STYLE}"
     raise ImagesUnavailable("Couldn't describe them for a portrait. Try again.")

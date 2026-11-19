@@ -152,8 +152,36 @@ function VoicePicker({ characterId, voice, effective }) {
   );
 }
 
+/** How they look in pictures (app/images.py): written once, then the same words every time. */
+function Looks({ characterId, initial }) {
+  const [look, setLook] = useState(initial || "");
+  const [note, setNote] = useState(null);
+  useEffect(() => setLook(initial || ""), [initial]);
+  async function save(value) {
+    try {
+      await api.updateCharacter(characterId, { look: value.trim() });
+      setNote(value.trim() ? "Saved." : "Cleared: written afresh at the next picture.");
+    } catch (e) {
+      setNote(e.message);
+    }
+  }
+  return (
+    <Field label="Looks in pictures" hint="written from the description at their first picture, then used in every one; clear it to write it afresh">
+      <Textarea
+        rows={2}
+        maxLength={600}
+        value={look}
+        placeholder="Written at their first picture or portrait."
+        onChange={(e) => setLook(e.target.value)}
+        onBlur={(e) => save(e.target.value)}
+      />
+      {note && <p className="text-xs text-slate-500 mt-1">{note}</p>}
+    </Field>
+  );
+}
+
 /** A portrait drawn by ComfyUI from the card, kept as their avatar (app/images.py). */
-function Portrait({ characterId, onChanged }) {
+function Portrait({ characterId, onChanged, onLook }) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
   const [stamp, setStamp] = useState(0);
@@ -163,6 +191,7 @@ function Portrait({ characterId, onChanged }) {
     try {
       await api.makePortrait(characterId);
       setStamp(Date.now());
+      api.character(characterId).then((c) => onLook?.(c.look || "")).catch(() => {});
       onChanged?.();
     } catch (e) {
       setNote(e.message);
@@ -192,6 +221,7 @@ export default function CharacterEditor({ open, onClose, characterId, onChanged 
   const [worldId, setWorldId] = useState(null);
   const [day, setDay] = useState({});
   const [voice, setVoice] = useState({ voice: null, effective: null });
+  const [look, setLook] = useState("");
 
   useEffect(() => {
     if (!open || !characterId) return;
@@ -204,6 +234,7 @@ export default function CharacterEditor({ open, onClose, characterId, onChanged 
         setWorldId(c.world_id ?? null);
         setDay(c.rhythm || {});
         setVoice({ voice: c.voice, effective: c.effective_voice });
+        setLook(c.look || "");
       })
       .catch((e) => setNote(e.message));
     api.worlds().then(setWorlds).catch(() => {});
@@ -316,7 +347,9 @@ export default function CharacterEditor({ open, onClose, characterId, onChanged 
 
           <VoicePicker characterId={characterId} voice={voice.voice} effective={voice.effective} />
 
-          <Portrait characterId={characterId} onChanged={onChanged} />
+          <Looks characterId={characterId} initial={look} />
+
+          <Portrait characterId={characterId} onChanged={onChanged} onLook={setLook} />
 
           <DailyRhythm characterId={characterId} initial={day} />
 

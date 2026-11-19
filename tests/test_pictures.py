@@ -96,12 +96,20 @@ def comfy(client, monkeypatch):
 def describes(llm, monkeypatch):
     real = llm.generate
 
+    count = {"looks": 0}
+
     async def gen(prompt, params):
-        if "Write an image prompt" in prompt:
-            return " a general store, morning light, Seraphine at the counter smiling, shelves of jars\nmore"
+        if "Describe how" in prompt and "looks" in prompt:
+            count["looks"] += 1
+            return " a woman, tall, olive skin, long dark hair in a braid, green eyes, linen apron, silver ring"
+        if "Describe the moment" in prompt:
+            count["moment"] = prompt
+            return (" a general store, shelves of jars\nLight: morning light\n"
+                    "Seraphine: at the counter, smiling as Seraphine wipes it down\nmore")
         return await real(prompt, params)
 
     monkeypatch.setattr(llm, "generate", gen, raising=False)
+    return count
 
 
 def test_status_says_when_nothing_is_set_up(client):
@@ -120,9 +128,11 @@ def test_a_picture_of_this_moment_leaves_nothing_on_the_pc(client, session, llm,
     r = client.post(f"/api/sessions/{session}/pictures")
     assert r.status_code == 200, r.text
     pic = r.json()
-    # Names out (an image model doesn't know them), the first line only, the house style on.
-    assert "Seraphine" not in pic["prompt"] and "a woman at the counter" in pic["prompt"]
-    assert "more" not in pic["prompt"] and pic["prompt"].endswith(images.STYLE)
+    # Place and light, then the person as their saved look and what they're doing; names out
+    # (an image model doesn't know them) and the house style on.
+    assert pic["prompt"].startswith("a general store, shelves of jars, morning light, a woman, tall, olive skin")
+    assert "silver ring, at the counter, smiling as a woman wipes it down" in pic["prompt"]
+    assert "Seraphine" not in pic["prompt"] and "more" not in pic["prompt"] and pic["prompt"].endswith(images.STYLE)
     sent = comfy.prompts[0]["prompt"]
     assert sent["1"]["inputs"]["ckpt_name"] == "sdxl_base.safetensors"
     assert sent["4"]["inputs"]["width"] == 1216 and "nsfw" in sent["3"]["inputs"]["text"]
@@ -232,20 +242,62 @@ def test_a_portrait_says_who_it_is(client, comfy, llm, monkeypatch):
     real = llm.generate
 
     async def gen(prompt, params):
+        if "Describe how Marcus Bell looks" in prompt:
+            assert "Marcus Bell is 35 years old." in prompt
+            return " a man, late 20s, tall, rumpled cardigan, dark hair, stubble, brown eyes"
         if "portrait of Marcus" in prompt:
-            return " tall, rumpled cardigan, coffee mug, warm smile, classroom behind"
+            return " warm smile, leaning on a desk, classroom behind"
         return await real(prompt, params)
 
     monkeypatch.setattr(llm, "generate", gen, raising=False)
     assert client.post(f"/api/characters/{cid}/portrait").status_code == 200
-    assert comfy.prompts[0]["prompt"]["2"]["inputs"]["text"].startswith("portrait of a man, tall")
+    # The card's age is kept even when the model guesses another, and the look is saved.
+    text = comfy.prompts[0]["prompt"]["2"]["inputs"]["text"]
+    assert text.startswith("portrait of a man, 35 years old, late 20s, tall") and "warm smile, leaning" in text
+    assert client.get(f"/api/characters/{cid}").json()["look"].startswith("a man, 35 years old")
+
+
+def test_a_look_is_written_once_kept_and_editable(client, session, comfy, describes):
+    client.post(f"/api/sessions/{session}/pictures")
+    client.post(f"/api/sessions/{session}/pictures")
+    assert describes["looks"] == 1  # the character's; the test chat has no persona
+    first, second = (p["prompt"]["2"]["inputs"]["text"] for p in comfy.prompts)
+    assert "long dark hair in a braid, green eyes" in first and "long dark hair in a braid, green eyes" in second
+    cid = client.get(f"/api/sessions/{session}").json()["character_id"]
+    client.patch(f"/api/characters/{cid}", json={"look": "a woman, short red hair, blue coat, freckles"})
+    client.post(f"/api/sessions/{session}/pictures")
+    assert "a woman, short red hair, blue coat, freckles, at the counter" in comfy.prompts[2]["prompt"]["2"]["inputs"]["text"]
+    assert describes["looks"] == 1
+    # Cleared, it is written afresh.
+    client.patch(f"/api/characters/{cid}", json={"look": ""})
+    client.post(f"/api/sessions/{session}/pictures")
+    assert describes["looks"] == 2
+
+
+def test_the_latest_reply_is_read_whole(client, session, llm, comfy, describes):
+    long = "She talks about the harvest. " * 60 + "PLOTWORD at the very end."
+    llm.replies = [long]
+    sse_events(client.post(f"/api/sessions/{session}/messages", json={"content": "Tell me everything."}))
+    client.post(f"/api/sessions/{session}/pictures")
+    asked = describes["moment"]
+    assert "PLOTWORD at the very end" in asked and "Tell me everything" in asked
+
+
+def test_your_persona_gets_a_look_too(client, comfy, describes):
+    pid = client.post("/api/personas", json={"name": "Riley", "description": "Riley is a quiet man. He fixes radios."}).json()["id"]
+    cid = client.post("/api/characters", json={"name": "Seraphine", "description": "Seraphine, 40, keeps the shop. She hums."}).json()["id"]
+    sid = client.post("/api/sessions", json={"character_id": cid, "persona_id": pid}).json()["id"]
+    sse_events(client.post(f"/api/sessions/{sid}/messages", json={"content": "Hello."}))
+    assert client.post(f"/api/sessions/{sid}/pictures").status_code == 200
+    assert describes["looks"] == 2
+    assert client.get("/api/personas").json()[0]["look"]
 
 
 def test_a_useless_description_is_refused(client, session, comfy, llm, monkeypatch):
     real = llm.generate
 
     async def gen(prompt, params):
-        if "Write an image prompt" in prompt:
+        if "Describe the moment" in prompt:
             return " She smiles."
         return await real(prompt, params)
 

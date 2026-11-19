@@ -51,6 +51,9 @@ class Character(Base):
     voice: Mapped[str | None] = mapped_column(String(80), nullable=True)
     # The one hidden owner of every world chat (chat/encounters.py). Never speaks or lists.
     host: Mapped[bool] = mapped_column(default=False)
+    # How they look in pictures (app/images.py): written once, then the same words every time,
+    # so a person doesn't change from one picture to the next. Empty: written at the next picture.
+    look: Mapped[str] = mapped_column(Text, default="")
 
     sessions: Mapped[list["ChatSession"]] = relationship(
         back_populates="character", cascade="all, delete-orphan"
@@ -114,6 +117,8 @@ class Persona(Base):
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+    # As for Character.look: the user drawn the same way in every picture.
+    look: Mapped[str] = mapped_column(Text, default="")
 
 
 class ChatSession(Base):

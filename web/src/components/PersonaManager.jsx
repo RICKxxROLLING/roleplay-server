@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { Modal, Field, Input, Textarea, Button, Empty } from "./ui";
 
-const BLANK = { name: "", description: "" };
+const BLANK = { name: "", description: "", look: "" };
 
 export default function PersonaManager({ open, onClose, onChanged }) {
   const [personas, setPersonas] = useState([]);
@@ -22,7 +22,7 @@ export default function PersonaManager({ open, onClose, onChanged }) {
 
   function startEdit(p) {
     setEditing(p.id);
-    setForm({ name: p.name, description: p.description });
+    setForm({ name: p.name, description: p.description, look: p.look || "" });
   }
 
   async function save() {
@@ -82,6 +82,17 @@ export default function PersonaManager({ open, onClose, onChanged }) {
               placeholder="A cartographer chasing a rumour across the northern roads."
             />
           </Field>
+          {editing !== "new" && (
+            <Field label="Looks in pictures" hint="written from the description at your first picture, then used every time; clear it to write it afresh">
+              <Textarea
+                rows={2}
+                maxLength={600}
+                value={form.look}
+                onChange={(e) => setForm({ ...form, look: e.target.value })}
+                placeholder="Written at your first picture."
+              />
+            </Field>
+          )}
           <div className="flex gap-2 items-center">
             <Button variant="primary" onClick={save}>
               {editing === "new" ? "Create" : "Save"}

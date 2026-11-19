@@ -175,7 +175,8 @@ def get_character(char_id: int, db: DbSession = Depends(get_db)) -> dict:
     from ..chat import voices
 
     return {"id": c.id, "name": c.name, "card": c.card, "world_id": c.world_id, "extra": bool(c.extra),
-            "rhythm": c.rhythm or {}, "voice": c.voice, "effective_voice": voices.voice_of(c)}
+            "rhythm": c.rhythm or {}, "voice": c.voice, "effective_voice": voices.voice_of(c),
+            "look": c.look or ""}
 
 
 @router.post("/{char_id}/rhythm/suggest")
@@ -227,6 +228,8 @@ class CardPatch(BaseModel):
     rhythm: RhythmIn | None = None
     #: A voice from chat/voices.py; not part of the card. Empty goes back to the default.
     voice: str | None = None
+    #: How they look in pictures (app/images.py); not part of the card. Empty is written afresh.
+    look: str | None = Field(None, max_length=600)
 
 
 @router.patch("/{char_id}")
@@ -253,6 +256,9 @@ def update_character(
         if voice and voice not in voices.VOICES:
             raise HTTPException(400, "No such voice")
         c.voice = voice or None
+        db.commit()
+    if "look" in patch:
+        c.look = " ".join(patch.pop("look").split())
         db.commit()
     extra = patch.pop("extra", None)
     if extra is not None:
