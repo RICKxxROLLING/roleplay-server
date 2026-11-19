@@ -333,6 +333,11 @@ async def scene_prompt(session, cast, user: str, recent: list[tuple[str, str]]) 
     world = group.world_of(session)
     scene = session.scene or {}
     where = ", ".join(str(scene[k]) for k in ("location", "time", "weather") if scene.get(k) and scene[k] != "unknown")
+    meeting = group.current_encounter(session) if session.world_id is not None else None
+    if meeting is not None and meeting.sky:
+        # The tracker's weather is mostly "indoors"; without the day's sky a drizzly midday
+        # was drawn as "late afternoon sun", live.
+        where += f", the weather outside {meeting.sky}"
     about = {c.name: " ".join(((c.card or {}).get(k) or "") for k in ("description", "personality")) for c in cast}
     stand_in = {}
     for c in cast:
