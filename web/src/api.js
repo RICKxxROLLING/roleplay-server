@@ -120,6 +120,8 @@ export const api = {
   takePicture: (id) => j(`/sessions/${id}/pictures`, { method: "POST" }),
   deletePicture: (id) => j(`/pictures/${id}`, { method: "DELETE" }),
   makePortrait: (id) => j(`/characters/${id}/portrait`, { method: "POST" }),
+  safetyPeople: () => j("/safety/people"),
+  setRomance: (id, tagged) => j(`/safety/people/${id}/romance`, { method: "PUT", body: JSON.stringify({ tagged }) }),
   stats: (tz) => j(`/stats?tz=${encodeURIComponent(tz || "")}`),
   createWorldChat: (body) =>
     j("/sessions/world", { method: "POST", body: JSON.stringify(body) }),

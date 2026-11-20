@@ -381,10 +381,18 @@ async def _ask(body: str, opener: str = "") -> str:
     return opener + await get_client().generate(prompt, params)
 
 
-def minors(characters) -> list[str]:
-    """Names of anyone in the picture written as under 18. No picture is made of them."""
-    return [c.name for c in characters
-            if trust.is_minor(CharacterCard.model_validate(c.card or {"name": c.name}))]
+def not_pictured(characters) -> str:
+    """Why nobody here can be pictured, or "". Anyone written as under 18 never is; nor is a card
+    with no age when Settings → Safety keeps those platonic."""
+    cards = [(c.name, CharacterCard.model_validate(c.card or {"name": c.name})) for c in characters]
+    young = [n for n, card in cards if trust.is_minor(card)]
+    if young:
+        return f"No pictures of {', '.join(young)}: written as under 18."
+    unknown = [n for n, card in cards if trust.kept_platonic(card)]
+    if unknown:
+        return (f"No pictures of {', '.join(unknown)}: their card gives no age, and Settings → Safety "
+                "keeps people with no stated age out of pictures.")
+    return ""
 
 
 def _setting(world) -> str:

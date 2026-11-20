@@ -508,6 +508,8 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
             </div>
           )}
 
+          <SafetySection s={s} update={update} />
+
           <TestModelSection />
 
           <PasswordSection />
@@ -768,6 +770,97 @@ const b64ToBytes = (s) => {
  * this server. Only possible over HTTPS, and on iPhone only from the app
  * added to the Home Screen.
  */
+/**
+ * Who may be romantic or pictured (app/routes/safety.py). The rules for anyone written as under
+ * 18 are fixed, so they're stated here rather than offered as switches.
+ */
+function SafetySection({ s, update }) {
+  const [people, setPeople] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState(null);
+  const load = () => api.safetyPeople().then(setPeople).catch((e) => setNote(e.message));
+  useEffect(() => {
+    load();
+  }, [s.romance_mode, s.unknown_age]);
+
+  async function tag(p, on) {
+    setNote(null);
+    try {
+      const got = await api.setRomance(p.id, on);
+      setPeople((list) => list.map((x) => (x.id === p.id ? got : x)));
+    } catch (e) {
+      setNote(e.message);
+    }
+  }
+
+  const select = "w-full bg-ink-950 border border-ink-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:border-accent/60";
+  const shown = (people || []).filter((p) => !p.extra || p.romance_tag);
+  const unknown = (people || []).filter((p) => p.age_unknown).length;
+
+  return (
+    <div className="pt-3 border-t border-ink-800 space-y-3">
+      <div className="text-sm">Safety</div>
+      <p className="text-xs text-slate-500">
+        Always on, whatever you choose below: anyone whose card says they're under 18 stays
+        platonic, is never pictured, and is never offered romantic or physical choices. People the
+        app writes for a world are always 22 or older.
+      </p>
+
+      <label className="block space-y-1">
+        <span className="text-sm">Romance</span>
+        <select value={s.romance_mode ?? "tagged"} onChange={(e) => update("romance_mode", e.target.value)} className={select}>
+          <option value="tagged">Only characters you mark for romance</option>
+          <option value="adults">Any adult character</option>
+          <option value="never">Nobody</option>
+        </select>
+        <span className="block text-xs text-slate-600">
+          Anyone else stays a friend and kindly says no. With earned trust on, romance also has to be earned.
+        </span>
+      </label>
+
+      <label className="block space-y-1">
+        <span className="text-sm">Cards that don't state an age</span>
+        <select value={s.unknown_age ?? "adult"} onChange={(e) => update("unknown_age", e.target.value)} className={select}>
+          <option value="adult">Treat them as adults</option>
+          <option value="platonic">Keep them platonic and out of pictures</option>
+        </select>
+        <span className="block text-xs text-slate-600">
+          {unknown ? `${unknown} of your characters don't state an age. ` : ""}
+          Add one to the description ("Dina, 24, ...") to settle it.
+        </span>
+      </label>
+
+      <button onClick={() => setOpen((v) => !v)} className="text-sm text-accent hover:underline">
+        {open ? "Hide" : "Show"} who this applies to{people ? ` (${shown.length})` : ""}
+      </button>
+      {open && people && (
+        <ul className="divide-y divide-ink-800 border border-ink-800 rounded-lg">
+          {shown.map((p) => (
+            <li key={p.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+              <span className="flex-1 min-w-0 truncate">{p.name}</span>
+              <span className={`text-xs ${p.minor ? "text-amber-300" : "text-slate-500"}`}>
+                {p.minor ? "under 18" : p.age ? p.age : "no age"}
+              </span>
+              <span className="text-xs text-slate-500 w-20 text-right">{p.pictured ? "pictured" : "no pictures"}</span>
+              <label className="flex items-center gap-1.5 text-xs w-24 justify-end" title={p.minor ? "Never, written as under 18" : ""}>
+                <input
+                  type="checkbox"
+                  className="accent-accent w-4 h-4"
+                  disabled={p.minor || (s.romance_mode ?? "tagged") !== "tagged"}
+                  checked={(s.romance_mode ?? "tagged") === "tagged" ? p.romance_tag : p.romance}
+                  onChange={(e) => tag(p, e.target.checked)}
+                />
+                romance
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+      {note && <p className="text-xs text-rose-300">{note}</p>}
+    </div>
+  );
+}
+
 function NotificationsSection() {
   const [sub, setSub] = useState(undefined); // undefined = checking, null = off
   const [devices, setDevices] = useState([]);

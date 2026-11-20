@@ -519,6 +519,16 @@ had told her himself, though she kept the Saturday plan when asked; strangers
 still give themselves small details off their card (Sadie's cat-eye glasses), walk-ins are invented (Hank's
 son "Tommy"), and a reply can still put speech in asterisks.
 
+**Settings → Safety chooses for adults only (`routes/safety.py`, `trust.romance_allowed`).** Owner
+request. `romance_mode`: cards tagged `romance` (the default and the old behaviour), any adult, or
+nobody; `unknown_age`: a card stating no age counts as an adult (old behaviour) or is kept platonic and
+never pictured (`trust.kept_platonic`). A card written as under 18 is platonic, unpictured and never
+offered romantic choices whatever these say, and the section states that rather than offering it as a
+switch; tagging a minor for romance is refused. "Nobody" and the platonic choice add a refusal line
+worded like the measured one in `standing_line`, outside the earned-trust switch like the minor line.
+The section lists every character with their stated age, whether they're pictured, and a romance tick
+that sets the card's tag.
+
 **A person looks the same in every picture (`images.look_of`, `Character.look`, `Persona.look`).** Owner
 report: characters changed between pictures and the plot got lost. Asked for one line describing everyone,
 the model described them afresh each time (Sadie: long straight hair and glasses, then short curls). Now

@@ -53,6 +53,8 @@ PERSISTABLE: dict[str, type] = {
     "thoughts_enabled": bool,
     "slow_pacing": bool,
     "trust_enabled": bool,
+    "romance_mode": str,
+    "unknown_age": str,
     "narrator_default": bool,
     "narrator_every": int,
     "voices_mode": str,

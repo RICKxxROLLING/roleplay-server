@@ -138,6 +138,8 @@ class SettingsPatch(BaseModel):
     thoughts_enabled: bool | None = None
     slow_pacing: bool | None = None
     trust_enabled: bool | None = None
+    romance_mode: Literal["tagged", "adults", "never"] | None = None
+    unknown_age: Literal["adult", "platonic"] | None = None
     narrator_default: bool | None = None
     narrator_every: int | None = None
     voices_mode: Literal["dialogue", "story", "everything"] | None = None

@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     slow_pacing: bool = True
     # Trust, affection and respect, moved by what the user does (memory/trust.py).
     trust_enabled: bool = True
+    # Settings → Safety (memory/trust.py). Who may be romantic: cards tagged "romance",
+    # any adult, or nobody. Anyone written as a minor never is, whatever this says.
+    romance_mode: str = "tagged"
+    # A card that states no age: treated as an "adult", or kept "platonic" and never pictured.
+    unknown_age: str = "adult"
     #: New chats start with the narrator on. Existing chats keep what they had.
     narrator_default: bool = True
     #: Roughly how many of the user's messages between narrator lines.

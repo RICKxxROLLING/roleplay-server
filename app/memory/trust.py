@@ -188,9 +188,50 @@ def minor_line(char: str, user: str) -> str:
             f"the way it would be with a trusted older friend.")
 
 
+#: An age of 18 or more stated in the card: "24-year-old", "aged 30", "Hana, 54, keeps the store".
+_ADULT_AGE = re.compile(
+    r"\b(1[89]|[2-9]\d|1[0-2]\d)[- ]years?[- ]old\b|\baged?\s+(1[89]|[2-9]\d)\b|^[^.,]{1,60},\s*(1[89]|[2-9]\d)\s*,", re.I)
+ROMANCE_MODES = ("tagged", "adults", "never")
+UNKNOWN_AGE = ("adult", "platonic")
+
+
+def stated_age(card) -> int | None:
+    """The adult age the card states, if it states one."""
+    m = _ADULT_AGE.search(" ".join(p for p in (card.description, card.personality) if p))
+    return int(next(g for g in m.groups() if g)) if m else None
+
+
+def age_unknown(card) -> bool:
+    return not is_minor(card) and stated_age(card) is None
+
+
+def kept_platonic(card) -> bool:
+    """Never romance, never pictured: anyone written as a minor, always, and anyone whose card
+    gives no age when the owner chose that in Settings → Safety."""
+    return is_minor(card) or (settings.unknown_age == "platonic" and age_unknown(card))
+
+
+def platonic_line(card, user: str) -> str:
+    """The line for an adult kept off romance by Settings → Safety, whether or not earned trust is
+    on. Worded like the measured refusal in `standing_line` (19 in 20 said no)."""
+    if is_minor(card) or romance_allowed(card):
+        return ""
+    if kept_platonic(card) or settings.romance_mode == "never":
+        return (f"Everything between {card.name} and {user} stays platonic: a kiss or anything romantic "
+                f"would feel wrong, and {card.name} kindly says no.")
+    return ""
+
+
+def has_romance_tag(card) -> bool:
+    return "romance" in [t.strip().lower() for t in (card.tags or [])]
+
+
 def romance_allowed(card) -> bool:
-    """Opt-in per card, with a `romance` tag, and never for a minor."""
-    return "romance" in [t.strip().lower() for t in (card.tags or [])] and not is_minor(card)
+    """Per Settings → Safety: only cards tagged `romance` (the default), any adult, or nobody.
+    Never for a minor, whatever the setting."""
+    if kept_platonic(card) or settings.romance_mode == "never":
+        return False
+    return settings.romance_mode == "adults" or has_romance_tag(card)
 
 
 def standing_line(scores: dict, char: str, user: str, romance: bool = False, minor: bool = False) -> str:

@@ -32,9 +32,9 @@ async def picture_of_this_moment(session_id: int, db: DbSession = Depends(get_db
     if not s:
         raise HTTPException(404, "Session not found")
     cast = group.cast(s)
-    young = images.minors(cast)
-    if young:
-        raise HTTPException(400, f"No pictures of {', '.join(young)}: written as under 18.")
+    refused = images.not_pictured(cast)
+    if refused:
+        raise HTTPException(400, refused)
     if not s.messages or not cast:
         raise HTTPException(400, "There's nothing to picture yet")
     user = s.persona.name if s.persona else "You"
@@ -84,8 +84,9 @@ async def make_portrait(char_id: int, db: DbSession = Depends(get_db)) -> dict:
     c = db.get(Character, char_id)
     if not c or c.host:
         raise HTTPException(404, "Character not found")
-    if images.minors([c]):
-        raise HTTPException(400, f"No pictures of {c.name}: written as under 18.")
+    refused = images.not_pictured([c])
+    if refused:
+        raise HTTPException(400, refused)
     autonomy.ACTIVE += 1
     try:
         prompt = await images.portrait_prompt(c)
