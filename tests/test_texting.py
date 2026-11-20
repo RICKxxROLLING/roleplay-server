@@ -149,3 +149,11 @@ def test_the_users_own_texts_are_marked_too(client, session, llm):
     msgs = client.get(f"/api/sessions/{session}").json()["messages"]
     users = [m for m in msgs if m["role"] == "user"]
     assert [m["texted"] for m in users] == [False, True]
+
+
+def test_a_described_photo_is_dropped_from_the_texts():
+    from app.chat.texting import clean_texts
+
+    got = clean_texts("[Photo of Sadie Wren, smiling, new haircut]\nHere's the new look! What do ya think?", "Sadie Wren", "Riley")
+    assert got == "Here's the new look! What do ya think?"
+    assert clean_texts("[laughs] ok fine", "Sadie Wren", "Riley") == "[laughs] ok fine"

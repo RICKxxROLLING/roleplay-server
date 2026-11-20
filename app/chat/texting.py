@@ -32,7 +32,9 @@ TO_STORY = ("{{char}} and {{user}} are together in person again; the story picks
 #: Replies are a few short texts; this leaves room without inviting an essay.
 MAX_NEW_TOKENS = 200
 
-_META = re.compile(r"^\(.*\)$")
+#: "(No further messages)", and a picture described instead of sent: "[Photo of Sadie Wren, smiling]",
+#: written live once a text asked for one. The real picture follows the reply.
+_META = re.compile(r"^\(.*\)$|^\[(?:photo|pic|picture|image|selfie|attachment|attached)\b[^\]]*\]$", re.I)
 
 
 def clean_texts(text: str, char_name: str, user_name: str) -> str:
