@@ -322,6 +322,7 @@ def get_session(session_id: int, db: DbSession = Depends(get_db)) -> dict:
         "awaiting_opening": bool(world_chat and person and encounters.is_opening(s)),
         "persona_id": s.persona_id,
         "pictures": _pictures(s, db),
+        "selfie_wanted": _selfie_wanted(s, db),
         "summary": s.summary,
         "scene": s.scene,
         "cast": _cast(s),
@@ -335,6 +336,12 @@ def _pictures(s: ChatSession, db: DbSession) -> list[dict]:
     from .pictures import picture_out
 
     return [picture_out(p) for p in db.query(Picture).filter(Picture.session_id == s.id).order_by(Picture.id)]
+
+
+def _selfie_wanted(s: ChatSession, db: DbSession) -> bool:
+    from .pictures import selfie_wanted
+
+    return selfie_wanted(s, db)
 
 
 def _stream_response(

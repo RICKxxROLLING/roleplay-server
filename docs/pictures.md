@@ -75,6 +75,30 @@ picture is asked for and stop after 15 idle minutes, run the small helper in
 The helper never stops a ComfyUI it didn't start, so opening the Desktop app yourself still
 works. Close the Desktop app while the helper runs, though, or the two will both want port 8188.
 
+## Optional: Flux, LoRAs and selfies
+
+**Flux** follows a description far more closely than SDXL, but it's bigger and slower. FLUX.1 [dev]
+in fp8 fits a 16 GB card:
+
+1. Download `flux1-dev-fp8.safetensors` (17.2 GB, everything in one file) from
+   huggingface.co/Comfy-Org/flux1-dev and put it in ComfyUI's `models/checkpoints` folder. Its
+   licence is FLUX.1 [dev] non-commercial, which covers personal use. For speed over quality,
+   `flux1-schnell-fp8.safetensors` from Comfy-Org/flux1-schnell needs only 4 steps (Apache 2.0).
+2. In **Settings → Pictures**, pick it as the model and set the kind of model to **Flux**. Guidance
+   3.5 and 20 steps suit dev; set 4 steps for schnell.
+
+Flux ignores the "leave out" list, so the server refuses any picture prompt with explicit wording
+itself, whichever model draws. Nobody written as under 18 is ever pictured either way.
+
+**LoRAs** change a model's style, for example making selfies look like real phone photos. Put the
+file in ComfyUI's `models/loras` folder, then under **Settings → Pictures → LoRAs** add it, choose
+when it's used (every picture, scenes, selfies or portraits), its strength, and the trigger words
+its page gives. A LoRA only works with the kind of model it was made for: a FLUX.1 dev LoRA with
+FLUX.1 dev, an SDXL LoRA with SDXL.
+
+**Selfies**: in texting mode, **Ask for a selfie** in the scene panel, or a text like "send me a
+pic", gets a phone selfie from whoever you're texting, drawn with their saved look.
+
 ## 6. Connect it
 
 In the roleplay app, open **Settings → Pictures (ComfyUI)** and enter the PC's address, such as

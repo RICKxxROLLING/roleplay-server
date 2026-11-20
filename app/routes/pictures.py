@@ -49,7 +49,68 @@ async def picture_of_this_moment(session_id: int, db: DbSession = Depends(get_db
         autonomy.ACTIVE -= 1
     db.commit()  # Any look written for this picture is kept, whether or not ComfyUI answers.
     try:
-        data = await images.render(scene.frame, images.SCENE_SIZE, scene.people)
+        positive, people = scene.for_model()
+        data = await images.render(positive, images.SCENE_SIZE, people, kind="scenes")
+    except images.ImagesUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    p = Picture(session_id=s.id, after_message_id=s.messages[-1].id, path=images.save(data), prompt=scene.text)
+    db.add(p)
+    db.commit()
+    return picture_out(p)
+
+
+def _texter(s: ChatSession) -> Character | None:
+    """Who the selfie is from: whoever sent the latest reply, else the first in the scene."""
+    cast = group.cast(s)
+    last = next((m for m in reversed(s.messages) if m.role == "assistant"), None)
+    if last is not None and last.speaker_id:
+        found = next((c for c in cast if c.id == last.speaker_id), None)
+        if found:
+            return found
+    return cast[0] if cast else None
+
+
+def selfie_wanted(s: ChatSession, db: DbSession) -> bool:
+    """In a text thread, the user asked for a picture and has had a reply but no picture yet."""
+    from ..config import settings
+
+    if s.mode != "texting" or not settings.texting_selfies or not (settings.comfyui_url or "").strip():
+        return False
+    msgs = [m for m in s.messages if m.role in ("user", "assistant")]
+    if len(msgs) < 2 or msgs[-1].role != "assistant" or msgs[-2].role != "user":
+        return False
+    if not images.asks_for_picture(msgs[-2].content):
+        return False
+    return not db.query(Picture).filter(Picture.session_id == s.id,
+                                        Picture.after_message_id >= msgs[-1].id).first()
+
+
+@router.post("/sessions/{session_id}/selfie")
+async def selfie(session_id: int, db: DbSession = Depends(get_db)) -> dict:
+    """A phone selfie from whoever's texting, placed after the latest message."""
+    s = db.get(ChatSession, session_id)
+    if not s:
+        raise HTTPException(404, "Session not found")
+    who = _texter(s)
+    if who is None or not s.messages:
+        raise HTTPException(400, "There's nobody to send a selfie yet")
+    refused = images.not_pictured([who])
+    if refused:
+        raise HTTPException(400, refused)
+    user = s.persona.name if s.persona else "You"
+    recent = [(user if m.role == "user" else group.speaker_name(s, m), m.content)
+              for m in s.messages if m.role in ("user", "assistant")][-8:]
+    autonomy.ACTIVE += 1
+    try:
+        scene = await images.selfie_prompt(s, who, user, recent)
+    except images.ImagesUnavailable as exc:
+        raise HTTPException(502, str(exc)) from exc
+    finally:
+        autonomy.ACTIVE -= 1
+    db.commit()
+    try:
+        positive, _ = scene.for_model()
+        data = await images.render(positive, images.SELFIE_SIZE, kind="selfies")
     except images.ImagesUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
     p = Picture(session_id=s.id, after_message_id=s.messages[-1].id, path=images.save(data), prompt=scene.text)
@@ -96,7 +157,7 @@ async def make_portrait(char_id: int, db: DbSession = Depends(get_db)) -> dict:
         autonomy.ACTIVE -= 1
     db.commit()
     try:
-        data = await images.render(prompt, images.PORTRAIT_SIZE)
+        data = await images.render(prompt, images.PORTRAIT_SIZE, kind="portraits")
     except images.ImagesUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
     old = c.avatar_path

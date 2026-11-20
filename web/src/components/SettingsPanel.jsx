@@ -18,6 +18,99 @@ const PROMPT_FORMATS = [
   { value: "chatml", label: "ChatML (Qwen, many Nemo tunes)" },
 ];
 
+const pickClass = "w-full bg-ink-950 border border-ink-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:border-accent/60";
+
+/** Flux: guidance, steps, and the files when it isn't one checkpoint (app/images.py). */
+function FluxOptions({ s, update, state }) {
+  const pick = (key, label, list, blank) => (
+    <select value={s[key] ?? ""} onChange={(e) => update(key, e.target.value)} aria-label={label} className={pickClass}>
+      {blank && <option value="">{blank}</option>}
+      {!list.includes(s[key]) && s[key] && <option value={s[key]}>{s[key]}</option>}
+      {list.map((f) => <option key={f} value={f}>{f}</option>)}
+    </select>
+  );
+  return (
+    <div className="space-y-2 pl-3 border-l border-ink-800">
+      <div className="flex gap-3 text-sm">
+        <label className="flex items-center gap-2">Guidance
+          <input type="number" min={1} max={10} step={0.5} value={s.flux_guidance ?? 3.5}
+                 onChange={(e) => update("flux_guidance", Number(e.target.value))}
+                 className="w-16 bg-ink-950 border border-ink-800 rounded px-1.5 py-1 text-sm" />
+        </label>
+        <label className="flex items-center gap-2">Steps
+          <input type="number" min={1} max={60} value={s.flux_steps ?? 20}
+                 onChange={(e) => update("flux_steps", Number(e.target.value))}
+                 className="w-16 bg-ink-950 border border-ink-800 rounded px-1.5 py-1 text-sm" />
+        </label>
+      </div>
+      <p className="text-xs text-slate-600">20 steps for dev, 4 for schnell. With the model as one checkpoint file,
+        pick it above and leave the next box on "One checkpoint file".</p>
+      {pick("flux_unet", "Flux diffusion model", state?.unets || [], "One checkpoint file")}
+      {(s.flux_unet ?? "") !== "" && (
+        <>
+          {pick("flux_clip_l", "CLIP-L text encoder", state?.text_encoders || [])}
+          {pick("flux_t5", "T5 text encoder", state?.text_encoders || [])}
+          {pick("flux_vae", "VAE", state?.vaes || [])}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** LoRAs for pictures: a file ComfyUI lists, how strong, when it's used, its trigger words. */
+function Loras({ s, update, files }) {
+  const list = s.image_loras || [];
+  const save = (next) => update("image_loras", next);
+  const set = (i, patch) => save(list.map((l, k) => (k === i ? { ...l, ...patch } : l)));
+  return (
+    <div className="space-y-2">
+      <div className="text-sm">LoRAs</div>
+      {list.map((l, i) => (
+        <div key={i} className="space-y-1.5 p-2 border border-ink-800 rounded-lg">
+          <select value={l.file} onChange={(e) => set(i, { file: e.target.value })} aria-label="LoRA file" className={pickClass}>
+            {!files.includes(l.file) && <option value={l.file}>{l.file}</option>}
+            {files.map((f) => <option key={f} value={f}>{f}</option>)}
+          </select>
+          <div className="flex flex-wrap gap-2 items-center text-sm">
+            <select value={l.use || "always"} onChange={(e) => set(i, { use: e.target.value })} aria-label="When"
+                    className="bg-ink-950 border border-ink-800 rounded px-1.5 py-1 text-sm">
+              <option value="always">Every picture</option>
+              <option value="scenes">Scenes</option>
+              <option value="selfies">Selfies</option>
+              <option value="portraits">Portraits</option>
+            </select>
+            <label className="flex items-center gap-1.5">Strength
+              <input type="number" min={-2} max={2} step={0.05} value={l.strength ?? 1}
+                     onChange={(e) => set(i, { strength: Number(e.target.value) })}
+                     className="w-16 bg-ink-950 border border-ink-800 rounded px-1.5 py-1 text-sm" />
+            </label>
+            <button onClick={() => save(list.filter((_, k) => k !== i))} className="text-xs text-slate-500 hover:text-rose-300 ml-auto">
+              remove
+            </button>
+          </div>
+          <Input
+            aria-label="Trigger words"
+            placeholder="Trigger words from its page, if it has any"
+            defaultValue={l.trigger || ""}
+            onBlur={(e) => e.target.value !== (l.trigger || "") && set(i, { trigger: e.target.value })}
+          />
+        </div>
+      ))}
+      {files.length > 0 ? (
+        list.length < 8 && (
+          <button onClick={() => save([...list, { file: files[0], strength: 1, use: "selfies", trigger: "" }])}
+                  className="text-sm text-accent hover:underline">
+            Add a LoRA
+          </button>
+        )
+      ) : (
+        <p className="text-xs text-slate-600">Put LoRA files in ComfyUI's models/loras folder and they'll show here.
+          A LoRA only works with the kind of model it was made for.</p>
+      )}
+    </div>
+  );
+}
+
 /**
  * Pictures come from ComfyUI on another machine on the home network (app/images.py). The
  * address is saved on blur, then checked, so the panel says straight away whether it answers.
@@ -70,6 +163,31 @@ function Pictures({ s, setS, update }) {
           ))}
         </select>
       )}
+      <select
+        value={s.image_family ?? "sdxl"}
+        onChange={(e) => update("image_family", e.target.value)}
+        aria-label="Kind of picture model"
+        className={pickClass}
+      >
+        <option value="sdxl">SDXL model (Juggernaut XL and the like)</option>
+        <option value="flux">Flux model (FLUX.1 dev or schnell)</option>
+      </select>
+      {(s.image_family ?? "sdxl") === "flux" && <FluxOptions s={s} update={update} state={state} />}
+      <Loras s={s} update={update} files={state?.loras || []} />
+      <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+        <input
+          type="checkbox"
+          checked={s.texting_selfies ?? true}
+          onChange={(e) => update("texting_selfies", e.target.checked)}
+          className="accent-accent w-4 h-4 mt-0.5"
+        />
+        <span>
+          Selfies when you text for one
+          <span className="block text-xs text-slate-600">
+            In texting mode, "send me a pic" gets a phone selfie back. Ask for a selfie is in the scene panel too.
+          </span>
+        </span>
+      </label>
       <label className="flex items-start gap-2.5 text-sm cursor-pointer">
         <input
           type="checkbox"
@@ -80,7 +198,7 @@ function Pictures({ s, setS, update }) {
         <span>
           Sharper faces
           <span className="block text-xs text-slate-600">
-            A second pass at a larger size, so eyes and faces come out clean. About twice as slow.
+            A second pass at a larger size, so eyes and faces come out clean. About twice as slow. SDXL only.
           </span>
         </span>
       </label>
@@ -93,7 +211,8 @@ function Pictures({ s, setS, update }) {
         onBlur={(e) => update("image_negative", e.target.value)}
       />
       <p className="text-xs text-slate-600">
-        What pictures should leave out. ComfyUI runs on your own PC and has no password, so keep
+        What pictures should leave out (SDXL; Flux ignores this list, so the server refuses explicit
+        pictures itself). ComfyUI runs on your own PC and has no password, so keep
         it on your home network only. Nobody written as under 18 is ever pictured.
       </p>
     </div>

@@ -72,6 +72,7 @@ def _base() -> str:
 WAKE_S = 120
 #: The models ComfyUI last listed, so Settings can still offer them while it's stopped.
 _known: list[str] = []
+_known_files: dict[str, list[str]] = {}
 
 
 def _waker() -> str:
@@ -120,7 +121,7 @@ async def _probe() -> bool:
 
 async def status() -> dict:
     """Whether ComfyUI answers, its checkpoints, and whether it can work without keeping files."""
-    global _known
+    global _known, _known_files
     try:
         base = _base()
     except ImagesUnavailable as exc:
@@ -132,17 +133,32 @@ async def status() -> dict:
             names = r.json()["CheckpointLoaderSimple"]["input"]["required"]["ckpt_name"][0]
             node = await http.get(f"{base}/object_info/{PRIVATE_NODE}")
             private = node.status_code == 200 and PRIVATE_NODE in (node.json() or {})
+            files = {key: await _choices(http, base, node_name, field)
+                     for key, node_name, field in _FILE_LISTS}
     except Exception as exc:  # anything at all: the PC is off, asleep, or not ComfyUI
         if await _waker_says():
             # Stopped on purpose: it starts again when a picture is asked for.
-            return {"ok": False, "configured": True, "private": False, "asleep": True, "checkpoints": _known,
+            return {"ok": False, "configured": True, "private": False, "asleep": True, "checkpoints": _known, **_known_files,
                     "error": "ComfyUI is stopped on your PC to keep its graphics card free. It starts by itself "
                              "when you ask for a picture, which makes that first one slower."}
         return {"ok": False, "configured": True, "private": False, "checkpoints": [],
                 "error": f"ComfyUI didn't answer at {base}. Is the PC on and ComfyUI running? ({type(exc).__name__})"}
-    _known = list(names)
-    return {"ok": private, "configured": True, "private": private, "checkpoints": list(names),
+    _known, _known_files = list(names), files
+    return {"ok": private, "configured": True, "private": private, "checkpoints": list(names), **files,
             "error": None if private else NOT_PRIVATE}
+
+
+#: Files Settings can offer, read from the ComfyUI nodes that load them.
+_FILE_LISTS = (("loras", "LoraLoaderModelOnly", "lora_name"), ("unets", "UNETLoader", "unet_name"),
+               ("text_encoders", "DualCLIPLoader", "clip_name1"), ("vaes", "VAELoader", "vae_name"))
+
+
+async def _choices(http, base: str, node: str, field: str) -> list[str]:
+    try:
+        r = await http.get(f"{base}/object_info/{node}")
+        return list(r.json()[node]["input"]["required"][field][0]) if r.status_code == 200 else []
+    except Exception:
+        return []
 
 
 #: The detail pass: the first picture scaled up 1.5x and sampled again lightly. At 1216x832 a
@@ -165,14 +181,14 @@ SHOT = "medium shot"
 _COUNT = {2: "two", 3: "three", 4: "four"}
 
 
-def _people_conditioning(g: dict, people: list[str]) -> list:
+def _people_conditioning(g: dict, people: list[str], clip: list) -> list:
     """Each person's text in their own strip, combined with the whole-frame text in node 2."""
     pos: list = ["2", 0]
     n = len(people)
     for i, text in enumerate(people):
         x = max(0.0, i / n - AREA_OVERLAP / 2)
         width = min(1.0 - x, 1 / n + AREA_OVERLAP)
-        g[f"p{i}"] = {"class_type": "CLIPTextEncode", "inputs": {"text": text, "clip": ["1", 1]}}
+        g[f"p{i}"] = {"class_type": "CLIPTextEncode", "inputs": {"text": text, "clip": clip}}
         g[f"a{i}"] = {"class_type": "ConditioningSetAreaPercentage", "inputs": {
             "conditioning": [f"p{i}", 0], "width": round(width, 3), "height": 1.0, "x": round(x, 3), "y": 0.0,
             "strength": 1.0}}
@@ -182,58 +198,125 @@ def _people_conditioning(g: dict, people: list[str]) -> list:
     return pos
 
 
+#: What a LoRA is for: every picture, scenes, selfies (texting mode) or portraits.
+LORA_USES = ("always", "scenes", "selfies", "portraits")
+
+
+def loras_for(kind: str) -> list[dict]:
+    """The LoRAs from Settings that apply to this kind of picture, in order."""
+    out = []
+    for item in settings.image_loras or []:
+        if isinstance(item, dict) and item.get("file") and item.get("use", "always") in ("always", kind):
+            out.append(item)
+    return out
+
+
+def with_triggers(positive: str, loras: list[dict]) -> str:
+    """A LoRA's trigger words go first, where its card says they work best."""
+    words = [" ".join(str(item.get("trigger") or "").split()) for item in loras]
+    words = [w for w in words if w and w.lower() not in positive.lower()]
+    return ", ".join([*words, positive])
+
+
+def _loaders(g: dict, checkpoint: str, loras: list[dict]) -> tuple[list, list, list]:
+    """Model, CLIP and VAE outputs, with the LoRAs chained onto the model. Flux can come as one
+    checkpoint file or as separate files (`flux_unet` set): diffusion model, two text encoders, VAE."""
+    if settings.image_family == "flux" and (settings.flux_unet or "").strip():
+        g["1"] = {"class_type": "UNETLoader", "inputs": {"unet_name": settings.flux_unet, "weight_dtype": "default"}}
+        g["1c"] = {"class_type": "DualCLIPLoader", "inputs": {
+            "clip_name1": settings.flux_clip_l, "clip_name2": settings.flux_t5, "type": "flux"}}
+        g["1v"] = {"class_type": "VAELoader", "inputs": {"vae_name": settings.flux_vae}}
+        model, clip, vae = ["1", 0], ["1c", 0], ["1v", 0]
+    else:
+        g["1"] = {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": checkpoint}}
+        model, clip, vae = ["1", 0], ["1", 1], ["1", 2]
+    for i, item in enumerate(loras):
+        g[f"l{i}"] = {"class_type": "LoraLoaderModelOnly", "inputs": {
+            "model": model, "lora_name": item["file"], "strength_model": float(item.get("strength", 1.0))}}
+        model = [f"l{i}", 0]
+    return model, clip, vae
+
+
 def graph(positive: str, negative: str, size: tuple[int, int], checkpoint: str, seed: int,
-          people: list[str] | None = None) -> dict:
-    """ComfyUI's API-format graph for a txt2img, with the detail pass when it's on, ending in
-    the node that saves nothing. With `people`, `positive` is the whole frame (place, light,
-    style) and each person's text gets their own part of it."""
+          people: list[str] | None = None, loras: list[dict] | None = None) -> dict:
+    """ComfyUI's API-format graph for a txt2img, ending in the node that saves nothing.
+
+    SDXL: with `people`, `positive` is the whole frame and each person's text gets their own part
+    of it; the detail pass when it's on. Flux: one natural-language prompt (its T5 encoder reads
+    "on the left ... on the right" well), guidance instead of CFG, and no negative prompt, which
+    Flux ignores at CFG 1, so the server's own refusals (`_EXPLICIT`) are what keep it clean."""
     w, h = size
-    g = {
-        "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": checkpoint}},
-        "2": {"class_type": "CLIPTextEncode", "inputs": {"text": positive, "clip": ["1", 1]}},
-        "3": {"class_type": "CLIPTextEncode", "inputs": {"text": negative, "clip": ["1", 1]}},
-        "4": {"class_type": "EmptyLatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}},
-        "5": {"class_type": "KSampler", "inputs": {
-            "model": ["1", 0], "positive": ["2", 0], "negative": ["3", 0], "latent_image": ["4", 0],
-            "seed": seed, "steps": settings.image_steps, "cfg": settings.image_cfg,
-            "sampler_name": "dpmpp_2m", "scheduler": "karras", "denoise": 1.0}},
-        "6": {"class_type": "VAEDecode", "inputs": {"samples": ["5", 0], "vae": ["1", 2]}},
-        _SAVE_ID: {"class_type": PRIVATE_NODE, "inputs": {"images": ["6", 0]}},
-    }
-    if people and len(people) > 1:
-        pos = _people_conditioning(g, people)
-        g["5"]["inputs"]["positive"] = pos
-    if settings.image_detail:
+    g: dict = {}
+    model, clip, vae = _loaders(g, checkpoint, loras or [])
+    flux = settings.image_family == "flux"
+    g["2"] = {"class_type": "CLIPTextEncode", "inputs": {"text": positive, "clip": clip}}
+    g["3"] = {"class_type": "CLIPTextEncode", "inputs": {"text": "" if flux else negative, "clip": clip}}
+    pos: list = ["2", 0]
+    if flux:
+        g["2g"] = {"class_type": "FluxGuidance", "inputs": {"conditioning": pos, "guidance": settings.flux_guidance}}
+        pos = ["2g", 0]
+        g["4"] = {"class_type": "EmptySD3LatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}}
+        sampler = {"steps": settings.flux_steps, "cfg": 1.0, "sampler_name": "euler", "scheduler": "simple"}
+    else:
+        if people and len(people) > 1:
+            pos = _people_conditioning(g, people, clip)
+        g["4"] = {"class_type": "EmptyLatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}}
+        sampler = {"steps": settings.image_steps, "cfg": settings.image_cfg, "sampler_name": "dpmpp_2m",
+                   "scheduler": "karras"}
+    g["5"] = {"class_type": "KSampler", "inputs": {
+        "model": model, "positive": pos, "negative": ["3", 0], "latent_image": ["4", 0], "seed": seed,
+        "denoise": 1.0, **sampler}}
+    g["6"] = {"class_type": "VAEDecode", "inputs": {"samples": ["5", 0], "vae": vae}}
+    g[_SAVE_ID] = {"class_type": PRIVATE_NODE, "inputs": {"images": ["6", 0]}}
+    # Flux draws faces cleanly at this size, and a second pass would double a slow picture.
+    if settings.image_detail and not flux:
         g["8"] = {"class_type": "ImageScaleBy", "inputs": {"image": ["6", 0], "upscale_method": "lanczos",
                                                             "scale_by": DETAIL_SCALE}}
-        g["9"] = {"class_type": "VAEEncode", "inputs": {"pixels": ["8", 0], "vae": ["1", 2]}}
+        g["9"] = {"class_type": "VAEEncode", "inputs": {"pixels": ["8", 0], "vae": vae}}
         g["10"] = {"class_type": "KSampler", "inputs": {
-            "model": ["1", 0], "positive": g["5"]["inputs"]["positive"], "negative": ["3", 0], "latent_image": ["9", 0],
+            "model": model, "positive": pos, "negative": ["3", 0], "latent_image": ["9", 0],
             "seed": seed, "steps": DETAIL_STEPS, "cfg": settings.image_cfg,
             "sampler_name": "dpmpp_2m", "scheduler": "karras", "denoise": DETAIL_DENOISE}}
-        g["11"] = {"class_type": "VAEDecode", "inputs": {"samples": ["10", 0], "vae": ["1", 2]}}
+        g["11"] = {"class_type": "VAEDecode", "inputs": {"samples": ["10", 0], "vae": vae}}
         g[_SAVE_ID]["inputs"]["images"] = ["11", 0]
     return g
 
 
-async def render(positive: str, size: tuple[int, int], people: list[str] | None = None) -> bytes:
+#: Refused in any picture prompt, whichever model draws it. Flux has no negative prompt to lean on.
+_EXPLICIT = re.compile(
+    r"\b(?:nude|nudity|naked|topless|bottomless|nipples?|genitals?|sex|sexual|sexy|erotic\w*|porn\w*|"
+    r"lingerie|underwear|undress\w*|strip\w*|bare (?:breasts?|chest|skin)|breasts?|cleavage|"
+    r"wearing nothing|no clothes|without clothes|in (?:her|his|their) underwear|seductive\w*|sensual\w*|"
+    r"provocative\w*|lewd|nsfw)\b", re.I)
+
+
+def explicit(prompt: str) -> bool:
+    return bool(_EXPLICIT.search(prompt or ""))
+
+
+async def render(positive: str, size: tuple[int, int], people: list[str] | None = None,
+                 kind: str = "scenes") -> bytes:
     """One PNG from ComfyUI, or ImagesUnavailable with the reason.
 
     The picture comes back over the live connection and is never written on the PC; then the
     job is deleted from ComfyUI's history, the in-memory list of past prompts its /history
     serves, so the prompt text doesn't stay there either until ComfyUI restarts."""
+    if explicit(positive) or any(explicit(p) for p in people or []):
+        raise ImagesUnavailable("That picture would be explicit, so it isn't made.")
     base = _base()
     await wake()
     found = await status()
     if not found["private"]:
         raise ImagesUnavailable(found["error"] or NOT_PRIVATE)
     checkpoint = (settings.comfyui_checkpoint or "").strip()
-    if not checkpoint:
+    if not checkpoint and not (settings.image_family == "flux" and (settings.flux_unet or "").strip()):
         if not found["checkpoints"]:
             raise ImagesUnavailable("ComfyUI has no checkpoints installed. Put a model in its models/checkpoints folder.")
         checkpoint = found["checkpoints"][0]
+    loras = loras_for(kind)
     client_id = uuid.uuid4().hex
-    body = {"prompt": graph(positive, settings.image_negative, size, checkpoint, random.randrange(2**32), people),
+    body = {"prompt": graph(with_triggers(positive, loras), settings.image_negative, size, checkpoint,
+                            random.randrange(2**32), people, loras),
             "client_id": client_id}
     ws_url = re.sub(r"^http", "ws", base) + f"/ws?clientId={client_id}"
     try:
@@ -449,10 +532,27 @@ def _parse(raw: str, keys: list[str]) -> dict[str, str]:
 
 class Scene(NamedTuple):
     """`text` is the whole prompt as one line, kept with the picture; `frame` and `people` are
-    what ComfyUI is sent when there are two or more, each person in their own area."""
+    what an SDXL model is sent when there are two or more, each person in their own area; `flux`
+    is the same moment in sentences, each person placed in words, for a Flux model."""
     text: str
     frame: str
     people: list[str]
+    flux: str = ""
+
+    def for_model(self) -> tuple[str, list[str]]:
+        if settings.image_family == "flux":
+            return self.flux or self.text, []
+        return self.frame, self.people
+
+
+_PLACES = {2: ("On the left", "On the right"), 3: ("On the left", "In the middle", "On the right")}
+
+
+def _flux_text(frame: str, each: list[str]) -> str:
+    places = _PLACES.get(len(each))
+    people = [f"{places[i]}, {e}." if places else f"{e}." for i, e in enumerate(each)]
+    lead = f"A medium shot of {_COUNT.get(len(each), len(each))} people" if len(each) > 1 else "A medium shot"
+    return " ".join([f"{lead}, {frame}.", *people, f"{STYLE[0].upper()}{STYLE[1:]}."])
 
 
 async def scene_prompt(session, cast, user: str, recent: list[tuple[str, str]]) -> Scene:
@@ -497,12 +597,61 @@ async def scene_prompt(session, cast, user: str, recent: list[tuple[str, str]]) 
             each = [f"{look}, {doing[name]}" for name, _, look in people if name in doing]
             text = ", ".join([frame, *each]) + f", {STYLE}"
             if len(each) < 2:
-                return Scene(f"{SHOT}, {text}", f"{SHOT}, {text}", [])
+                return Scene(f"{SHOT}, {text}", f"{SHOT}, {text}", [], _flux_text(frame, each))
             who_ = " and ".join(person for name, person, _ in people if name in doing)
             count = _COUNT.get(len(each), str(len(each)))
             return Scene(f"{SHOT}, {text}", f"{SHOT}, {count} people in the foreground, {who_}, {frame}, {STYLE}",
-                         [f"{e}, {STYLE}" for e in each])
+                         [f"{e}, {STYLE}" for e in each], _flux_text(frame, each))
     raise ImagesUnavailable("Couldn't describe this moment for a picture. Try again.")
+
+
+SELFIE_SIZE = (832, 1216)
+SELFIE_ASK = """{setting}
+
+{name}, {person}: {look}
+
+Their text conversation so far:
+{transcript}
+
+{name} is about to take a selfie on their phone and send it to {user}. Describe it in exactly this form, one line each:
+Place: where {name} is right now and what is behind them, in a few short phrases
+Light: the light and the time of day
+{name}: their pose, expression and what they are doing, in a few short phrases
+Plain comma-separated phrases. No names after the colons, nothing else."""
+#: Asking for a picture in a text: "send me a pic", "selfie?", "show me where you are".
+_ASKS_FOR_PICTURE = re.compile(
+    r"\b(?:selfie|send (?:me )?(?:a |another )?(?:pic|picture|photo|pict?)s?|(?:pic|picture|photo) of you|"
+    r"show me (?:where you are|what you(?:'re| are) (?:doing|up to|looking at)|you)|let me see you|"
+    r"what do you look like)\b", re.I)
+
+
+def asks_for_picture(text: str) -> bool:
+    return bool(_ASKS_FOR_PICTURE.search(text or ""))
+
+
+async def selfie_prompt(session, character, user: str, recent: list[tuple[str, str]]) -> Scene:
+    """A phone selfie from `character` in a text thread: their saved look, and where they are and
+    what they're doing from the texts. Looks are saved on the character; the caller commits."""
+    from .chat import group
+
+    world = group.world_of(session)
+    said = " ".join(text for name, text in recent if name == character.name)
+    person = person_of(character, said)
+    look = await look_of(character, character.name, _card_text(character), person, world)
+    body = SELFIE_ASK.format(setting=_setting(world), name=character.name, person=person, look=look, user=user,
+                             transcript="\n".join(f"{n}: {t[:EARLIER_CHARS]}" for n, t in recent))
+    stand_in = {character.name: person, user: "someone"}
+    for _ in range(2):
+        got = _parse(await _ask(body, "Place:"), ["Place", "Light", character.name])
+        place, doing = _unname(got.get("Place", ""), stand_in), _unname(got.get(character.name, ""), stand_in)
+        if place and doing:
+            light = _unname(got.get("Light", ""), stand_in)
+            text = ", ".join(p for p in ("smartphone selfie photo, front camera, held at arm's length",
+                                         look, doing, place, light) if p)
+            flux = (f"A smartphone selfie taken at arm's length with the phone's front camera. {look}, {doing}. "
+                    f"Behind them, {place}." + (f" {light[0].upper()}{light[1:]}." if light else ""))
+            return Scene(text, text, [], flux)
+    raise ImagesUnavailable("Couldn't picture that selfie. Try again.")
 
 
 async def portrait_prompt(character) -> str:

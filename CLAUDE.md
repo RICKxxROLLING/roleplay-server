@@ -519,6 +519,21 @@ had told her himself, though she kept the Saturday plan when asked; strangers
 still give themselves small details off their card (Sadie's cat-eye glasses), walk-ins are invented (Hank's
 son "Tommy"), and a reply can still put speech in asterisks.
 
+**Flux, LoRAs and selfies (`images.graph`, `routes/pictures.py`).** Owner request. `image_family`
+picks the graph: SDXL as before; FLUX.1 as one checkpoint or separate files (UNETLoader,
+DualCLIPLoader type flux, VAELoader), FluxGuidance, EmptySD3LatentImage, CFG 1, euler/simple, no
+detail pass, and the scene in sentences with each person placed in words ("On the left, ...")
+instead of areas, since Flux's T5 encoder reads that. Chosen for a 16 GB AMD card from what was
+current in November 2026: FLUX.2 dev needs 24 GB+, FLUX.2 klein 9B is a tight fit with few LoRAs,
+FLUX.1 dev fp8 (17.2 GB file, ~12 GB loaded) has the LoRAs. Flux has no negative prompt at CFG 1,
+so `images.explicit` refuses explicit wording in any picture prompt, whichever model. LoRAs are a
+list in settings (file, strength, use: always/scenes/selfies/portraits, trigger words put first),
+chained with LoraLoaderModelOnly. In texting mode a selfie comes from whoever sent the last reply:
+by the panel button, or when the user's text asks for one (`asks_for_picture`) and the session
+reports `selfie_wanted` after the reply; drawn 832x1216 from their saved look and what the texts
+say they're doing. Minors and cards kept platonic are refused as for any picture. Not yet run on a
+real Flux install.
+
 **Settings → Safety chooses for adults only (`routes/safety.py`, `trust.romance_allowed`).** Owner
 request. `romance_mode`: cards tagged `romance` (the default and the old behaviour), any adult, or
 nobody; `unknown_age`: a card stating no age counts as an adult (old behaviour) or is kept platonic and

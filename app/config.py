@@ -90,6 +90,19 @@ class Settings(BaseSettings):
     image_cfg: float = 6.5
     # A second, gentler pass at 1.5x the size, for faces and eyes (app/images.py). About 2.5x slower.
     image_detail: bool = True
+    # Which kind of model draws (app/images.py): "sdxl" or "flux" (FLUX.1, e.g. dev in fp8).
+    image_family: str = "sdxl"
+    flux_guidance: float = 3.5
+    flux_steps: int = 20
+    # Flux as separate files instead of one checkpoint; empty uses comfyui_checkpoint.
+    flux_unet: str = ""
+    flux_clip_l: str = "clip_l.safetensors"
+    flux_t5: str = "t5xxl_fp8_e4m3fn_scaled.safetensors"
+    flux_vae: str = "ae.safetensors"
+    # LoRAs: [{"file", "strength", "use": always|scenes|selfies|portraits, "trigger"}].
+    image_loras: list = []
+    # Texting mode: a selfie is sent when asked for ("send me a pic").
+    texting_selfies: bool = True
     # Regenerate once when a reply's narration slips into first person on a
     # card whose greeting is not. ~1 reply in 5 on Stheno, and a stored slip is
     # copied by every reply after it. Costs one extra generation when it fires.

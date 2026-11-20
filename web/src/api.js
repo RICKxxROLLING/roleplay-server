@@ -118,6 +118,7 @@ export const api = {
     j(`/sessions/${id}/choices`, { method: "POST", body: JSON.stringify({ refresh }) }),
   pictureStatus: () => j("/pictures/status"),
   takePicture: (id) => j(`/sessions/${id}/pictures`, { method: "POST" }),
+  takeSelfie: (id) => j(`/sessions/${id}/selfie`, { method: "POST" }),
   deletePicture: (id) => j(`/pictures/${id}`, { method: "DELETE" }),
   makePortrait: (id) => j(`/characters/${id}/portrait`, { method: "POST" }),
   safetyPeople: () => j("/safety/people"),

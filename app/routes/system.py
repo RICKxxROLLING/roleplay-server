@@ -100,6 +100,15 @@ async def pull_model(body: PullIn) -> StreamingResponse:
     )
 
 
+class LoraIn(BaseModel):
+    """One LoRA for pictures (app/images.py): a file ComfyUI lists, how strong, and when it's used."""
+
+    file: str = Field(..., min_length=1, max_length=300)
+    strength: float = Field(1.0, ge=-2, le=2)
+    use: Literal["always", "scenes", "selfies", "portraits"] = "always"
+    trigger: str = Field("", max_length=200)
+
+
 class SettingsPatch(BaseModel):
     model: str | None = None
     backend: str | None = None
@@ -116,6 +125,15 @@ class SettingsPatch(BaseModel):
     image_steps: int | None = Field(None, ge=1, le=80)
     image_cfg: float | None = Field(None, ge=1, le=20)
     image_detail: bool | None = None
+    image_family: Literal["sdxl", "flux"] | None = None
+    flux_guidance: float | None = Field(None, ge=1, le=10)
+    flux_steps: int | None = Field(None, ge=1, le=60)
+    flux_unet: str | None = Field(None, max_length=300)
+    flux_clip_l: str | None = Field(None, max_length=300)
+    flux_t5: str | None = Field(None, max_length=300)
+    flux_vae: str | None = Field(None, max_length=300)
+    image_loras: list[LoraIn] | None = Field(None, max_length=8)
+    texting_selfies: bool | None = None
     redo_first_person: bool | None = None
 
     temperature: float | None = None

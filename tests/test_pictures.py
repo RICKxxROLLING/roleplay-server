@@ -44,6 +44,12 @@ class FakeComfy:
         if path == "/object_info/CheckpointLoaderSimple":
             return httpx.Response(200, json={"CheckpointLoaderSimple": {"input": {"required": {
                 "ckpt_name": [["sdxl_base.safetensors", "juggernaut.safetensors"], {}]}}}})
+        for node, field, names in (("LoraLoaderModelOnly", "lora_name", ["phone_selfie.safetensors", "film.safetensors"]),
+                                   ("UNETLoader", "unet_name", ["flux1-dev-fp8.safetensors"]),
+                                   ("DualCLIPLoader", "clip_name1", ["clip_l.safetensors", "t5xxl_fp8_e4m3fn_scaled.safetensors"]),
+                                   ("VAELoader", "vae_name", ["ae.safetensors"])):
+            if path == f"/object_info/{node}":
+                return httpx.Response(200, json={node: {"input": {"required": {field: [names, {}]}}}})
         if path == "/object_info/SaveImageWebsocket":
             return httpx.Response(200, json={"SaveImageWebsocket": {}} if self.private else {})
         if path == "/prompt":
@@ -341,3 +347,124 @@ def test_deleting_a_chat_deletes_its_pictures(client, session, comfy, describes)
     pic = client.post(f"/api/sessions/{session}/pictures").json()
     client.delete(f"/api/sessions/{session}")
     assert client.get(pic["url"]).status_code == 404
+
+
+# --- Flux, LoRAs, selfies ------------------------------------------------------------------
+
+SELFIE_LORA = {"file": "phone_selfie.safetensors", "strength": 0.8, "use": "selfies", "trigger": "shot on iPhone"}
+SCENE_LORA = {"file": "film.safetensors", "strength": 0.6, "use": "scenes", "trigger": ""}
+
+
+def test_status_lists_loras_and_flux_files(client, comfy):
+    got = client.get("/api/pictures/status").json()
+    assert got["loras"] == ["phone_selfie.safetensors", "film.safetensors"]
+    assert got["unets"] == ["flux1-dev-fp8.safetensors"] and got["vaes"] == ["ae.safetensors"]
+
+
+def test_a_flux_picture_from_one_checkpoint(client, session, comfy, describes):
+    client.patch("/api/settings", json={"image_family": "flux", "comfyui_checkpoint": "flux1-dev-fp8.safetensors",
+                                        "image_loras": [SELFIE_LORA, SCENE_LORA]})
+    assert client.post(f"/api/sessions/{session}/pictures").status_code == 200
+    g = comfy.prompts[0]["prompt"]
+    kinds = {n["class_type"] for n in g.values()}
+    assert {"FluxGuidance", "EmptySD3LatentImage"} <= kinds and "EmptyLatentImage" not in kinds
+    assert "ConditioningSetAreaPercentage" not in kinds and "ImageScaleBy" not in kinds  # no areas, no detail pass
+    assert g["5"]["inputs"]["cfg"] == 1.0 and g["5"]["inputs"]["sampler_name"] == "euler"
+    assert g["3"]["inputs"]["text"] == "" and g["2g"]["inputs"]["guidance"] == 3.5
+    # Sentences for Flux; only the scene LoRA, chained onto the model the sampler uses.
+    assert g["2"]["inputs"]["text"].startswith("A medium shot, a general store")
+    assert [n["inputs"]["lora_name"] for n in g.values() if n["class_type"] == "LoraLoaderModelOnly"] == ["film.safetensors"]
+    assert g["5"]["inputs"]["model"] == ["l0", 0] and g["l0"]["inputs"]["model"] == ["1", 0]
+
+
+def test_flux_from_separate_files(client, session, comfy, describes):
+    client.patch("/api/settings", json={"image_family": "flux", "flux_unet": "flux1-dev-fp8.safetensors"})
+    client.post(f"/api/sessions/{session}/pictures")
+    g = comfy.prompts[0]["prompt"]
+    assert g["1"]["class_type"] == "UNETLoader" and g["1c"]["inputs"]["type"] == "flux"
+    assert g["1c"]["inputs"]["clip_name2"] == "t5xxl_fp8_e4m3fn_scaled.safetensors"
+    assert g["6"]["inputs"]["vae"] == ["1v", 0] and g["2"]["inputs"]["clip"] == ["1c", 0]
+
+
+def test_an_explicit_picture_is_refused(client, session, comfy, llm, monkeypatch):
+    real = llm.generate
+
+    async def gen(prompt, params):
+        if "Describe the moment" in prompt:
+            return " a bedroom\nLight: candles\nSeraphine: lying on the bed, naked"
+        return await real(prompt, params)
+
+    monkeypatch.setattr(llm, "generate", gen, raising=False)
+    r = client.post(f"/api/sessions/{session}/pictures")
+    assert r.status_code == 503 and "explicit" in r.json()["detail"] and comfy.prompts == []
+
+
+def _texting_chat(client, llm, line):
+    pid = client.post("/api/personas", json={"name": "Riley", "description": "Riley is a quiet man. He fixes radios."}).json()["id"]
+    cid = client.post("/api/characters", json={"name": "Seraphine", "description": "Seraphine, 28, paints. She hums."}).json()["id"]
+    sid = client.post("/api/sessions", json={"character_id": cid, "persona_id": pid}).json()["id"]
+    client.patch(f"/api/sessions/{sid}", json={"mode": "texting"})
+    llm.replies = ["haha ok one sec"]
+    sse_events(client.post(f"/api/sessions/{sid}/messages", json={"content": line}))
+    return sid
+
+
+@pytest.fixture
+def selfie_model(llm, monkeypatch):
+    real = llm.generate
+
+    async def gen(prompt, params):
+        if "Describe how" in prompt and "looks" in prompt:
+            return " a woman, 28 years old, long black hair, paint on her fingers, grey hoodie"
+        if "about to take a selfie" in prompt:
+            selfie_model["asked"] = prompt
+            return " her studio, canvases behind\nLight: late afternoon window light\nSeraphine: grinning, paintbrush in hand"
+        return await real(prompt, params)
+
+    selfie_model = {}
+    monkeypatch.setattr(llm, "generate", gen, raising=False)
+    return selfie_model
+
+
+def test_asking_for_a_pic_in_a_text_gets_a_selfie(client, llm, comfy, selfie_model):
+    client.patch("/api/settings", json={"image_loras": [SELFIE_LORA, SCENE_LORA]})
+    sid = _texting_chat(client, llm, "send me a pic of what you're up to")
+    got = client.get(f"/api/sessions/{sid}").json()
+    assert got["mode"] == "texting" and got["selfie_wanted"]
+    r = client.post(f"/api/sessions/{sid}/selfie")
+    assert r.status_code == 200, r.text
+    g = comfy.prompts[0]["prompt"]
+    text = g["2"]["inputs"]["text"]
+    # The selfie LoRA and its trigger, not the scene one; portrait-shaped; their look and the moment.
+    assert text.startswith("shot on iPhone, smartphone selfie photo")
+    assert "long black hair" in text and "grinning, paintbrush in hand" in text and "Seraphine" not in text
+    assert [n["inputs"]["lora_name"] for n in g.values() if n["class_type"] == "LoraLoaderModelOnly"] == ["phone_selfie.safetensors"]
+    assert (g["4"]["inputs"]["width"], g["4"]["inputs"]["height"]) == (832, 1216)
+    assert "Riley: send me a pic of what you're up to" in selfie_model["asked"]
+    # Asked for once: with the selfie sent, it isn't wanted again.
+    assert not client.get(f"/api/sessions/{sid}").json()["selfie_wanted"]
+
+
+def test_no_selfie_wanted_for_an_ordinary_text_or_when_switched_off(client, llm, comfy):
+    sid = _texting_chat(client, llm, "how was your day")
+    assert not client.get(f"/api/sessions/{sid}").json()["selfie_wanted"]
+    client.patch("/api/settings", json={"texting_selfies": False})
+    sid = _texting_chat(client, llm, "send me a selfie")
+    assert not client.get(f"/api/sessions/{sid}").json()["selfie_wanted"]
+
+
+def test_no_selfie_from_someone_written_as_a_minor(client, llm, comfy):
+    kid = client.post("/api/characters", json={"name": "Lily", "description": "Lily is a 12-year-old girl."}).json()["id"]
+    sid = client.post("/api/sessions", json={"character_id": kid}).json()["id"]
+    client.patch(f"/api/sessions/{sid}", json={"mode": "texting"})
+    sse_events(client.post(f"/api/sessions/{sid}/messages", json={"content": "send me a pic"}))
+    r = client.post(f"/api/sessions/{sid}/selfie")
+    assert r.status_code == 400 and "under 18" in r.json()["detail"] and comfy.prompts == []
+
+
+@pytest.mark.parametrize("text, asks", [
+    ("send me a pic", True), ("selfie?", True), ("show me where you are", True), ("send pics", True),
+    ("what do you look like", True), ("I took a picture of the lake", False), ("how was your day", False),
+])
+def test_what_counts_as_asking_for_a_picture(text, asks):
+    assert images.asks_for_picture(text) is asks

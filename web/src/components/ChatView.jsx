@@ -29,6 +29,8 @@ export default function ChatView({
   const [panelOpen, setPanelOpen] = useState(false);
   const abortRef = useRef(null);
   const lastRead = useRef(null);
+  // Replies a selfie was already asked for, as onDone can fire twice for one reply.
+  const selfieFor = useRef(new Set());
   const composerRef = useRef(null);
   const bottomRef = useRef(null);
 
@@ -151,6 +153,20 @@ export default function ChatView({
       setError(e.message);
     } finally {
       setPainting(false);
+    }
+  }
+  // A phone selfie from whoever's texting (app/routes/pictures.py), by hand or when asked for in a text.
+  const [snapping, setSnapping] = useState(false);
+  async function takeSelfie() {
+    setSnapping(true);
+    setError(null);
+    try {
+      const p = await api.takeSelfie(sessionId);
+      setSession((s) => ({ ...s, pictures: [...(s.pictures || []), p] }));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSnapping(false);
     }
   }
   async function removePicture(id) {
@@ -429,6 +445,10 @@ export default function ChatView({
           // onDone can fire twice for one reply (streamTurn), which restarted the reading.
           // By words as well as id, so a swipe of the same message is read too.
           const heard = last && `${last.id}:${last.content}`;
+          if (fresh.selfie_wanted && last && !selfieFor.current.has(last.id)) {
+            selfieFor.current.add(last.id);
+            takeSelfie();
+          }
           if (readAloud && last?.role === "assistant" && lastRead.current !== heard) {
             lastRead.current = heard;
             play(speechPath(sessionId, last.id));
@@ -605,6 +625,10 @@ export default function ChatView({
                 userName={userName}
                 streaming
               />
+            )}
+
+            {snapping && (
+              <p className="text-sm text-slate-500">{writerName} is taking a photo…</p>
             )}
 
             {busy && !streamText && (
@@ -967,6 +991,18 @@ export default function ChatView({
                 }}
               >
                 {narrating ? "Thinking…" : "Something happens"}
+              </PanelLink>
+            )}
+            {session?.mode === "texting" && (
+              <PanelLink
+                disabled={busy || snapping}
+                title="A phone selfie from them, drawn by ComfyUI on your PC"
+                onClick={() => {
+                  setPanelOpen(false);
+                  takeSelfie();
+                }}
+              >
+                {snapping ? "Taking a photo… up to a minute" : "Ask for a selfie"}
               </PanelLink>
             )}
             {(session?.mode || "story") === "story" && (
