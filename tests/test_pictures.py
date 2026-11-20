@@ -468,3 +468,12 @@ def test_no_selfie_from_someone_written_as_a_minor(client, llm, comfy):
 ])
 def test_what_counts_as_asking_for_a_picture(text, asks):
     assert images.asks_for_picture(text) is asks
+
+
+def test_the_reply_knows_a_photo_is_going_out(client, llm, comfy):
+    # Live, without this line Sadie texted that her phone had died, then the selfie arrived.
+    _texting_chat(client, llm, "send me a pic of the painting?")
+    assert any("takes one right now and sends it" in p for p in llm.prompts)
+    llm.prompts.clear()
+    _texting_chat(client, llm, "how was the market")
+    assert not any("takes one right now" in p for p in llm.prompts)

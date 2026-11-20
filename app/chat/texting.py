@@ -61,8 +61,34 @@ def clean_texts(text: str, char_name: str, user_name: str) -> str:
     return "\n".join(out)
 
 
-def mode_note(session, exclude_ids=None) -> str:
-    """The switch line, when the last reply was written in the other mode."""
+#: When a text asks for a picture and one will be sent (app/routes/pictures.py). Live, without it,
+#: Sadie answered "send me a pic of the painting?" with "my phone's battery died", and the selfie
+#: that followed contradicted her.
+SENDS_PHOTO = ("{{user}} has asked for a photo. {{char}} takes one right now and sends it: reply with "
+               "the short text that goes with the photo.")
+
+
+def photo_note(session, card, exclude_ids=None) -> str:
+    """SENDS_PHOTO when the user's latest text asks for a picture and one can be sent."""
+    from .. import images
+    from ..config import settings
+    from ..memory import trust
+
+    if session.mode != "texting" or not settings.texting_selfies or not (settings.comfyui_url or "").strip():
+        return ""
+    users = [m for m in session.messages if m.role == "user" and m.id not in (exclude_ids or ())]
+    if not users or not images.asks_for_picture(users[-1].content) or trust.kept_platonic(card):
+        return ""
+    return SENDS_PHOTO
+
+
+def mode_note(session, exclude_ids=None, card=None) -> str:
+    """The switch line, when the last reply was written in the other mode, and the photo line."""
+    photo = photo_note(session, card, exclude_ids) if card is not None else ""
+    return " ".join(p for p in (_switch_note(session, exclude_ids), photo) if p)
+
+
+def _switch_note(session, exclude_ids=None) -> str:
     texting = session.mode == "texting"
     prior = [m for m in session.messages
              if m.role == "assistant" and m.id not in (exclude_ids or ())]

@@ -100,7 +100,7 @@ async def build_turn_prompt(
         time_note="" if initiative or exclude_ids or world_chat else autonomy.time_line(session),
         texting=session.mode == "texting",
         mode_note=encounters.tail_note(session, card, exclude_ids, db) if world_chat
-        else texting.mode_note(session, exclude_ids),
+        else texting.mode_note(session, exclude_ids, card),
         slow_pacing=settings.slow_pacing,
         standing=_standing(db, session, speaker, card, persona),
         private_view=thoughts.latest_view(db, session.id, speaker.id, exclude_ids)
