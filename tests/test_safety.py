@@ -131,3 +131,27 @@ def test_explicit_pictures_only_for_qualifying_adults(client):
     assert not images.explicit_ok([adult], "Jo is a 15-year-old.")
     rows = {p["name"]: p for p in client.get("/api/safety/people").json()}  # list still loads
     assert isinstance(rows, dict)
+
+
+def test_a_refused_picture_says_why(client):
+    from types import SimpleNamespace as NS
+
+    from app import images
+
+    sam = NS(name="Sam", card={"name": "Sam", "description": ADULT})
+    assert "off in Settings" in images.explicit_block([sam])
+    client.patch("/api/settings", json={"explicit_pictures": True})
+    assert images.explicit_block([sam]) == "Sam: not marked for romance (Settings → Safety)."
+    dina = NS(name="Dina", card={"name": "Dina", "description": NO_AGE, "tags": ["romance"]})
+    assert "doesn't state an age" in images.explicit_block([dina])
+
+
+def test_an_adult_age_can_be_added_but_not_a_minors(client):
+    cid = client.post("/api/characters", json={"name": "Dina Woodward", "description": NO_AGE, "tags": ["romance"]}).json()["id"]
+    assert client.put(f"/api/safety/people/{cid}/age", json={"age": 16}).status_code == 422
+    got = client.put(f"/api/safety/people/{cid}/age", json={"age": 24}).json()
+    assert got["age"] == 24 and got["explicit_eligible"] and got["explicit_note"] == ""
+    assert client.get(f"/api/characters/{cid}").json()["card"]["description"].endswith("Dina is 24 years old.")
+    assert client.put(f"/api/safety/people/{cid}/age", json={"age": 30}).status_code == 400  # already stated
+    young = client.post("/api/characters", json={"name": "Kit", "description": MINOR}).json()["id"]
+    assert client.put(f"/api/safety/people/{young}/age", json={"age": 25}).status_code == 400

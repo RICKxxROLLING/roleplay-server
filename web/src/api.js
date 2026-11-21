@@ -122,6 +122,7 @@ export const api = {
   deletePicture: (id) => j(`/pictures/${id}`, { method: "DELETE" }),
   makePortrait: (id) => j(`/characters/${id}/portrait`, { method: "POST" }),
   safetyPeople: () => j("/safety/people"),
+  setAge: (id, age) => j(`/safety/people/${id}/age`, { method: "PUT", body: JSON.stringify({ age }) }),
   setRomance: (id, tagged) => j(`/safety/people/${id}/romance`, { method: "PUT", body: JSON.stringify({ tagged }) }),
   stats: (tz) => j(`/stats?tz=${encodeURIComponent(tz || "")}`),
   createWorldChat: (body) =>

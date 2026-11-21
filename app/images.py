@@ -294,24 +294,35 @@ def explicit(prompt: str) -> bool:
     return bool(_EXPLICIT.search(prompt or ""))
 
 
+def explicit_block(characters, persona_text: str = "") -> str:
+    """Why Settings → Safety doesn't let this picture be explicit, in words for the owner, or "" if
+    it does: the switch is on, everyone in it may be romantic and has an adult age stated in their
+    card, and the user isn't written as a minor."""
+    if not settings.explicit_pictures:
+        return "explicit pictures are off in Settings → Safety."
+    if trust.persona_is_minor(persona_text):
+        return "your persona is written as under 18."
+    for c in characters:
+        note = trust.explicit_note(CharacterCard.model_validate(c.card or {"name": c.name}))
+        if note:
+            return f"{c.name}: {note} (Settings → Safety)."
+    return ""
+
+
 def explicit_ok(characters, persona_text: str = "") -> bool:
-    """Whether Settings → Safety lets this picture be explicit: the switch is on, everyone in it is
-    an adult by their card's stated age and may be romantic, and the user isn't written as a minor."""
-    if not settings.explicit_pictures or not characters or trust.persona_is_minor(persona_text):
-        return False
-    return all(trust.adult_for_explicit(CharacterCard.model_validate(c.card or {"name": c.name}))
-               for c in characters)
+    return bool(characters) and not explicit_block(characters, persona_text)
 
 
 async def render(positive: str, size: tuple[int, int], people: list[str] | None = None,
-                 kind: str = "scenes", allow_explicit: bool = False) -> bytes:
+                 kind: str = "scenes", allow_explicit: bool = False, why_not: str = "") -> bytes:
     """One PNG from ComfyUI, or ImagesUnavailable with the reason.
 
     The picture comes back over the live connection and is never written on the PC; then the
     job is deleted from ComfyUI's history, the in-memory list of past prompts its /history
     serves, so the prompt text doesn't stay there either until ComfyUI restarts."""
     if not allow_explicit and (explicit(positive) or any(explicit(p) for p in people or [])):
-        raise ImagesUnavailable("That picture would be explicit, so it isn't made.")
+        raise ImagesUnavailable("That picture would be explicit, so it isn't made"
+                                + (f": {why_not}" if why_not else "."))
     base = _base()
     await wake()
     found = await status()

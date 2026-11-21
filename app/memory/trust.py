@@ -228,6 +228,19 @@ def adult_for_explicit(card) -> bool:
     return romance_allowed(card) and stated_age(card) is not None and not is_minor(card)
 
 
+def explicit_note(card) -> str:
+    """Why explicit content can't involve this character, in a few words, or "" if it can."""
+    if is_minor(card):
+        return "written as under 18"
+    if stated_age(card) is None:
+        return "their card doesn't state an age"
+    if settings.romance_mode == "never":
+        return "romance is set to Nobody"
+    if not romance_allowed(card):
+        return "not marked for romance"
+    return ""
+
+
 def explicit_text_allowed(card) -> bool:
     return settings.explicit_text and adult_for_explicit(card)
 

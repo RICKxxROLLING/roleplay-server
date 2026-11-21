@@ -786,6 +786,18 @@ function SafetySection({ s, update }) {
       setNote(e.message);
     }
   }
+  async function giveAge(p, value) {
+    const age = Number(value);
+    if (!value) return;
+    if (!Number.isInteger(age) || age < 18) return setNote("An age here has to be 18 or over.");
+    setNote(null);
+    try {
+      const got = await api.setAge(p.id, age);
+      setPeople((list) => list.map((x) => (x.id === p.id ? got : x)));
+    } catch (e) {
+      setNote(e.message);
+    }
+  }
 
   const select = "w-full bg-ink-950 border border-ink-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:border-accent/60";
   const shown = (people || []).filter((p) => !p.extra || p.romance_tag);
@@ -838,7 +850,8 @@ function SafetySection({ s, update }) {
         </Toggle>
         <p className="text-xs text-slate-500">
           Both only ever apply to characters who may be romantic and whose card states an age of 18 or
-          over{people ? ` (${eligible} right now)` : ""}; a card without an age never qualifies.
+          over{people ? ` (${eligible} right now)` : ""}. Who qualifies, and why not, is under "Who this
+          applies to" below, where you can also tick romance and add a missing age.
         </p>
       </Section>
 
@@ -857,9 +870,22 @@ function SafetySection({ s, update }) {
             {shown.map((p) => (
               <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
                 <span className="flex-1 min-w-[8rem] truncate">{p.name}</span>
-                <span className={`text-xs ${p.minor ? "text-amber-300" : "text-slate-500"}`}>
-                  {p.minor ? "under 18" : p.age ? p.age : "no age"}
-                </span>
+                {p.age_unknown && !p.minor ? (
+                  <input
+                    type="number"
+                    min={18}
+                    max={120}
+                    placeholder="add age"
+                    aria-label={`Age for ${p.name}`}
+                    onBlur={(e) => giveAge(p, e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                    className="w-20 bg-ink-950 border border-ink-800 rounded px-1.5 py-0.5 text-xs"
+                  />
+                ) : (
+                  <span className={`text-xs ${p.minor ? "text-amber-300" : "text-slate-500"}`}>
+                    {p.minor ? "under 18" : p.age}
+                  </span>
+                )}
                 <span className="text-xs text-slate-500">{p.pictured ? "pictured" : "no pictures"}</span>
                 <label className="flex items-center gap-1.5 text-xs" title={p.minor ? "Never, written as under 18" : ""}>
                   <input
@@ -871,6 +897,9 @@ function SafetySection({ s, update }) {
                   />
                   romance
                 </label>
+                <span className={`basis-full text-xs ${p.explicit_note ? "text-slate-600" : "text-emerald-300/80"}`}>
+                  {p.explicit_note ? `explicit: no, ${p.explicit_note}` : "explicit: can be included"}
+                </span>
               </li>
             ))}
           </ul>
