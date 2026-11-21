@@ -173,6 +173,15 @@ function Pictures({ s, setS, update }) {
         <option value="flux">Flux model (FLUX.1 dev or schnell)</option>
       </select>
       {(s.image_family ?? "sdxl") === "flux" && <FluxOptions s={s} update={update} state={state} />}
+      <Input
+        aria-label="Picture style"
+        value={s.image_style ?? ""}
+        placeholder="Style: detailed digital painting, cinematic lighting, high quality"
+        onChange={(e) => setS((prev) => ({ ...prev, image_style: e.target.value }))}
+        onBlur={(e) => update("image_style", e.target.value.trim())}
+      />
+      <p className="text-xs text-slate-600">Words that end every scene and portrait. For photos, try
+        "ultra-realistic photograph, natural light, sharp focus". Selfies always look like phone photos.</p>
       <Loras s={s} update={update} files={state?.loras || []} />
       <label className="flex items-start gap-2.5 text-sm cursor-pointer">
         <input

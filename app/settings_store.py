@@ -34,6 +34,7 @@ PERSISTABLE: dict[str, type] = {
     "image_cfg": float,
     "image_detail": bool,
     "image_family": str,
+    "image_style": str,
     "flux_guidance": float,
     "flux_steps": int,
     "flux_unet": str,

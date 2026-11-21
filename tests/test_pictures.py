@@ -138,7 +138,7 @@ def test_a_picture_of_this_moment_leaves_nothing_on_the_pc(client, session, llm,
     # (an image model doesn't know them) and the house style on.
     assert pic["prompt"].startswith("medium shot, a general store, shelves of jars, morning light, a woman, tall, olive skin")
     assert "silver ring, at the counter, smiling as a woman wipes it down" in pic["prompt"]
-    assert "Seraphine" not in pic["prompt"] and "more" not in pic["prompt"] and pic["prompt"].endswith(images.STYLE)
+    assert "Seraphine" not in pic["prompt"] and "more" not in pic["prompt"] and pic["prompt"].endswith(images.style())
     sent = comfy.prompts[0]["prompt"]
     assert sent["1"]["inputs"]["ckpt_name"] == "sdxl_base.safetensors"
     assert sent["4"]["inputs"]["width"] == 1216 and "nsfw" in sent["3"]["inputs"]["text"]
@@ -477,3 +477,10 @@ def test_the_reply_knows_a_photo_is_going_out(client, llm, comfy):
     llm.prompts.clear()
     _texting_chat(client, llm, "how was the market")
     assert not any("takes one right now" in p for p in llm.prompts)
+
+
+def test_the_style_words_are_the_owners(client, session, comfy, describes):
+    client.patch("/api/settings", json={"image_style": "ultra-realistic photograph, natural light"})
+    pic = client.post(f"/api/sessions/{session}/pictures").json()
+    assert pic["prompt"].endswith("ultra-realistic photograph, natural light")
+    assert "digital painting" not in comfy.prompts[0]["prompt"]["2"]["inputs"]["text"]

@@ -420,6 +420,12 @@ they stand or sit, and a simple background that suits them. No names, nothing ab
 #: Words for a scene's style, kept out of what the model writes so it can't drift.
 STYLE = "detailed digital painting, cinematic lighting, high quality"
 MAX_LOOK_CHARS = 320
+
+
+def style() -> str:
+    """The style words that end every scene and portrait: the owner's from Settings, else STYLE.
+    A painterly default fought the owner's ultra-realistic LoRA, so it's theirs to change."""
+    return " ".join((settings.image_style or "").split()) or STYLE
 #: The newest exchange is given whole: cut at 500 characters, the picture lost what the reply
 #: was about. Older lines only set the scene.
 LATEST_CHARS = 3000
@@ -552,7 +558,8 @@ def _flux_text(frame: str, each: list[str]) -> str:
     places = _PLACES.get(len(each))
     people = [f"{places[i]}, {e}." if places else f"{e}." for i, e in enumerate(each)]
     lead = f"A medium shot of {_COUNT.get(len(each), len(each))} people" if len(each) > 1 else "A medium shot"
-    return " ".join([f"{lead}, {frame}.", *people, f"{STYLE[0].upper()}{STYLE[1:]}."])
+    look = style()
+    return " ".join([f"{lead}, {frame}.", *people, f"{look[0].upper()}{look[1:]}."])
 
 
 async def scene_prompt(session, cast, user: str, recent: list[tuple[str, str]]) -> Scene:
@@ -595,13 +602,13 @@ async def scene_prompt(session, cast, user: str, recent: list[tuple[str, str]]) 
             # Only people the model put in the moment; each as the same words every time.
             frame = ", ".join(p for p in (place, _unname(got.get("Light", ""), stand_in)) if p)
             each = [f"{look}, {doing[name]}" for name, _, look in people if name in doing]
-            text = ", ".join([frame, *each]) + f", {STYLE}"
+            text = ", ".join([frame, *each]) + f", {style()}"
             if len(each) < 2:
                 return Scene(f"{SHOT}, {text}", f"{SHOT}, {text}", [], _flux_text(frame, each))
             who_ = " and ".join(person for name, person, _ in people if name in doing)
             count = _COUNT.get(len(each), str(len(each)))
-            return Scene(f"{SHOT}, {text}", f"{SHOT}, {count} people in the foreground, {who_}, {frame}, {STYLE}",
-                         [f"{e}, {STYLE}" for e in each], _flux_text(frame, each))
+            return Scene(f"{SHOT}, {text}", f"{SHOT}, {count} people in the foreground, {who_}, {frame}, {style()}",
+                         [f"{e}, {style()}" for e in each], _flux_text(frame, each))
     raise ImagesUnavailable("Couldn't describe this moment for a picture. Try again.")
 
 
@@ -667,5 +674,5 @@ async def portrait_prompt(character) -> str:
     for _ in range(2):
         line = clean(await _ask(body), {character.name: person})
         if line:
-            return f"portrait of {look}, {line}, {STYLE}"
+            return f"portrait of {look}, {line}, {style()}"
     raise ImagesUnavailable("Couldn't describe them for a portrait. Try again.")

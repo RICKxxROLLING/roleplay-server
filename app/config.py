@@ -92,6 +92,8 @@ class Settings(BaseSettings):
     image_detail: bool = True
     # Which kind of model draws (app/images.py): "sdxl" or "flux" (FLUX.1, e.g. dev in fp8).
     image_family: str = "sdxl"
+    # Words that end every scene and portrait; empty is a detailed digital painting (app/images.py).
+    image_style: str = ""
     flux_guidance: float = 3.5
     flux_steps: int = 20
     # Flux as separate files instead of one checkpoint; empty uses comfyui_checkpoint.

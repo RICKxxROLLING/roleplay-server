@@ -126,6 +126,7 @@ class SettingsPatch(BaseModel):
     image_cfg: float | None = Field(None, ge=1, le=20)
     image_detail: bool | None = None
     image_family: Literal["sdxl", "flux"] | None = None
+    image_style: str | None = Field(None, max_length=300)
     flux_guidance: float | None = Field(None, ge=1, le=10)
     flux_steps: int | None = Field(None, ge=1, le=60)
     flux_unet: str | None = Field(None, max_length=300)
