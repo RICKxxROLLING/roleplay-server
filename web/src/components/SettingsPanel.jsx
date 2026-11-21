@@ -314,10 +314,12 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
     }
   }
 
+  // grid-cols-1 makes the column minmax(0, 1fr): without it the row of tabs, which doesn't wrap,
+  // sized the panel to 472px on a 375px phone.
   return (
-    <div className="fixed inset-0 bg-black/60 grid place-items-center z-50 p-2 sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/60 grid grid-cols-1 place-items-center z-50 p-2 sm:p-4" onClick={onClose}>
       <div
-        className="bg-ink-900 border border-ink-700 rounded-xl w-full max-w-[600px] max-h-[90vh] flex flex-col"
+        className="bg-ink-900 border border-ink-700 rounded-xl w-full min-w-0 max-w-[600px] max-h-[90vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-5 pt-4 pb-2 flex items-center justify-between">
