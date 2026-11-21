@@ -164,7 +164,7 @@ function Pictures({ s, setS, update }) {
           <option value="sdxl">SDXL model (Juggernaut XL and the like)</option>
           <option value="flux">Flux model (FLUX.1 dev or schnell)</option>
         </select>
-        {(state?.ok || state?.asleep) && state.checkpoints.length > 0 && (
+        {((state?.checkpoints || []).length > 0 || s.comfyui_checkpoint) && (
           <select
             value={s.comfyui_checkpoint ?? ""}
             onChange={(e) => update("comfyui_checkpoint", e.target.value)}
@@ -172,7 +172,11 @@ function Pictures({ s, setS, update }) {
             className={pickClass}
           >
             <option value="">First one found</option>
-            {state.checkpoints.map((c) => (
+            {/* While ComfyUI is stopped the list can be empty; the chosen one still shows. */}
+            {s.comfyui_checkpoint && !(state?.checkpoints || []).includes(s.comfyui_checkpoint) && (
+              <option value={s.comfyui_checkpoint}>{s.comfyui_checkpoint}</option>
+            )}
+            {(state?.checkpoints || []).map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
@@ -320,14 +324,14 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
           <h2 className="font-semibold">Settings</h2>
           <button onClick={onClose} aria-label="Close settings" className="text-slate-500 hover:text-slate-300 text-xl leading-none">×</button>
         </div>
-        <nav className="px-3 border-b border-ink-800 flex gap-1 overflow-x-auto scroll-thin" role="tablist">
+        <nav className="px-3 border-b border-ink-800 flex gap-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist">
           {TABS.map((t) => (
             <button
               key={t.id}
               role="tab"
               aria-selected={tab === t.id}
               onClick={() => setTab(t.id)}
-              className={`shrink-0 px-3 py-2 text-sm border-b-2 -mb-px ${
+              className={`shrink-0 px-3 pt-2 pb-2.5 text-sm leading-5 border-b-2 ${
                 tab === t.id ? "border-accent text-slate-100" : "border-transparent text-slate-500 hover:text-slate-300"
               }`}
             >
