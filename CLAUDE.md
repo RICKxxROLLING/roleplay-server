@@ -539,6 +539,13 @@ while the 17 GB checkpoint is partly offloaded. "A smartphone selfie" alone gave
 person in 2 of 3 and the phone held up in view; "one woman alone ... the phone out of the frame ...
 nobody else" gave one person, front-camera framing, 2 of 2. A LoRA's base is read from its header:
 `double_blocks` keys mean FLUX.1; one of the owner's was for a MOSS model and can't load on Flux.
+Why a LoRA was slow: ComfyUI's dynamic VRAM loading applies a LoRA's 304 patches on every step (log:
+"304 patches attached"), 42 s of sampling became ~210 s. So for a LoRA used on every picture, bake it
+in: CheckpointLoaderSimple → LoraLoaderModelOnly → CheckpointSave makes a merged copy in 60 s (the
+owner's `flux1-dev-fp8-ultrareal08.safetensors`, UltraRealPhoto at 0.8, moved from output/ to
+models/checkpoints so output stays empty). Selfies then took 57 s with the same look. `image_style`
+replaces the painterly style words, which fought the realistic look. Story pictures with it: both
+people recognisable and the moment right, 47 s; one took 186 s with nothing reloading, cause unknown.
 
 **Settings → Safety chooses for adults only (`routes/safety.py`, `trust.romance_allowed`).** Owner
 request. `romance_mode`: cards tagged `romance` (the default and the old behaviour), any adult, or
