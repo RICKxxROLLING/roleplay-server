@@ -80,3 +80,54 @@ def test_the_people_list_and_the_romance_switch(client):
     assert client.put(f"/api/safety/people/{young}/romance", json={"tagged": True}).status_code == 400
     got = client.put(f"/api/safety/people/{adult}/romance", json={"tagged": False}).json()
     assert not got["romance_tag"]
+
+
+# --- Explicit content: adults only, opt-in --------------------------------------------------
+
+def test_explicit_writing_needs_the_switch_romance_and_a_stated_adult_age(client):
+    adult = card(ADULT, ["romance"])
+    assert not trust.explicit_text_allowed(adult)  # off by default
+    client.patch("/api/settings", json={"explicit_text": True})
+    assert trust.explicit_text_allowed(adult)
+    assert not trust.explicit_text_allowed(card(ADULT))  # no romance for this card
+    assert not trust.explicit_text_allowed(card(NO_AGE, ["romance"]))  # no stated age
+    assert not trust.explicit_text_allowed(card(MINOR, ["romance"]))
+    client.patch("/api/settings", json={"romance_mode": "adults"})
+    assert not trust.explicit_text_allowed(card(MINOR))  # never, whatever the setting
+
+
+def test_the_explicit_line_reaches_the_prompt_only_when_allowed(client, llm):
+    client.patch("/api/settings", json={"explicit_text": True})
+    cid = client.post("/api/characters", json={"name": "Sam", "description": ADULT, "tags": ["romance"]}).json()["id"]
+    young = client.post("/api/characters", json={"name": "Kit", "description": MINOR, "tags": ["romance"]}).json()["id"]
+    for char, expect in ((cid, True), (young, False)):
+        llm.prompts.clear()
+        sid = client.post("/api/sessions", json={"character_id": char}).json()["id"]
+        sse_events(client.post(f"/api/sessions/{sid}/messages", json={"content": "Hello."}))
+        assert any("may be written explicitly" in p for p in llm.prompts) is expect
+
+
+def test_a_persona_written_as_a_minor_turns_explicit_writing_off(client, llm):
+    client.patch("/api/settings", json={"explicit_text": True})
+    pid = client.post("/api/personas", json={"name": "Jo", "description": "Jo is a 16-year-old student."}).json()["id"]
+    cid = client.post("/api/characters", json={"name": "Sam", "description": ADULT, "tags": ["romance"]}).json()["id"]
+    sid = client.post("/api/sessions", json={"character_id": cid, "persona_id": pid}).json()["id"]
+    sse_events(client.post(f"/api/sessions/{sid}/messages", json={"content": "Hello."}))
+    assert not any("may be written explicitly" in p for p in llm.prompts)
+
+
+def test_explicit_pictures_only_for_qualifying_adults(client):
+    from types import SimpleNamespace as NS
+
+    from app import images
+
+    adult = NS(name="Sam", card={"name": "Sam", "description": ADULT, "tags": ["romance"]})
+    untagged = NS(name="Ana", card={"name": "Ana", "description": ADULT})
+    minor = NS(name="Kit", card={"name": "Kit", "description": MINOR, "tags": ["romance"]})
+    assert not images.explicit_ok([adult])  # off by default
+    client.patch("/api/settings", json={"explicit_pictures": True})
+    assert images.explicit_ok([adult])
+    assert not images.explicit_ok([adult, untagged]) and not images.explicit_ok([adult, minor])
+    assert not images.explicit_ok([adult], "Jo is a 15-year-old.")
+    rows = {p["name"]: p for p in client.get("/api/safety/people").json()}  # list still loads
+    assert isinstance(rows, dict)

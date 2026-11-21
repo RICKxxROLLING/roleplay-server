@@ -26,6 +26,8 @@ def person(c: Character) -> dict:
         "romance_tag": trust.has_romance_tag(card),
         "romance": trust.romance_allowed(card),
         "pictured": not trust.kept_platonic(card),
+        # Whether explicit content could involve them, if the switches in Safety are on.
+        "explicit_eligible": trust.adult_for_explicit(card),
     }
 
 

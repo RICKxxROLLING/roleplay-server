@@ -556,6 +556,13 @@ switch; tagging a minor for romance is refused. "Nobody" and the platonic choice
 worded like the measured one in `standing_line`, outside the earned-trust switch like the minor line.
 The section lists every character with their stated age, whether they're pictured, and a romance tick
 that sets the card's tag.
+Then, at the owner's request for full control: `explicit_text` and `explicit_pictures`, both off by
+default. They only ever apply to a character who may be romantic and whose card states an age of 18+
+(`trust.adult_for_explicit`; a card with no age never qualifies, even when Safety treats it as an
+adult), never to a minor, and never when the persona reads as a minor. Text adds one line to the
+prompt; pictures lift `images.explicit` only when everyone in the picture qualifies
+(`images.explicit_ok`). Settings is now tabbed (Model, Story, Memory, Pictures, Safety, Account), each
+tab in titled sections; the last tab is remembered per browser.
 
 **A person looks the same in every picture (`images.look_of`, `Character.look`, `Persona.look`).** Owner
 report: characters changed between pictures and the plot got lost. Asked for one line describing everyone,

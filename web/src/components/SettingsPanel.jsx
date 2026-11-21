@@ -121,116 +121,179 @@ function Pictures({ s, setS, update }) {
   useEffect(() => {
     check();
   }, []);
+  const flux = (s.image_family ?? "sdxl") === "flux";
   return (
-    <div className="space-y-2">
-      <label htmlFor="comfyui-url" className="text-sm block">Pictures (ComfyUI)</label>
-      <Input
-        id="comfyui-url"
-        value={s.comfyui_url ?? ""}
-        placeholder="http://10.2.1.123:8188"
-        onChange={(e) => setS((prev) => ({ ...prev, comfyui_url: e.target.value }))}
-        onBlur={async (e) => {
-          await update("comfyui_url", e.target.value.trim());
-          check();
-        }}
-      />
-      <Input
-        id="comfyui-waker"
-        aria-label="Helper that starts ComfyUI"
-        value={s.comfyui_waker_url ?? ""}
-        placeholder="Helper, to start it on demand: http://10.2.1.123:8190"
-        onChange={(e) => setS((prev) => ({ ...prev, comfyui_waker_url: e.target.value }))}
-        onBlur={async (e) => {
-          await update("comfyui_waker_url", e.target.value.trim());
-          check();
-        }}
-      />
-      {state && (
-        <p className={`text-xs ${state.ok || state.asleep ? "text-emerald-300" : "text-slate-500"}`}>
-          {state.ok ? `Connected. ${state.checkpoints.length} model${state.checkpoints.length === 1 ? "" : "s"} found.` : state.error}
-        </p>
-      )}
-      {(state?.ok || state?.asleep) && state.checkpoints.length > 0 && (
+    <>
+      <Section title="Connection" hint="ComfyUI on your PC. It has no password, so keep it on your home network only.">
+        <Input
+          id="comfyui-url"
+          aria-label="ComfyUI address"
+          value={s.comfyui_url ?? ""}
+          placeholder="ComfyUI address: http://10.2.1.123:8188"
+          onChange={(e) => setS((prev) => ({ ...prev, comfyui_url: e.target.value }))}
+          onBlur={async (e) => {
+            await update("comfyui_url", e.target.value.trim());
+            check();
+          }}
+        />
+        <Input
+          id="comfyui-waker"
+          aria-label="Helper that starts ComfyUI"
+          value={s.comfyui_waker_url ?? ""}
+          placeholder="Helper, to start it on demand: http://10.2.1.123:8190"
+          onChange={(e) => setS((prev) => ({ ...prev, comfyui_waker_url: e.target.value }))}
+          onBlur={async (e) => {
+            await update("comfyui_waker_url", e.target.value.trim());
+            check();
+          }}
+        />
+        {state && (
+          <p className={`text-xs ${state.ok || state.asleep ? "text-emerald-300" : "text-slate-500"}`}>
+            {state.ok ? `Connected. ${state.checkpoints.length} model${state.checkpoints.length === 1 ? "" : "s"} found.` : state.error}
+          </p>
+        )}
+      </Section>
+
+      <Section title="Model">
         <select
-          value={s.comfyui_checkpoint ?? ""}
-          onChange={(e) => update("comfyui_checkpoint", e.target.value)}
-          aria-label="Picture model"
-          className="w-full bg-ink-950 border border-ink-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:border-accent/60"
+          value={s.image_family ?? "sdxl"}
+          onChange={(e) => update("image_family", e.target.value)}
+          aria-label="Kind of picture model"
+          className={pickClass}
         >
-          <option value="">First one found</option>
-          {state.checkpoints.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
+          <option value="sdxl">SDXL model (Juggernaut XL and the like)</option>
+          <option value="flux">Flux model (FLUX.1 dev or schnell)</option>
         </select>
-      )}
-      <select
-        value={s.image_family ?? "sdxl"}
-        onChange={(e) => update("image_family", e.target.value)}
-        aria-label="Kind of picture model"
-        className={pickClass}
-      >
-        <option value="sdxl">SDXL model (Juggernaut XL and the like)</option>
-        <option value="flux">Flux model (FLUX.1 dev or schnell)</option>
-      </select>
-      {(s.image_family ?? "sdxl") === "flux" && <FluxOptions s={s} update={update} state={state} />}
-      <Input
-        aria-label="Picture style"
-        value={s.image_style ?? ""}
-        placeholder="Style: detailed digital painting, cinematic lighting, high quality"
-        onChange={(e) => setS((prev) => ({ ...prev, image_style: e.target.value }))}
-        onBlur={(e) => update("image_style", e.target.value.trim())}
-      />
-      <p className="text-xs text-slate-600">Words that end every scene and portrait. For photos, try
-        "ultra-realistic photograph, natural light, sharp focus". Selfies always look like phone photos.</p>
-      <Loras s={s} update={update} files={state?.loras || []} />
-      <label className="flex items-start gap-2.5 text-sm cursor-pointer">
-        <input
-          type="checkbox"
-          checked={s.texting_selfies ?? true}
-          onChange={(e) => update("texting_selfies", e.target.checked)}
-          className="accent-accent w-4 h-4 mt-0.5"
+        {(state?.ok || state?.asleep) && state.checkpoints.length > 0 && (
+          <select
+            value={s.comfyui_checkpoint ?? ""}
+            onChange={(e) => update("comfyui_checkpoint", e.target.value)}
+            aria-label="Picture model"
+            className={pickClass}
+          >
+            <option value="">First one found</option>
+            {state.checkpoints.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        )}
+        {flux && <FluxOptions s={s} update={update} state={state} />}
+        {!flux && (
+          <Toggle checked={s.image_detail ?? true} onChange={(v) => update("image_detail", v)} title="Sharper faces">
+            A second pass at a larger size, so eyes and faces come out clean. About twice as slow.
+          </Toggle>
+        )}
+      </Section>
+
+      <Section title="Look">
+        <Input
+          aria-label="Picture style"
+          value={s.image_style ?? ""}
+          placeholder="Style: detailed digital painting, cinematic lighting, high quality"
+          onChange={(e) => setS((prev) => ({ ...prev, image_style: e.target.value }))}
+          onBlur={(e) => update("image_style", e.target.value.trim())}
         />
-        <span>
-          Selfies when you text for one
-          <span className="block text-xs text-slate-600">
-            In texting mode, "send me a pic" gets a phone selfie back. Ask for a selfie is in the scene panel too.
-          </span>
-        </span>
-      </label>
-      <label className="flex items-start gap-2.5 text-sm cursor-pointer">
-        <input
-          type="checkbox"
-          checked={s.image_detail ?? true}
-          onChange={(e) => update("image_detail", e.target.checked)}
-          className="accent-accent w-4 h-4 mt-0.5"
-        />
-        <span>
-          Sharper faces
-          <span className="block text-xs text-slate-600">
-            A second pass at a larger size, so eyes and faces come out clean. About twice as slow. SDXL only.
-          </span>
-        </span>
-      </label>
-      <Textarea
-        rows={2}
-        maxLength={1000}
-        aria-label="Leave out of pictures"
-        value={s.image_negative ?? ""}
-        onChange={(e) => setS((prev) => ({ ...prev, image_negative: e.target.value }))}
-        onBlur={(e) => update("image_negative", e.target.value)}
-      />
-      <p className="text-xs text-slate-600">
-        What pictures should leave out (SDXL; Flux ignores this list, so the server refuses explicit
-        pictures itself). ComfyUI runs on your own PC and has no password, so keep
-        it on your home network only. Nobody written as under 18 is ever pictured.
-      </p>
+        <p className="text-xs text-slate-600">Words that end every scene and portrait. For photos, try
+          "ultra-realistic photograph, natural light, sharp focus". Selfies always look like phone photos.</p>
+        <Loras s={s} update={update} files={state?.loras || []} />
+        {!flux && (
+          <>
+            <label htmlFor="image-negative" className="text-sm block">Leave out of pictures</label>
+            <Textarea
+              id="image-negative"
+              rows={2}
+              maxLength={1000}
+              value={s.image_negative ?? ""}
+              onChange={(e) => setS((prev) => ({ ...prev, image_negative: e.target.value }))}
+              onBlur={(e) => update("image_negative", e.target.value)}
+            />
+          </>
+        )}
+        {flux && (
+          <p className="text-xs text-slate-600">Flux has no "leave out" list; the server refuses explicit
+            pictures itself unless Safety allows them.</p>
+        )}
+      </Section>
+
+      <Section title="Selfies">
+        <Toggle checked={s.texting_selfies ?? true} onChange={(v) => update("texting_selfies", v)} title="Selfies when you text for one">
+          In texting mode, "send me a pic" gets a phone selfie back. Ask for a selfie is in the scene panel too.
+        </Toggle>
+      </Section>
+    </>
+  );
+}
+
+const TABS = [
+  { id: "model", label: "Model" },
+  { id: "story", label: "Story" },
+  { id: "memory", label: "Memory" },
+  { id: "pictures", label: "Pictures" },
+  { id: "safety", label: "Safety" },
+  { id: "account", label: "Account" },
+];
+
+/** A titled group of settings inside a tab. */
+function Section({ title, hint, children }) {
+  return (
+    <section className="space-y-3">
+      <div>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">{title}</h3>
+        {hint && <p className="text-xs text-slate-600 mt-0.5">{hint}</p>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/** A switch with a title and an explanation under it. */
+function Toggle({ checked, onChange, title, children }) {
+  return (
+    <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+      <input type="checkbox" checked={!!checked} onChange={(e) => onChange(e.target.checked)}
+             className="accent-accent w-4 h-4 mt-0.5 shrink-0" />
+      <span>
+        {title}
+        {children && <span className="block text-xs text-slate-600">{children}</span>}
+      </span>
+    </label>
+  );
+}
+
+function Slider({ label, value, shown, min, max, step, onChange, hint }) {
+  return (
+    <div>
+      <div className="flex justify-between text-sm mb-1">
+        <label>{label}</label>
+        <span className="text-accent tabular-nums">{shown ?? value}</span>
+      </div>
+      <input type="range" min={min} max={max} step={step} value={value}
+             onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-accent" />
+      {hint && <p className="text-xs text-slate-600 mt-0.5">{hint}</p>}
     </div>
   );
+}
+
+function readTab() {
+  try {
+    return localStorage.getItem("settings-tab") || "model";
+  } catch {
+    return "model";
+  }
 }
 
 export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }) {
   const [s, setS] = useState(null);
   const [prompt, setPrompt] = useState(null);
+  const [tab, setTabState] = useState(readTab);
+  const setTab = (id) => {
+    setTabState(id);
+    try {
+      localStorage.setItem("settings-tab", id);
+    } catch {
+      /* a remembered tab is a convenience only */
+    }
+  };
 
   useEffect(() => {
     if (open) api.settings().then(setS).catch(() => {});
@@ -248,467 +311,264 @@ export default function SettingsPanel({ open, onClose, sessionId, onOpenModels }
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 grid place-items-center z-50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/60 grid place-items-center z-50 p-2 sm:p-4" onClick={onClose}>
       <div
-        className="bg-ink-900 border border-ink-700 rounded-xl w-full max-w-[560px] max-h-[85vh] overflow-y-auto scroll-thin"
+        className="bg-ink-900 border border-ink-700 rounded-xl w-full max-w-[600px] max-h-[90vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-4 border-b border-ink-800 flex items-center justify-between">
-          <h2 className="font-semibold">Generation settings</h2>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-300">×</button>
+        <div className="px-5 pt-4 pb-2 flex items-center justify-between">
+          <h2 className="font-semibold">Settings</h2>
+          <button onClick={onClose} aria-label="Close settings" className="text-slate-500 hover:text-slate-300 text-xl leading-none">×</button>
         </div>
-
-        <div className="p-5 space-y-5">
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span>
-              Backend <span className="text-slate-300">{s.backend}</span> · model{" "}
-              <span className="text-slate-300">{s.model}</span> · context{" "}
-              <span className="text-slate-300">{s.context_tokens}</span> tokens
-            </span>
+        <nav className="px-3 border-b border-ink-800 flex gap-1 overflow-x-auto scroll-thin" role="tablist">
+          {TABS.map((t) => (
             <button
-              onClick={onOpenModels}
-              className="ml-auto shrink-0 border border-ink-700 rounded-lg px-2 py-1 hover:bg-ink-850"
+              key={t.id}
+              role="tab"
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+              className={`shrink-0 px-3 py-2 text-sm border-b-2 -mb-px ${
+                tab === t.id ? "border-accent text-slate-100" : "border-transparent text-slate-500 hover:text-slate-300"
+              }`}
             >
-              Change model
+              {t.label}
             </button>
-          </div>
-          <p className="text-xs text-slate-600 -mt-2">
-            Changes save automatically and persist across restarts. The prompt
-            format, context and samplers are saved per model and come back when
-            you switch to it.
-          </p>
-
-          <div>
-            <div className="flex justify-between items-center text-sm mb-1">
-              <label htmlFor="prompt-format">Prompt format</label>
-              <select
-                id="prompt-format"
-                value={s.prompt_format}
-                onChange={(e) => update("prompt_format", e.target.value)}
-                className="w-full sm:w-auto bg-ink-950 border border-ink-800 rounded-lg px-2 py-1 text-sm outline-none focus:border-accent/60"
-              >
-                {PROMPT_FORMATS.map((f) => (
-                  <option key={f.value} value={f.value}>{f.label}</option>
-                ))}
-              </select>
-            </div>
-            <p className="text-xs text-slate-600 mt-0.5">
-              Must match how the model was trained — check its model card. The wrong
-              one still answers, but thinner, and drifts as a chat gets long.
-            </p>
-          </div>
-
-          <div>
-            <label htmlFor="narration-style" className="text-sm block mb-1">
-              Narration style
-            </label>
-            {/* Saved on blur: a PATCH per keystroke would race itself. */}
-            <Textarea
-              id="narration-style"
-              rows={4}
-              maxLength={2000}
-              value={s.narration_style ?? ""}
-              onChange={(e) => setS((prev) => ({ ...prev, narration_style: e.target.value }))}
-              onBlur={(e) => update("narration_style", e.target.value)}
-              placeholder="e.g. Describe the setting, weather, sounds and background characters in every reply."
-            />
-            <p className="text-xs text-slate-600 mt-0.5">
-              Added to every character's prompt after its own instructions. Use
-              {" {{char}}"} and {"{{user}}"} for names. Leave blank to add nothing.
-            </p>
-          </div>
-
-          <Pictures s={s} setS={setS} update={update} />
-
-          <label className="flex items-start gap-2.5 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={s.guard_user_actions}
-              onChange={(e) => update("guard_user_actions", e.target.checked)}
-              className="accent-accent w-4 h-4 mt-0.5"
-            />
-            <span>
-              Keep the character from acting for you
-              <span className="block text-xs text-slate-600">
-                Removes lines where the reply narrates your actions or speaks for
-                you, before it is saved. One such line left in a chat teaches the
-                model to keep doing it.
-              </span>
-            </span>
-          </label>
-          <label className="flex items-start gap-2.5 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={s.tidy_user_lines ?? true}
-              onChange={(e) => update("tidy_user_lines", e.target.checked)}
-              className="accent-accent w-4 h-4 mt-0.5"
-            />
-            <span>
-              Add quotes and asterisks to what you type
-              <span className="block text-xs text-slate-600">
-                Puts your speech in quotes and your actions in asterisks, so the
-                character can tell them apart. Your words are never changed; if
-                they would be, your line is kept exactly as typed.
-              </span>
-            </span>
-          </label>
-
-          <label className="flex items-start gap-2.5 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={s.redo_first_person}
-              onChange={(e) => update("redo_first_person", e.target.checked)}
-              className="accent-accent w-4 h-4 mt-0.5"
-            />
-            <span>
-              Redo replies that slip into first person
-              <span className="block text-xs text-slate-600">
-                When a third-person character starts narrating as "I", the reply is
-                written again once. Costs one extra generation when it happens.
-              </span>
-            </span>
-          </label>
-
-          {SLIDERS.map(({ key, min, max, step, hint }) => (
-            <div key={key}>
-              <div className="flex justify-between text-sm mb-1">
-                <label className="capitalize">{key.replace(/_/g, " ")}</label>
-                <span className="text-accent tabular-nums">{s[key]}</span>
-              </div>
-              <input
-                type="range"
-                min={min}
-                max={max}
-                step={step}
-                value={s[key]}
-                onChange={(e) => update(key, Number(e.target.value))}
-                className="w-full accent-accent"
-              />
-              <p className="text-xs text-slate-600 mt-0.5">{hint}</p>
-            </div>
           ))}
+        </nav>
 
-          <div className="pt-3 border-t border-ink-800 space-y-4">
-            {/* Independent of summarization, so it sits outside that block. */}
-            <label className="flex items-center gap-2.5 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={s.scene_enabled}
-                onChange={(e) => update("scene_enabled", e.target.checked)}
-                className="accent-accent w-4 h-4"
-              />
-              Track the scene
-              <span className="text-xs text-slate-600">
-                where, when, weather and who is present · under a second per reply
-              </span>
-            </label>
+        <div className="p-5 space-y-7 overflow-y-auto scroll-thin">
+          <p className="text-xs text-slate-600 -mb-3">Changes save as you make them and survive restarts.</p>
 
-            <label className="flex items-center gap-2.5 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={s.thoughts_enabled}
-                onChange={(e) => update("thoughts_enabled", e.target.checked)}
-                className="accent-accent w-4 h-4"
-              />
-              Their own thoughts
-              <span className="text-xs text-slate-600">
-                a private journal and opinion of you, after each reply · about 2 s
-              </span>
-            </label>
+          {tab === "model" && (
+            <>
+              <Section title="Chat model" hint="The prompt format, context and samplers are saved per model and come back when you switch to it.">
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <span>
+                    Backend <span className="text-slate-300">{s.backend}</span> · model{" "}
+                    <span className="text-slate-300">{s.model}</span> · context{" "}
+                    <span className="text-slate-300">{s.context_tokens}</span> tokens
+                  </span>
+                  <button onClick={onOpenModels} className="ml-auto shrink-0 border border-ink-700 rounded-lg px-2 py-1 hover:bg-ink-850">
+                    Change model
+                  </button>
+                </div>
+                <div>
+                  <div className="flex justify-between items-center gap-3 text-sm mb-1">
+                    <label htmlFor="prompt-format">Prompt format</label>
+                    <select
+                      id="prompt-format"
+                      value={s.prompt_format}
+                      onChange={(e) => update("prompt_format", e.target.value)}
+                      className="w-full sm:w-auto bg-ink-950 border border-ink-800 rounded-lg px-2 py-1 text-sm outline-none focus:border-accent/60"
+                    >
+                      {PROMPT_FORMATS.map((f) => (
+                        <option key={f.value} value={f.value}>{f.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Must match how the model was trained — check its model card. The wrong one still
+                    answers, but thinner, and drifts as a chat gets long.
+                  </p>
+                </div>
+              </Section>
 
-            <label className="flex items-center gap-2.5 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={s.slow_pacing}
-                onChange={(e) => update("slow_pacing", e.target.checked)}
-                className="accent-accent w-4 h-4"
-              />
-              Live in the moment
-              <span className="text-xs text-slate-600">
-                slower scenes and shorter replies; you decide when they move on
-              </span>
-            </label>
-
-            <label className="flex items-center gap-2.5 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={s.narrator_default}
-                onChange={(e) => update("narrator_default", e.target.checked)}
-                className="accent-accent w-4 h-4"
-              />
-              Narrator in new chats
-              <span className="text-xs text-slate-600">
-                a short line about the world every few messages · about 2 s
-              </span>
-            </label>
-
-            <label className="flex flex-wrap items-center gap-2.5 text-sm">
-              Reading aloud
-              <select
-                value={s.voices_mode}
-                onChange={(e) => update("voices_mode", e.target.value)}
-                className="bg-ink-950 border border-ink-800 rounded-lg px-2 py-1 text-xs outline-none focus:border-accent/60"
-              >
-                <option value="dialogue">Only what they say</option>
-                <option value="story">Everything, narration in the narrator's voice</option>
-                <option value="everything">Everything, in their voice</option>
-              </select>
-              <select
-                value={s.voices_speed}
-                onChange={(e) => update("voices_speed", Number(e.target.value))}
-                className="bg-ink-950 border border-ink-800 rounded-lg px-2 py-1 text-xs outline-none focus:border-accent/60"
-              >
-                {[0.8, 0.9, 1, 1.1, 1.2, 1.35].map((n) => (
-                  <option key={n} value={n}>{n}x</option>
+              <Section title="Samplers" hint="How the model picks its words.">
+                {SLIDERS.map(({ key, min, max, step, hint }) => (
+                  <Slider key={key} label={<span className="capitalize">{key.replace(/_/g, " ")}</span>} value={s[key]}
+                          min={min} max={max} step={step} hint={hint} onChange={(v) => update(key, v)} />
                 ))}
-              </select>
-              <span className="text-xs text-slate-600">on the CPU, so chat isn't slowed</span>
-            </label>
+              </Section>
 
-            <label className="flex items-center gap-2.5 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={s.trust_enabled}
-                onChange={(e) => update("trust_enabled", e.target.checked)}
-                className="accent-accent w-4 h-4"
-              />
-              Earned trust
-              <span className="text-xs text-slate-600">
-                trust, affection and respect shape how they treat you · about 1 s
-              </span>
-            </label>
-
-            <AutonomySettings s={s} update={update} />
-
-            <label className="flex items-center gap-2.5 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={s.summary_enabled}
-                onChange={(e) => update("summary_enabled", e.target.checked)}
-                className="accent-accent w-4 h-4"
-              />
-              Rolling summarization
-              <span className="text-xs text-slate-600">
-                condense old turns to survive the context window
-              </span>
-            </label>
-
-            {s.summary_enabled && (
-              <>
-                <label className="flex items-center gap-2.5 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={s.facts_enabled}
-                    onChange={(e) => update("facts_enabled", e.target.checked)}
-                    className="accent-accent w-4 h-4"
-                  />
-                  Keep a fact list
-                  <span className="text-xs text-slate-600">
-                    names, objects and promises beside the summary · one extra
-                    generation per condense
-                  </span>
-                </label>
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <label>Fold threshold</label>
-                    <span className="text-accent tabular-nums">
-                      {s.summary_trigger_tokens} tokens
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={400}
-                    max={3000}
-                    step={100}
-                    value={s.summary_trigger_tokens}
-                    onChange={(e) =>
-                      update("summary_trigger_tokens", Number(e.target.value))
-                    }
-                    className="w-full accent-accent"
-                  />
-                  <p className="text-xs text-slate-600 mt-0.5">
-                    Condense once un-summarized history passes this size
-                  </p>
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <label>Keep verbatim</label>
-                    <span className="text-accent tabular-nums">
-                      {s.keep_recent_messages} messages
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={2}
-                    max={30}
-                    step={1}
-                    value={s.keep_recent_messages}
-                    onChange={(e) =>
-                      update("keep_recent_messages", Number(e.target.value))
-                    }
-                    className="w-full accent-accent"
-                  />
-                  <p className="text-xs text-slate-600 mt-0.5">
-                    Recent turns never get condensed
-                  </p>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Tuning only. The on/off switch lives in the Memory panel, next to
-              the summary it works alongside. */}
-          {s.retrieval_enabled && (
-            <div className="pt-3 border-t border-ink-800 space-y-4">
-              <div className="text-sm">
-                Vector recall
-                <span className="text-xs text-slate-600 ml-2">
-                  tuning · toggle in the Memory panel
-                </span>
-              </div>
-
-              <div>
-                <div className="flex justify-between text-sm mb-1">
-                  <label>Moments recalled</label>
-                  <span className="text-accent tabular-nums">{s.retrieval_top_k}</span>
-                </div>
-                <input
-                  type="range"
-                  min={1}
-                  max={10}
-                  step={1}
-                  value={s.retrieval_top_k}
-                  onChange={(e) => update("retrieval_top_k", Number(e.target.value))}
-                  className="w-full accent-accent"
-                />
-                <p className="text-xs text-slate-600 mt-0.5">
-                  Most past turns re-injected per reply
-                </p>
-              </div>
-
-              <div>
-                <div className="flex justify-between text-sm mb-1">
-                  <label>Relevance floor</label>
-                  <span className="text-accent tabular-nums">
-                    {s.retrieval_min_score}
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={0.1}
-                  max={0.9}
-                  step={0.05}
-                  value={s.retrieval_min_score}
-                  onChange={(e) =>
-                    update("retrieval_min_score", Number(e.target.value))
-                  }
-                  className="w-full accent-accent"
-                />
-                <p className="text-xs text-slate-600 mt-0.5">
-                  Raise it if the character brings up unrelated old scenes; lower
-                  it if it fails to remember things it should
-                </p>
-              </div>
-
-              <div>
-                <div className="flex justify-between text-sm mb-1">
-                  <label>Recall budget</label>
-                  <span className="text-accent tabular-nums">
-                    {s.retrieval_budget_tokens} tokens
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={100}
-                  max={1200}
-                  step={50}
-                  value={s.retrieval_budget_tokens}
-                  onChange={(e) =>
-                    update("retrieval_budget_tokens", Number(e.target.value))
-                  }
-                  className="w-full accent-accent"
-                />
-                <p className="text-xs text-slate-600 mt-0.5">
-                  Context spent on recall, taken from what history could use
-                </p>
-              </div>
-            </div>
+              <Section title="Check">
+                <TestModelSection />
+              </Section>
+            </>
           )}
 
-          <SafetySection s={s} update={update} />
-
-          <TestModelSection />
-
-          <PasswordSection />
-          <TwoFactorSection />
-          <NotificationsSection />
-
-          {sessionId && (
-            <div className="pt-2 border-t border-ink-800">
-              <button
-                onClick={async () => setPrompt(await api.inspectPrompt(sessionId))}
-                className="text-sm rounded-lg border border-ink-700 px-3 py-1.5 hover:bg-ink-850"
-              >
-                Inspect built prompt
-              </button>
-              {prompt && (
-                <div className="mt-3">
-                  <div className="text-xs text-slate-500 mb-1">
-                    ~{prompt.estimated_tokens} tokens
-                    {prompt.chars_per_token &&
-                      ` (${prompt.chars_per_token} chars/token, ${prompt.chars_per_token_measured ? "measured" : "default until the first reply"})`}
-                    {" · "}{prompt.dropped_messages} messages
-                    trimmed · {prompt.lore_entries ?? 0} lore entries
-                    {prompt.lore_dropped > 0 &&
-                      ` (${prompt.lore_dropped} over budget)`}
-                    {" · "}
-                    {prompt.pinned_entries ?? 0} pinned
-                    {prompt.pinned_dropped > 0 && ` (${prompt.pinned_dropped} over budget)`}
-                    {" · "}
-                    {prompt.retrieved_entries ?? 0} recalled
-                    {prompt.retrieval_dropped > 0 &&
-                      ` (${prompt.retrieval_dropped} over budget)`}
-                  </div>
-                  {prompt.retrieval_error && (
-                    <div className="text-xs text-amber-400/90 mb-1">
-                      Vector recall unavailable: {prompt.retrieval_error}
-                    </div>
-                  )}
-                  {prompt.retrieved?.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mb-2">
-                      {prompt.retrieved.map((h) => (
-                        <span
-                          key={h.message_id}
-                          title={h.content}
-                          className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/15 border border-sky-500/25 text-sky-300/90"
-                        >
-                          #{h.message_id} · {h.score.toFixed(2)}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {prompt.lore_fired?.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mb-2">
-                      {prompt.lore_fired.map((f, i) => (
-                        <span
-                          key={i}
-                          className="text-[10px] px-2 py-0.5 rounded-full bg-accent/15 border border-accent/25 text-accent/90"
-                        >
-                          {f}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <pre className="text-[11px] bg-ink-950 border border-ink-800 rounded-lg p-3 max-h-64 overflow-auto scroll-thin whitespace-pre-wrap">
-                    {prompt.prompt}
-                  </pre>
+          {tab === "story" && (
+            <>
+              <Section title="Writing">
+                <div>
+                  <label htmlFor="narration-style" className="text-sm block mb-1">Narration style</label>
+                  {/* Saved on blur: a PATCH per keystroke would race itself. */}
+                  <Textarea
+                    id="narration-style"
+                    rows={4}
+                    maxLength={2000}
+                    value={s.narration_style ?? ""}
+                    onChange={(e) => setS((prev) => ({ ...prev, narration_style: e.target.value }))}
+                    onBlur={(e) => update("narration_style", e.target.value)}
+                    placeholder="e.g. Describe the setting, weather, sounds and background characters in every reply."
+                  />
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Added to every character's prompt after its own instructions. Use {"{{char}}"} and {"{{user}}"} for
+                    names. Leave blank to add nothing.
+                  </p>
                 </div>
+                <Toggle checked={s.slow_pacing} onChange={(v) => update("slow_pacing", v)} title="Live in the moment">
+                  Slower scenes and shorter replies; you decide when they move on.
+                </Toggle>
+                <Toggle checked={s.redo_first_person} onChange={(v) => update("redo_first_person", v)} title="Redo replies that slip into first person">
+                  When a third-person character starts narrating as "I", the reply is written again once.
+                </Toggle>
+                <Toggle checked={s.tidy_user_lines ?? true} onChange={(v) => update("tidy_user_lines", v)} title="Add quotes and asterisks to what you type">
+                  Your speech in quotes and your actions in asterisks, so the character can tell them apart. Your words
+                  are never changed; if they would be, your line is kept exactly as typed.
+                </Toggle>
+              </Section>
+
+              <Section title="The world around you">
+                <Toggle checked={s.scene_enabled} onChange={(v) => update("scene_enabled", v)} title="Track the scene">
+                  Where, when, weather and who is present · under a second per reply.
+                </Toggle>
+                <Toggle checked={s.narrator_default} onChange={(v) => update("narrator_default", v)} title="Narrator in new chats">
+                  A short line about the world every few messages · about 2 s.
+                </Toggle>
+                <Toggle checked={s.thoughts_enabled} onChange={(v) => update("thoughts_enabled", v)} title="Their own thoughts">
+                  A private journal and opinion of you, after each reply · about 2 s.
+                </Toggle>
+              </Section>
+
+              <Section title="Characters writing first">
+                <AutonomySettings s={s} update={update} />
+              </Section>
+
+              <Section title="Reading aloud" hint="On the CPU, so chat isn't slowed.">
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <select
+                    value={s.voices_mode}
+                    onChange={(e) => update("voices_mode", e.target.value)}
+                    className="bg-ink-950 border border-ink-800 rounded-lg px-2 py-1 text-sm outline-none focus:border-accent/60"
+                  >
+                    <option value="dialogue">Only what they say</option>
+                    <option value="story">Everything, narration in the narrator's voice</option>
+                    <option value="everything">Everything, in their voice</option>
+                  </select>
+                  <select
+                    value={s.voices_speed}
+                    onChange={(e) => update("voices_speed", Number(e.target.value))}
+                    className="bg-ink-950 border border-ink-800 rounded-lg px-2 py-1 text-sm outline-none focus:border-accent/60"
+                  >
+                    {[0.8, 0.9, 1, 1.1, 1.2, 1.35].map((n) => (
+                      <option key={n} value={n}>{n}x</option>
+                    ))}
+                  </select>
+                </div>
+              </Section>
+            </>
+          )}
+
+          {tab === "memory" && (
+            <>
+              <Section title="Summary" hint="Older turns are condensed so a long chat fits the context window.">
+                <Toggle checked={s.summary_enabled} onChange={(v) => update("summary_enabled", v)} title="Rolling summarization" />
+                {s.summary_enabled && (
+                  <>
+                    <Toggle checked={s.facts_enabled} onChange={(v) => update("facts_enabled", v)} title="Keep a fact list">
+                      Names, objects and promises beside the summary · one extra generation per condense.
+                    </Toggle>
+                    <Slider label="Fold threshold" value={s.summary_trigger_tokens} shown={`${s.summary_trigger_tokens} tokens`}
+                            min={400} max={3000} step={100} onChange={(v) => update("summary_trigger_tokens", v)}
+                            hint="Condense once un-summarized history passes this size" />
+                    <Slider label="Keep verbatim" value={s.keep_recent_messages} shown={`${s.keep_recent_messages} messages`}
+                            min={2} max={30} step={1} onChange={(v) => update("keep_recent_messages", v)}
+                            hint="Recent turns never get condensed" />
+                  </>
+                )}
+              </Section>
+
+              <Section title="Vector recall" hint={s.retrieval_enabled ? "Tuning. The on/off switch is in the Memory panel." : "Off. Turn it on in a chat's Memory panel to tune it here."}>
+                {s.retrieval_enabled && (
+                  <>
+                    <Slider label="Moments recalled" value={s.retrieval_top_k} min={1} max={10} step={1}
+                            onChange={(v) => update("retrieval_top_k", v)} hint="Most past turns re-injected per reply" />
+                    <Slider label="Relevance floor" value={s.retrieval_min_score} min={0.1} max={0.9} step={0.05}
+                            onChange={(v) => update("retrieval_min_score", v)}
+                            hint="Raise it if the character brings up unrelated old scenes; lower it if it fails to remember things it should" />
+                    <Slider label="Recall budget" value={s.retrieval_budget_tokens} shown={`${s.retrieval_budget_tokens} tokens`}
+                            min={100} max={1200} step={50} onChange={(v) => update("retrieval_budget_tokens", v)}
+                            hint="Context spent on recall, taken from what history could use" />
+                  </>
+                )}
+              </Section>
+
+              {sessionId && (
+                <Section title="This chat's prompt" hint="Exactly what the model will be sent next, for checking.">
+                  <PromptInspector sessionId={sessionId} prompt={prompt} setPrompt={setPrompt} />
+                </Section>
               )}
-            </div>
+            </>
+          )}
+
+          {tab === "pictures" && <Pictures s={s} setS={setS} update={update} />}
+
+          {tab === "safety" && <SafetySection s={s} update={update} />}
+
+          {tab === "account" && (
+            <>
+              <PasswordSection />
+              <TwoFactorSection />
+              <NotificationsSection />
+            </>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function PromptInspector({ sessionId, prompt, setPrompt }) {
+  return (
+    <div>
+      <button
+        onClick={async () => setPrompt(await api.inspectPrompt(sessionId))}
+        className="text-sm rounded-lg border border-ink-700 px-3 py-1.5 hover:bg-ink-850"
+      >
+        Inspect built prompt
+      </button>
+      {prompt && (
+        <div className="mt-3">
+          <div className="text-xs text-slate-500 mb-1">
+            ~{prompt.estimated_tokens} tokens
+            {prompt.chars_per_token &&
+              ` (${prompt.chars_per_token} chars/token, ${prompt.chars_per_token_measured ? "measured" : "default until the first reply"})`}
+            {" · "}{prompt.dropped_messages} messages trimmed · {prompt.lore_entries ?? 0} lore entries
+            {prompt.lore_dropped > 0 && ` (${prompt.lore_dropped} over budget)`}
+            {" · "}
+            {prompt.pinned_entries ?? 0} pinned
+            {prompt.pinned_dropped > 0 && ` (${prompt.pinned_dropped} over budget)`}
+            {" · "}
+            {prompt.retrieved_entries ?? 0} recalled
+            {prompt.retrieval_dropped > 0 && ` (${prompt.retrieval_dropped} over budget)`}
+          </div>
+          {prompt.retrieval_error && (
+            <div className="text-xs text-amber-400/90 mb-1">Vector recall unavailable: {prompt.retrieval_error}</div>
+          )}
+          {prompt.retrieved?.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-2">
+              {prompt.retrieved.map((h) => (
+                <span key={h.message_id} title={h.content}
+                      className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/15 border border-sky-500/25 text-sky-300/90">
+                  #{h.message_id} · {h.score.toFixed(2)}
+                </span>
+              ))}
+            </div>
+          )}
+          {prompt.lore_fired?.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-2">
+              {prompt.lore_fired.map((f, i) => (
+                <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-accent/15 border border-accent/25 text-accent/90">
+                  {f}
+                </span>
+              ))}
+            </div>
+          )}
+          <pre className="text-[11px] bg-ink-950 border border-ink-800 rounded-lg p-3 max-h-64 overflow-auto scroll-thin whitespace-pre-wrap">
+            {prompt.prompt}
+          </pre>
+        </div>
+      )}
     </div>
   );
 }
@@ -924,68 +784,94 @@ function SafetySection({ s, update }) {
   const select = "w-full bg-ink-950 border border-ink-800 rounded-lg px-2 py-1.5 text-sm outline-none focus:border-accent/60";
   const shown = (people || []).filter((p) => !p.extra || p.romance_tag);
   const unknown = (people || []).filter((p) => p.age_unknown).length;
+  const eligible = (people || []).filter((p) => p.explicit_eligible).length;
 
   return (
-    <div className="pt-3 border-t border-ink-800 space-y-3">
-      <div className="text-sm">Safety</div>
-      <p className="text-xs text-slate-500">
-        Always on, whatever you choose below: anyone whose card says they're under 18 stays
-        platonic, is never pictured, and is never offered romantic or physical choices. People the
-        app writes for a world are always 22 or older.
-      </p>
+    <>
+      <Section title="Always on" hint="These can't be switched off.">
+        <p className="text-xs text-slate-500">
+          Anyone whose card says they're under 18 stays platonic, is never pictured, is never part of
+          explicit content, and is never offered romantic or physical choices — and so is everyone
+          when your persona says you're under 18. People the app writes for a world are always 22 or older.
+        </p>
+      </Section>
 
-      <label className="block space-y-1">
-        <span className="text-sm">Romance</span>
-        <select value={s.romance_mode ?? "tagged"} onChange={(e) => update("romance_mode", e.target.value)} className={select}>
-          <option value="tagged">Only characters you mark for romance</option>
-          <option value="adults">Any adult character</option>
-          <option value="never">Nobody</option>
-        </select>
-        <span className="block text-xs text-slate-600">
-          Anyone else stays a friend and kindly says no. With earned trust on, romance also has to be earned.
-        </span>
-      </label>
+      <Section title="Romance and age">
+        <label className="block space-y-1">
+          <span className="text-sm">Romance</span>
+          <select value={s.romance_mode ?? "tagged"} onChange={(e) => update("romance_mode", e.target.value)} className={select}>
+            <option value="tagged">Only characters you mark for romance</option>
+            <option value="adults">Any adult character</option>
+            <option value="never">Nobody</option>
+          </select>
+          <span className="block text-xs text-slate-600">Anyone else stays a friend and kindly says no.</span>
+        </label>
+        <label className="block space-y-1">
+          <span className="text-sm">Cards that don't state an age</span>
+          <select value={s.unknown_age ?? "adult"} onChange={(e) => update("unknown_age", e.target.value)} className={select}>
+            <option value="adult">Treat them as adults</option>
+            <option value="platonic">Keep them platonic and out of pictures</option>
+          </select>
+          <span className="block text-xs text-slate-600">
+            {unknown ? `${unknown} of your characters don't state an age. ` : ""}
+            Add one to the description ("Dina, 24, ...") to settle it.
+          </span>
+        </label>
+        <Toggle checked={s.trust_enabled} onChange={(v) => update("trust_enabled", v)} title="Closeness has to be earned">
+          Trust, affection and respect shape how they treat you, and romance waits until they're high · about 1 s per reply.
+        </Toggle>
+      </Section>
 
-      <label className="block space-y-1">
-        <span className="text-sm">Cards that don't state an age</span>
-        <select value={s.unknown_age ?? "adult"} onChange={(e) => update("unknown_age", e.target.value)} className={select}>
-          <option value="adult">Treat them as adults</option>
-          <option value="platonic">Keep them platonic and out of pictures</option>
-        </select>
-        <span className="block text-xs text-slate-600">
-          {unknown ? `${unknown} of your characters don't state an age. ` : ""}
-          Add one to the description ("Dina, 24, ...") to settle it.
-        </span>
-      </label>
+      <Section title="Explicit content" hint="Adults only, and off until you turn it on.">
+        <Toggle checked={s.explicit_text} onChange={(v) => update("explicit_text", v)} title="Explicit writing">
+          Intimate scenes may be written explicitly when the story goes there.
+        </Toggle>
+        <Toggle checked={s.explicit_pictures} onChange={(v) => update("explicit_pictures", v)} title="Explicit pictures">
+          Lifts the server's own filter on explicit pictures. For SDXL models, also take "nsfw, nudity"
+          out of the "leave out" list on the Pictures tab.
+        </Toggle>
+        <p className="text-xs text-slate-500">
+          Both only ever apply to characters who may be romantic and whose card states an age of 18 or
+          over{people ? ` (${eligible} right now)` : ""}; a card without an age never qualifies.
+        </p>
+      </Section>
 
-      <button onClick={() => setOpen((v) => !v)} className="text-sm text-accent hover:underline">
-        {open ? "Hide" : "Show"} who this applies to{people ? ` (${shown.length})` : ""}
-      </button>
-      {open && people && (
-        <ul className="divide-y divide-ink-800 border border-ink-800 rounded-lg">
-          {shown.map((p) => (
-            <li key={p.id} className="flex items-center gap-2 px-3 py-2 text-sm">
-              <span className="flex-1 min-w-0 truncate">{p.name}</span>
-              <span className={`text-xs ${p.minor ? "text-amber-300" : "text-slate-500"}`}>
-                {p.minor ? "under 18" : p.age ? p.age : "no age"}
-              </span>
-              <span className="text-xs text-slate-500 w-20 text-right">{p.pictured ? "pictured" : "no pictures"}</span>
-              <label className="flex items-center gap-1.5 text-xs w-24 justify-end" title={p.minor ? "Never, written as under 18" : ""}>
-                <input
-                  type="checkbox"
-                  className="accent-accent w-4 h-4"
-                  disabled={p.minor || (s.romance_mode ?? "tagged") !== "tagged"}
-                  checked={(s.romance_mode ?? "tagged") === "tagged" ? p.romance_tag : p.romance}
-                  onChange={(e) => tag(p, e.target.checked)}
-                />
-                romance
-              </label>
-            </li>
-          ))}
-        </ul>
-      )}
-      {note && <p className="text-xs text-rose-300">{note}</p>}
-    </div>
+      <Section title="Safeguards">
+        <Toggle checked={s.guard_user_actions} onChange={(v) => update("guard_user_actions", v)} title="Keep the character from acting for you">
+          Removes lines where a reply narrates your actions or speaks for you, before it's saved.
+        </Toggle>
+      </Section>
+
+      <Section title="Who this applies to">
+        <button onClick={() => setOpen((v) => !v)} className="text-sm text-accent hover:underline">
+          {open ? "Hide" : "Show"} everyone{people ? ` (${shown.length})` : ""}
+        </button>
+        {open && people && (
+          <ul className="divide-y divide-ink-800 border border-ink-800 rounded-lg">
+            {shown.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
+                <span className="flex-1 min-w-[8rem] truncate">{p.name}</span>
+                <span className={`text-xs ${p.minor ? "text-amber-300" : "text-slate-500"}`}>
+                  {p.minor ? "under 18" : p.age ? p.age : "no age"}
+                </span>
+                <span className="text-xs text-slate-500">{p.pictured ? "pictured" : "no pictures"}</span>
+                <label className="flex items-center gap-1.5 text-xs" title={p.minor ? "Never, written as under 18" : ""}>
+                  <input
+                    type="checkbox"
+                    className="accent-accent w-4 h-4"
+                    disabled={p.minor || (s.romance_mode ?? "tagged") !== "tagged"}
+                    checked={(s.romance_mode ?? "tagged") === "tagged" ? p.romance_tag : p.romance}
+                    onChange={(e) => tag(p, e.target.checked)}
+                  />
+                  romance
+                </label>
+              </li>
+            ))}
+          </ul>
+        )}
+        {note && <p className="text-xs text-rose-300">{note}</p>}
+      </Section>
+    </>
   );
 }
 

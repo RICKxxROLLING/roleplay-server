@@ -222,6 +222,28 @@ def platonic_line(card, user: str) -> str:
     return ""
 
 
+def adult_for_explicit(card) -> bool:
+    """Who explicit content can ever involve: romance allowed and an age of 18+ stated in the card.
+    A card with no age doesn't qualify even when Safety treats it as an adult, and a minor never."""
+    return romance_allowed(card) and stated_age(card) is not None and not is_minor(card)
+
+
+def explicit_text_allowed(card) -> bool:
+    return settings.explicit_text and adult_for_explicit(card)
+
+
+def explicit_line(card, user: str) -> str:
+    """With explicit writing on in Settings → Safety, for an adult who may be romantic."""
+    if not explicit_text_allowed(card):
+        return ""
+    return (f"{card.name} and {user} are both adults. When the story turns intimate and both want it, "
+            f"the scene may be written explicitly.")
+
+
+def persona_is_minor(text: str) -> bool:
+    return bool(_MINOR.search(text or ""))
+
+
 def has_romance_tag(card) -> bool:
     return "romance" in [t.strip().lower() for t in (card.tags or [])]
 

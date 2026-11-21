@@ -50,7 +50,8 @@ async def picture_of_this_moment(session_id: int, db: DbSession = Depends(get_db
     db.commit()  # Any look written for this picture is kept, whether or not ComfyUI answers.
     try:
         positive, people = scene.for_model()
-        data = await images.render(positive, images.SCENE_SIZE, people, kind="scenes")
+        data = await images.render(positive, images.SCENE_SIZE, people, kind="scenes",
+                                   allow_explicit=images.explicit_ok(cast, s.persona.description if s.persona else ""))
     except images.ImagesUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
     p = Picture(session_id=s.id, after_message_id=s.messages[-1].id, path=images.save(data), prompt=scene.text)
@@ -110,7 +111,8 @@ async def selfie(session_id: int, db: DbSession = Depends(get_db)) -> dict:
     db.commit()
     try:
         positive, _ = scene.for_model()
-        data = await images.render(positive, images.SELFIE_SIZE, kind="selfies")
+        data = await images.render(positive, images.SELFIE_SIZE, kind="selfies",
+                                   allow_explicit=images.explicit_ok([who], s.persona.description if s.persona else ""))
     except images.ImagesUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
     p = Picture(session_id=s.id, after_message_id=s.messages[-1].id, path=images.save(data), prompt=scene.text)
@@ -157,7 +159,7 @@ async def make_portrait(char_id: int, db: DbSession = Depends(get_db)) -> dict:
         autonomy.ACTIVE -= 1
     db.commit()
     try:
-        data = await images.render(prompt, images.PORTRAIT_SIZE, kind="portraits")
+        data = await images.render(prompt, images.PORTRAIT_SIZE, kind="portraits", allow_explicit=images.explicit_ok([c]))
     except images.ImagesUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
     old = c.avatar_path

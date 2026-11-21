@@ -159,6 +159,8 @@ class SettingsPatch(BaseModel):
     trust_enabled: bool | None = None
     romance_mode: Literal["tagged", "adults", "never"] | None = None
     unknown_age: Literal["adult", "platonic"] | None = None
+    explicit_text: bool | None = None
+    explicit_pictures: bool | None = None
     narrator_default: bool | None = None
     narrator_every: int | None = None
     voices_mode: Literal["dialogue", "story", "everything"] | None = None

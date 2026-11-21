@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     romance_mode: str = "tagged"
     # A card that states no age: treated as an "adult", or kept "platonic" and never pictured.
     unknown_age: str = "adult"
+    # Adults only, off by default: explicit intimate writing, and lifting the server's explicit
+    # filter on pictures. Only ever for characters whose card states an age of 18+ and who may be
+    # romantic; never for anyone written as a minor, whatever these say.
+    explicit_text: bool = False
+    explicit_pictures: bool = False
     #: New chats start with the narrator on. Existing chats keep what they had.
     narrator_default: bool = True
     #: Roughly how many of the user's messages between narrator lines.

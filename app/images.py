@@ -294,14 +294,23 @@ def explicit(prompt: str) -> bool:
     return bool(_EXPLICIT.search(prompt or ""))
 
 
+def explicit_ok(characters, persona_text: str = "") -> bool:
+    """Whether Settings → Safety lets this picture be explicit: the switch is on, everyone in it is
+    an adult by their card's stated age and may be romantic, and the user isn't written as a minor."""
+    if not settings.explicit_pictures or not characters or trust.persona_is_minor(persona_text):
+        return False
+    return all(trust.adult_for_explicit(CharacterCard.model_validate(c.card or {"name": c.name}))
+               for c in characters)
+
+
 async def render(positive: str, size: tuple[int, int], people: list[str] | None = None,
-                 kind: str = "scenes") -> bytes:
+                 kind: str = "scenes", allow_explicit: bool = False) -> bytes:
     """One PNG from ComfyUI, or ImagesUnavailable with the reason.
 
     The picture comes back over the live connection and is never written on the PC; then the
     job is deleted from ComfyUI's history, the in-memory list of past prompts its /history
     serves, so the prompt text doesn't stay there either until ComfyUI restarts."""
-    if explicit(positive) or any(explicit(p) for p in people or []):
+    if not allow_explicit and (explicit(positive) or any(explicit(p) for p in people or [])):
         raise ImagesUnavailable("That picture would be explicit, so it isn't made.")
     base = _base()
     await wake()
