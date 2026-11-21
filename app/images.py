@@ -646,10 +646,14 @@ async def selfie_prompt(session, character, user: str, recent: list[tuple[str, s
         place, doing = _unname(got.get("Place", ""), stand_in), _unname(got.get(character.name, ""), stand_in)
         if place and doing:
             light = _unname(got.get("Light", ""), stand_in)
-            text = ", ".join(p for p in ("smartphone selfie photo, front camera, held at arm's length",
-                                         look, doing, place, light) if p)
-            flux = (f"A smartphone selfie taken at arm's length with the phone's front camera. {look}, {doing}. "
-                    f"Behind them, {place}." + (f" {light[0].upper()}{light[1:]}." if light else ""))
+            # Live on Flux, "a smartphone selfie" alone gave a second, invented person in 2 of 3,
+            # and the phone held up in view, which reads as a mirror shot.
+            one = f"one {person.split()[-1]}"
+            text = ", ".join(p for p in (f"smartphone selfie photo of {one} alone, solo, front camera point of view, "
+                                         "arm reaching toward the camera", look, doing, place, light) if p)
+            flux = (f"A smartphone selfie of {one} alone, taken with the phone's front camera at arm's length, so "
+                    f"the phone itself is out of the frame. {look}, {doing}. Behind them, {place}."
+                    + (f" {light[0].upper()}{light[1:]}." if light else "") + " Nobody else is in the photo.")
             return Scene(text, text, [], flux)
     raise ImagesUnavailable("Couldn't picture that selfie. Try again.")
 

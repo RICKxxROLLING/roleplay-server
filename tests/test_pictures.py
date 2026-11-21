@@ -436,7 +436,7 @@ def test_asking_for_a_pic_in_a_text_gets_a_selfie(client, llm, comfy, selfie_mod
     g = comfy.prompts[0]["prompt"]
     text = g["2"]["inputs"]["text"]
     # The selfie LoRA and its trigger, not the scene one; portrait-shaped; their look and the moment.
-    assert text.startswith("shot on iPhone, smartphone selfie photo")
+    assert text.startswith("shot on iPhone, smartphone selfie photo of one woman alone, solo")
     assert "long black hair" in text and "grinning, paintbrush in hand" in text and "Seraphine" not in text
     assert [n["inputs"]["lora_name"] for n in g.values() if n["class_type"] == "LoraLoaderModelOnly"] == ["phone_selfie.safetensors"]
     assert (g["4"]["inputs"]["width"], g["4"]["inputs"]["height"]) == (832, 1216)
