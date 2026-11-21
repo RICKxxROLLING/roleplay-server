@@ -531,8 +531,14 @@ list in settings (file, strength, use: always/scenes/selfies/portraits, trigger 
 chained with LoraLoaderModelOnly. In texting mode a selfie comes from whoever sent the last reply:
 by the panel button, or when the user's text asks for one (`asks_for_picture`) and the session
 reports `selfie_wanted` after the reply; drawn 832x1216 from their saved look and what the texts
-say they're doing. Minors and cards kept platonic are refused as for any picture. Not yet run on a
-real Flux install.
+say they're doing. Minors and cards kept platonic are refused as for any picture. Run on the owner's
+FLUX.1 dev fp8 (RX 9060 XT, 16 GB): a two-person scene followed the description far better than SDXL
+(both people separate, every item of clothing right) in 299 s with the model loading; a selfie in
+58 s without a LoRA, 186-248 s with one (UltraRealPhoto or Digicam), apparently the LoRA being applied
+while the 17 GB checkpoint is partly offloaded. "A smartphone selfie" alone gave a second invented
+person in 2 of 3 and the phone held up in view; "one woman alone ... the phone out of the frame ...
+nobody else" gave one person, front-camera framing, 2 of 2. A LoRA's base is read from its header:
+`double_blocks` keys mean FLUX.1; one of the owner's was for a MOSS model and can't load on Flux.
 
 **Settings → Safety chooses for adults only (`routes/safety.py`, `trust.romance_allowed`).** Owner
 request. `romance_mode`: cards tagged `romance` (the default and the old behaviour), any adult, or
