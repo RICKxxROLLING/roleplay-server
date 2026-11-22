@@ -12,6 +12,12 @@ prompt alone does it. What it left was smaller: the speaker's own label on a
 later line ("Dina: hopefully not"), a meta line "(No further messages)", and
 one reply cut at the token cap. Those are what `clean_texts` removes.
 
+Long distance (`ChatSession.long_distance`, texting only) makes the thread the whole
+relationship: they live far apart, so the character stops inviting the user to meet up
+(prompt/builder.py, LONG_DISTANCE_*), and `drop_partings` takes off the "c u soon!" and
+"night, sweet dreams" that ended replies while the user was still talking. Both are
+about the same thing: a thread that keeps going instead of winding itself up.
+
 Rules that make sense for prose are off here, deliberately:
 - The first-person redo: "I'm on my way" is simply how a text reads.
 - The narration guard: it would read a text like "Riley you there?" as the
@@ -95,10 +101,55 @@ def _switch_note(session, exclude_ids=None) -> str:
     prior = [m for m in session.messages
              if m.role == "assistant" and m.id not in (exclude_ids or ())]
     if not prior:
-        return TO_TEXTING if texting else ""
+        # A thread that started as texts (no greeting): there is no scene they parted from.
+        return ""
     last_texted = bool(prior[-1].texted)
     if texting and not last_texted:
         return TO_TEXTING
     if not texting and last_texted:
         return TO_STORY
     return ""
+
+
+# --- keeping the thread going -------------------------------------------------------------
+
+#: A text that only signs off: "c u soon!", "Night, sweet dreams", "ok ttyl". Anchored at both
+#: ends, so "see you at 8" or "night shift again ugh" are left alone.
+_PARTING = re.compile(
+    r"^(?:(?:ok(?:ay)?|alright|anyway|well|cool|aw+|no worries|rest up|haha|lol)[\s,.!]*)*"
+    r"(?:(?:good\s?night|g?night|nite|sleep (?:tight|well)|sweet dreams|ttyl|bye+|later|"
+    r"talk (?:to (?:you|u|ya) )?(?:later|soon|tomorrow|tmrw)|gotta (?:go|run)|catch (?:you|u|ya) later|"
+    r"(?:see|c) (?:you|u|ya)(?: (?:soon|later|tomorrow|tmrw))?|xo+|x+)[\s,.!~]*)+"
+    r"(?:\w+)?[\s,.!~]*$",
+    re.I,
+)
+#: The user's text winds things down, so a goodbye back is only polite.
+_USER_LEAVING = re.compile(
+    r"\b(?:good\s?night|g?night|nite|bye|ttyl|gotta (?:go|run)|tired|sleep|bed|talk (?:later|tomorrow|soon)|"
+    r"heading (?:out|off)|later|see (?:you|u|ya)|c u)\b",
+    re.I,
+)
+_EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F]")
+
+
+def _is_parting(line: str) -> bool:
+    plain = _EMOJI.sub("", line).strip()
+    return bool(plain) and len(plain) <= 40 and bool(_PARTING.match(plain))
+
+
+def drop_partings(text: str, user_text: str) -> str:
+    """Texts that only say goodbye, when the user wasn't leaving. One text is always kept:
+    a reply that is nothing but a goodbye is still the reply."""
+    if _USER_LEAVING.search(user_text or ""):
+        return text
+    lines = [l for l in (text or "").splitlines() if l.strip()]
+    kept = [l for l in lines if not _is_parting(l)]
+    return "\n".join(kept or lines[:1])
+
+
+def long_distance(session) -> str | None:
+    """What the prompt builder takes: the owner's note on where each of them is, "" for the
+    general line, or None when the chat isn't a long-distance text thread."""
+    if session.mode != "texting" or not getattr(session, "long_distance", False):
+        return None
+    return (getattr(session, "apart", "") or "").strip()

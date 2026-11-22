@@ -99,6 +99,7 @@ async def build_turn_prompt(
         # A world chat keeps the story's clock (encounters.next_time), not the owner's.
         time_note="" if initiative or exclude_ids or world_chat else autonomy.time_line(session),
         texting=session.mode == "texting",
+        long_distance=texting.long_distance(session),
         mode_note=encounters.tail_note(session, card, exclude_ids, db) if world_chat
         else texting.mode_note(session, exclude_ids, card),
         slow_pacing=settings.slow_pacing,
@@ -189,7 +190,9 @@ def _guarded(reply: str, session: ChatSession, card: CharacterCard) -> tuple[str
     if session.mode == "texting":
         # Texts get their own tidy-up; the narration guard would misread them
         # ("Riley you there?"). See chat/texting.py.
-        return texting.clean_texts(reply, card.name, user_name), 0
+        # And a goodbye the user didn't ask for comes off, so the thread keeps going.
+        last_user = next((m.content for m in reversed(session.messages) if m.role == "user"), "")
+        return texting.drop_partings(texting.clean_texts(reply, card.name, user_name), last_user), 0
     if not settings.guard_user_actions:
         return reply, 0
     char_pronoun = _pronoun_of(card)

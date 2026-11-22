@@ -153,6 +153,10 @@ class ChatSession(Base):
     choices: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # "story" or "texting" (chat/texting.py): the same chat as prose, or as a text thread.
     mode: Mapped[str] = mapped_column(String(20), default="story")
+    # Texting only: they live far apart and the thread is how they keep in touch
+    # (chat/texting.py). `apart` is the owner's note on where each of them is.
+    long_distance: Mapped[bool] = mapped_column(default=False)
+    apart: Mapped[str] = mapped_column(Text, default="")
     next_check_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
     # Set for a world chat: people come and go in encounters (chat/encounters.py).

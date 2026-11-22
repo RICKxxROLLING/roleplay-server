@@ -31,7 +31,7 @@ L3-8B-Stheno-v3.2 on an 8 GB RTX 2080; the measurements behind each choice are i
   headings mark each meeting.
 - **Worlds** — a shared setting and lorebook for many characters, and generated locals
   (extras) who can visit or join a scene.
-- **Texting mode** — the same chat as a phone thread, switching in and out.
+- **Texting mode** — the same chat as a phone thread, switching in and out. **Long distance** makes it one ongoing thread with someone who lives far away: no meet-up invites, no winding down unless you do.
 - **Swipes** — regenerate keeps every version of the last reply to flip between.
 - **Stop keeps what was written** — generation ends on the GPU and the partial reply is saved.
 - **Choices** — three things you could do next, above the type box.

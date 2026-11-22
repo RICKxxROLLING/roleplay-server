@@ -25,6 +25,10 @@ export default function NewChatDialog({
   const [greetingIndex, setGreetingIndex] = useState(0);
   const [title, setTitle] = useState("");
   const [memberIds, setMemberIds] = useState([]);
+  // "story" in person, or a text thread from the start (app/chat/texting.py).
+  const [mode, setMode] = useState("story");
+  const [longDistance, setLongDistance] = useState(true);
+  const [apart, setApart] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -33,6 +37,9 @@ export default function NewChatDialog({
     setError(null);
     setGreetingIndex(0);
     setMemberIds([]);
+    setMode("story");
+    setLongDistance(true);
+    setApart("");
     setPersonaId(personas[0]?.id ?? "");
     setTitle(`Chat with ${character.name}`);
     api
@@ -67,6 +74,9 @@ export default function NewChatDialog({
         greeting_index: greetingIndex,
         member_ids: memberIds,
         title: title.trim() || undefined,
+        mode,
+        long_distance: mode === "texting" && longDistance,
+        apart: mode === "texting" && longDistance ? apart.trim() : "",
       });
       onCreated?.(s.id);
       onClose();
@@ -124,46 +134,101 @@ export default function NewChatDialog({
         </Field>
       )}
 
-      <Field
-        label="Opening message"
-        hint={
-          greetings.length > 1
-            ? `${greetings.length} to choose from`
-            : "from the character card"
-        }
-      >
-        {!card ? (
-          <p className="text-sm text-slate-600">Loading card…</p>
-        ) : (
-          <div className="space-y-2 max-h-56 overflow-y-auto scroll-thin">
-            {greetings.map((g, i) => (
-              <button
-                key={i}
-                onClick={() => setGreetingIndex(i)}
-                className={`w-full text-left rounded-lg px-3 py-2.5 text-sm leading-relaxed border transition ${
-                  greetingIndex === i
-                    ? "border-accent/50 bg-accent/10"
-                    : "border-ink-800 hover:border-ink-700"
-                }`}
-              >
-                <div className="text-[11px] uppercase tracking-wider text-slate-600 mb-1">
-                  {i === 0 ? "Default greeting" : `Alternate ${i}`}
-                </div>
-                <div className="text-slate-300 whitespace-pre-wrap">
-                  {preview(g, card.name, userName) || (
-                    <span className="text-slate-600">(empty)</span>
-                  )}
-                </div>
-              </button>
-            ))}
-            {greetings.length === 0 && (
-              <p className="text-sm text-slate-600">
-                This card has no greeting. The chat will start empty.
-              </p>
+      <Field label="How you talk" hint={mode === "texting" ? "a text thread, no opening scene" : "a story, told in person"}>
+        <div className="flex rounded-lg border border-ink-800 overflow-hidden" role="group" aria-label="How you talk">
+          {[
+            ["story", "In person"],
+            ["texting", "Texting"],
+          ].map(([m, label]) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              aria-pressed={mode === m}
+              className={`flex-1 min-h-[38px] text-sm ${
+                mode === m ? "bg-ink-800 text-slate-100" : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {mode === "texting" && (
+          <div className="mt-3 space-y-3">
+            <label className="flex gap-2.5 items-start cursor-pointer text-sm">
+              <input
+                type="checkbox"
+                checked={longDistance}
+                onChange={(e) => setLongDistance(e.target.checked)}
+                className="accent-accent w-4 h-4 mt-0.5 shrink-0"
+              />
+              <span className="min-w-0">
+                <span className="block text-slate-200">Long distance</span>
+                <span className="block text-xs text-slate-500 leading-snug mt-0.5">
+                  You live far apart: one long thread that keeps going, with no asking to meet up and no winding
+                  down unless you do.
+                </span>
+              </span>
+            </label>
+            {longDistance && (
+              <Input
+                value={apart}
+                maxLength={300}
+                onChange={(e) => setApart(e.target.value)}
+                placeholder={`Where you each are (optional): ${character.name.split(" ")[0]} in Vermont, ${
+                  userName === "You" ? "you" : userName
+                } in Denver`}
+              />
             )}
+            <p className="text-xs text-slate-500">
+              You text first. Turn on Writes first in the chat and {character.name.split(" ")[0]} will text you on
+              their own too.
+            </p>
           </div>
         )}
       </Field>
+
+      {mode === "story" && (
+        <Field
+          label="Opening message"
+          hint={
+            greetings.length > 1
+              ? `${greetings.length} to choose from`
+              : "from the character card"
+          }
+        >
+          {!card ? (
+            <p className="text-sm text-slate-600">Loading card…</p>
+          ) : (
+            <div className="space-y-2 max-h-56 overflow-y-auto scroll-thin">
+              {greetings.map((g, i) => (
+                <button
+                  key={i}
+                  onClick={() => setGreetingIndex(i)}
+                  className={`w-full text-left rounded-lg px-3 py-2.5 text-sm leading-relaxed border transition ${
+                    greetingIndex === i
+                      ? "border-accent/50 bg-accent/10"
+                      : "border-ink-800 hover:border-ink-700"
+                  }`}
+                >
+                  <div className="text-[11px] uppercase tracking-wider text-slate-600 mb-1">
+                    {i === 0 ? "Default greeting" : `Alternate ${i}`}
+                  </div>
+                  <div className="text-slate-300 whitespace-pre-wrap">
+                    {preview(g, card.name, userName) || (
+                      <span className="text-slate-600">(empty)</span>
+                    )}
+                  </div>
+                </button>
+              ))}
+              {greetings.length === 0 && (
+                <p className="text-sm text-slate-600">
+                  This card has no greeting. The chat will start empty.
+                </p>
+              )}
+            </div>
+          )}
+        </Field>
+      )}
 
       <div className="flex items-center gap-2 pt-1">
         <Button variant="primary" onClick={create} disabled={busy}>

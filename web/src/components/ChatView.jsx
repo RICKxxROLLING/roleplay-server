@@ -59,6 +59,16 @@ export default function ChatView({
     }
   }
 
+  // Long distance (app/chat/texting.py): they live far apart, and the thread is how they keep in touch.
+  async function setLongDistance(patch) {
+    try {
+      await api.updateSession(sessionId, patch);
+      await reload();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   async function setAutonomous(on) {
     try {
       await api.updateSession(sessionId, { autonomous: on });
@@ -963,6 +973,25 @@ export default function ChatView({
                 ))}
               </div>
             )}
+            {session?.mode === "texting" && !worldChat && (
+              <>
+                <Toggle
+                  label="Long distance"
+                  hint={`You live far apart, so ${charName || "they"} won't ask to meet up or wind the thread down`}
+                  checked={!!session?.long_distance}
+                  onChange={(on) => setLongDistance({ long_distance: on })}
+                />
+                {session?.long_distance && (
+                  <ApartField
+                    key={`${sessionId}-${session?.apart || ""}`}
+                    initial={session?.apart || ""}
+                    charName={charName}
+                    userName={userName}
+                    onSave={(apart) => setLongDistance({ apart })}
+                  />
+                )}
+              </>
+            )}
             <label className="block text-xs text-slate-500">
               Playing as
               <select
@@ -1195,6 +1224,25 @@ function PanelLink({ children, ...props }) {
     <button {...props} className="block w-full min-h-[28px] text-left text-slate-300 hover:text-accent disabled:opacity-40">
       {children}
     </button>
+  );
+}
+
+/** Where each of them is, for a long-distance thread. Saved when the field loses focus. */
+function ApartField({ initial, charName, userName, onSave }) {
+  const [text, setText] = useState(initial);
+  return (
+    <label className="block text-xs text-slate-500">
+      Where you each are <span className="text-slate-600">(optional)</span>
+      <input
+        value={text}
+        maxLength={300}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => text.trim() !== initial.trim() && onSave(text.trim())}
+        onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+        placeholder={`${charName ? charName.split(" ")[0] : "They"} in Vermont, ${userName === "You" ? "you" : userName} in Denver`}
+        className="mt-1 w-full bg-ink-850 border border-ink-700 rounded-lg px-2 py-2 text-sm text-slate-200 outline-none focus:border-accent/60"
+      />
+    </label>
   );
 }
 

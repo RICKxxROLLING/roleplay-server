@@ -157,3 +157,88 @@ def test_a_described_photo_is_dropped_from_the_texts():
     got = clean_texts("[Photo of Sadie Wren, smiling, new haircut]\nHere's the new look! What do ya think?", "Sadie Wren", "Riley")
     assert got == "Here's the new look! What do ya think?"
     assert clean_texts("[laughs] ok fine", "Sadie Wren", "Riley") == "[laughs] ok fine"
+
+
+# --- long distance: one long thread ---------------------------------------------------
+
+def test_goodbyes_come_off_when_the_user_is_still_talking():
+    from app.chat.texting import drop_partings
+
+    assert drop_partings("just saw a squirrel\nc u soon!", "tell me something") == "just saw a squirrel"
+    assert drop_partings("No worries, rest up. C u soon!\nNight, sweet dreams\nhaha anyway", "lol") == "haha anyway"
+    # Things that only look like goodbyes stay.
+    assert drop_partings("see you at 8\nnight shift again ugh", "hey") == "see you at 8\nnight shift again ugh"
+    # The user is leaving: a goodbye back is only polite.
+    assert drop_partings("ok night!\nsleep well", "im tired, going to bed") == "ok night!\nsleep well"
+    # A reply that is only a goodbye is still the reply.
+    assert drop_partings("ttyl!", "ok") == "ttyl!"
+
+
+def test_a_goodbye_is_trimmed_in_the_chat(client, session, llm):
+    texting(client, session)
+    # The mock adds " reply N." to the last line, so the goodbye goes in the middle.
+    llm.replies = ["haha same\nc u soon!\nwhat are you up to tonight?"]
+    say(client, session, "lol i just had leftovers")
+    got = client.get(f"/api/sessions/{session}").json()["messages"][-1]["content"]
+    assert got.startswith("haha same\nwhat are you up to tonight") and "c u soon" not in got
+
+
+def test_a_long_distance_thread_tells_the_model_they_live_far_apart(client, session, llm):
+    texting(client, session)
+    llm.replies = ["hey you"]
+    say(client, session, "hey")
+    assert "live far apart" not in chat_prompts(llm)[-1]
+    r = client.patch(f"/api/sessions/{session}", json={"long_distance": True, "apart": "Seraphine is in Lisbon, You in Oslo."})
+    assert r.json()["long_distance"] and r.json()["apart"] == "Seraphine is in Lisbon, You in Oslo."
+    llm.replies = ["miss the sea"]
+    say(client, session, "how's the weather there")
+    p = chat_prompts(llm)[-1]
+    assert "They live far apart -- Seraphine is in Lisbon, You in Oslo --" in p
+    assert "never suggests meeting up" in p and "doesn't say goodbye or goodnight unless You does" in p
+    assert "are apart; Seraphine is answering" not in p  # the long-distance tail replaces the plain one
+    # Back in story mode the long-distance lines are gone (a visit, say).
+    texting(client, session, on=False)
+    llm.replies = ["*She waves.*"]
+    say(client, session, "*I knock.*")
+    assert "live far apart" not in chat_prompts(llm)[-1]
+
+
+def test_a_chat_can_start_as_a_long_distance_thread(client, imported, llm):
+    r = client.post("/api/sessions", json={"character_id": imported, "mode": "texting", "long_distance": True})
+    assert r.status_code == 200, r.text
+    sid = r.json()["id"]
+    assert r.json()["messages"] == []  # no greeting: a card's greeting is a scene in person
+    s = client.get(f"/api/sessions/{sid}").json()
+    assert s["mode"] == "texting" and s["long_distance"] and s["apart"] == ""
+    llm.replies = ["omg hi"]
+    say(client, sid, "hey stranger")
+    p = chat_prompts(llm)[-1]
+    assert "You lives hours away from Seraphine, too far to just drop by" in p
+    assert "separate ways" not in p  # there was no scene to part from
+    # Long distance only means something in a text thread.
+    plain = client.post("/api/sessions", json={"character_id": imported, "long_distance": True}).json()["id"]
+    assert not client.get(f"/api/sessions/{plain}").json()["long_distance"]
+
+
+def test_writing_first_from_far_away_is_a_text(client, imported):
+    import datetime as dt
+
+    from app.chat import autonomy
+    from app.db.database import SessionLocal
+    from app.db.models import ChatSession
+
+    sid = client.post("/api/sessions", json={"character_id": imported, "mode": "texting", "long_distance": True}).json()["id"]
+    client.post(f"/api/sessions/{sid}/messages", json={"content": "hey"})
+    with SessionLocal() as db:
+        s = db.get(ChatSession, sid)
+        p = autonomy.build_decide_prompt(s, s.character, "Riley", dt.datetime.now(dt.timezone.utc))
+        assert "send them a text?" in p and "come find them" not in p
+
+
+def test_long_distance_survives_export_and_import(client, imported, llm):
+    sid = client.post("/api/sessions", json={"character_id": imported, "mode": "texting", "long_distance": True,
+                                              "apart": "an ocean apart"}).json()["id"]
+    llm.replies = ["hi!"]
+    say(client, sid, "hey")
+    exported = client.get(f"/api/sessions/{sid}/export").json()
+    assert exported["long_distance"] is True and exported["apart"] == "an ocean apart"

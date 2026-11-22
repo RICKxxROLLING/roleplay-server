@@ -53,6 +53,8 @@ _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     ("encounters", "visiting", "BOOLEAN NOT NULL DEFAULT 0"),
     ("characters", "look", "TEXT NOT NULL DEFAULT ''"),
     ("personas", "look", "TEXT NOT NULL DEFAULT ''"),
+    ("sessions", "long_distance", "BOOLEAN NOT NULL DEFAULT 0"),
+    ("sessions", "apart", "TEXT NOT NULL DEFAULT ''"),
 ]
 
 

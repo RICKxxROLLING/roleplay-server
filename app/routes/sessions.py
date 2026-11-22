@@ -31,6 +31,11 @@ class SessionIn(BaseModel):
     member_ids: list[int] = []
     #: Unset takes the server's default for new chats.
     narrator: bool | None = None
+    #: A text thread from the start: no greeting, since a card's greeting is a scene in person.
+    mode: Literal["story", "texting"] = "story"
+    #: Texting: they live far apart (chat/texting.py), and where each of them is.
+    long_distance: bool = False
+    apart: str = Field("", max_length=300)
 
 
 class MessageIn(BaseModel):
@@ -86,6 +91,9 @@ def create_session(body: SessionIn, db: DbSession = Depends(get_db)) -> dict:
         persona_id=persona.id if persona else None,
         title=body.title or f"Chat with {names}",
         narrator=settings.narrator_default if body.narrator is None else body.narrator,
+        mode=body.mode,
+        long_distance=body.long_distance and body.mode == "texting",
+        apart=body.apart.strip() if body.mode == "texting" else "",
     )
     db.add(s)
     db.commit()
@@ -97,7 +105,7 @@ def create_session(body: SessionIn, db: DbSession = Depends(get_db)) -> dict:
     card = CharacterCard.model_validate(char.card or {})
     greetings = [card.first_mes, *card.alternate_greetings]
     idx = body.greeting_index if 0 <= body.greeting_index < len(greetings) else 0
-    greeting = greetings[idx] if greetings else ""
+    greeting = greetings[idx] if greetings and body.mode == "story" else ""
     if greeting:
         db.add(
             Message(
@@ -532,6 +540,9 @@ class SessionPatch(BaseModel):
     autonomous: bool | None = None
     #: "story" or "texting" (chat/texting.py).
     mode: Literal["story", "texting"] | None = None
+    #: Texting: they live far apart, and the owner's note on where each of them is.
+    long_distance: bool | None = None
+    apart: str | None = Field(None, max_length=300)
     #: Short lines about the world around the scene (chat/narrator.py).
     narrator: bool | None = None
     #: Generated choices above the type box (chat/choices.py).
@@ -567,6 +578,10 @@ def update_session(
         s.next_check_at = None
     if body.mode is not None:
         s.mode = body.mode
+    if body.long_distance is not None:
+        s.long_distance = body.long_distance
+    if body.apart is not None:
+        s.apart = body.apart.strip()
     if body.narrator is not None:
         s.narrator = body.narrator
     if body.choice_mode is not None:
@@ -582,6 +597,8 @@ def _autonomy_status(s: ChatSession) -> dict:
 
     return {
         "mode": s.mode or "story",
+        "long_distance": bool(s.long_distance),
+        "apart": s.apart or "",
         "narrator": bool(s.narrator),
         "choice_mode": bool(s.choice_mode),
         "autonomous": bool(s.autonomous),

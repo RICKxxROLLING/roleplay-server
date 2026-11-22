@@ -94,10 +94,26 @@ TEXTING_SYSTEM = (
 # second and third texts back into that scene ("JJ, stay close to Uncle Riley").
 # Offline on the same chat, the every-turn line kept 4/4 replies texting from
 # apart, against 3/4 without it, and both answered the user's latest text.
-TEXTING_TAIL = (
-    "{{char}} and {{user}} are apart; {{char}} is answering {{user}}'s latest text from "
-    "wherever they are. Reply as {{char}} with their next text to {{user}}: just the words "
-    "they type, short and casual. One to three short messages, each on its own line."
+TEXTING_REPLY = (
+    "{{char}} is answering {{user}}'s latest text from wherever they are. Reply as {{char}} "
+    "with their next text to {{user}}: just the words they type, short and casual. One to "
+    "three short messages, each on its own line."
+)
+TEXTING_TAIL = "{{char}} and {{user}} are apart; " + TEXTING_REPLY[0].lower() + TEXTING_REPLY[1:]
+
+# Long distance (chat/texting.py): they live far apart, and the thread is how they keep
+# in touch. On Stheno, Sadie over two 15-text chains asked to meet up in 3/15 replies
+# each with the plain texting lines ("come by the studio", "meet me at the bridge") --
+# every one an invitation to end the thread -- and 0/15 and 1/15 with these.
+LONG_DISTANCE_SYSTEM = (
+    "They live far apart -- {where} -- and keep in touch by text: one long, ongoing "
+    "thread that carries on over days and weeks."
+)
+LONG_DISTANCE_WHERE = "{{user}} lives hours away from {{char}}, too far to just drop by"
+LONG_DISTANCE_TAIL = (
+    "{{user}} is far away, so {{char}} never suggests meeting up and never says see you; "
+    "they share their day, ask about {{user}}'s and keep the conversation going. {{char}} "
+    "doesn't say goodbye or goodnight unless {{user}} does."
 )
 
 INSTRUCTION = "### Instruction:"
@@ -196,6 +212,9 @@ def build_prompt(
     time_note: str = "",
     initiative: str = "",
     texting: bool = False,
+    #: Texting only: they live far apart. The owner's note on where each of them is, or
+    #: "" for the general line; None when the chat isn't long distance.
+    long_distance: str | None = None,
     mode_note: str = "",
     texting_examples: bool = True,
     private_view: str = "",
@@ -222,6 +241,10 @@ def build_prompt(
     system = substitute(
         TEXTING_SYSTEM if texting else (card.system_prompt or DEFAULT_SYSTEM), char, user_name
     )
+    far = texting and long_distance is not None
+    if far:
+        where = long_distance.strip().rstrip(".") or LONG_DISTANCE_WHERE
+        system += " " + substitute(LONG_DISTANCE_SYSTEM.format(where=where), char, user_name)
     pacing = slow_pacing and not texting and not initiative
     head_parts = [system, substitute(IMPERSONATION_GUARD, char, user_name),
                   substitute(PACING_DIRECTIVE, char, user_name) if pacing else "", style]
@@ -332,7 +355,8 @@ def build_prompt(
         # stayed wary in all 5 with it here (only 1 opened up), against 5/5 at trust 80.
         substitute(standing, char, user_name),
         PACING_TAIL if pacing else "",
-        substitute(TEXTING_TAIL if texting else TAIL_REMINDER, char, user_name),
+        substitute(LONG_DISTANCE_TAIL + " " + TEXTING_REPLY if far
+                   else TEXTING_TAIL if texting else TAIL_REMINDER, char, user_name),
     ]
     tail = fmt.tail.format(text="\n".join(p for p in tail_parts if p))
     used += estimate_tokens(tail)

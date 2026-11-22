@@ -685,6 +685,24 @@ Live on the test box the format held (5/5 texts clean) but texts 2-3 drifted bac
 story scene the last prose reply ended in, so "they are apart" now rides in the tail on
 every texting reply, not only the first after a switch (4/4 apart vs 3/4, same chat).
 
+**Long distance keeps a text thread going (`ChatSession.long_distance`, `apart`).** The owner
+asked for texting as one long, ongoing chain, not one that winds itself up. On Stheno a plain
+15-text chain with Sadie had her invite Riley to meet in person in 8 replies ("come by the
+studio", "meet me at the covered bridge"), sign off 5 times while he was still talking
+("c u tomorrow!", "Night, sweet dreams"), and once act as if they lived together. With long
+distance on, the system line adds "They live far apart -- {where} -- and keep in touch by
+text: one long, ongoing thread..." (`where` is the owner's note, or "Riley lives hours away")
+and the tail swaps "are apart" for "never suggests meeting up and never says see you... doesn't
+say goodbye or goodnight unless Riley does". Two 15-text chains each, same lines: meet-ups 3
+and 3 replies -> 0 and 1. Sign-offs varied run to run either way (0-4), so `drop_partings`
+removes texts that are only a goodbye ("c u soon!", "ok ttyl", anchored both ends so "see you
+at 8" stays) unless the user's own text was winding down, keeping at least one line; it runs
+on every texting reply, long distance or not. A chat can start as texting (`mode` on create):
+no greeting then, since a card's greeting is a scene in person, and no "gone their separate
+ways" line on the first text. Writing first asks "would they send them a text" instead of
+"come find them". The world setting can still say "the user is a local"; the owner's note on
+where each of them is wins in practice because it sits in the system line and the tail.
+
 **Push notifications are an empty ping (`app/push.py`, `web/public/sw.js`).** A sleeping phone
 can only be woken through its vendor's relay (Apple, Google, Mozilla), so the owner chose:
 the push carries no payload at all, and the service worker then fetches `/api/push/pending`

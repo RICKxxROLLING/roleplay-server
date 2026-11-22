@@ -174,7 +174,7 @@ DECIDE_PROMPT = """{char} and {user} are in an ongoing story. It is now {now}, a
 {char}'s personality: {personality}
 {day}
 Would {char}, being who they are, reach out to {user} right now without being asked -- \
-send a message, or come find them? Think about unfinished business, a promise or plan, \
+{how}? Think about unfinished business, a promise or plan, \
 their feelings about {user}, and what {char} would be doing at this hour. People don't \
 write every time they could.
 
@@ -206,6 +206,9 @@ def build_decide_prompt(session: ChatSession, char, user: str, now: dt.datetime)
         scene=f"\nWhere things stood:\n{render_scene(session.scene)}\n" if session.scene else "",
         personality=(card.personality or card.description or "")[:600].strip(),
         day=f"{line}\n" if (line := rhythm.day_line(char, local_now(now))) else "",
+        # Long distance: there is no coming to find them, only a text.
+        how="send them a text" if session.long_distance and session.mode == "texting"
+        else "send a message, or come find them",
     )
     fmt = get_format(settings.prompt_format)
     return fmt.user.format(text=body) + fmt.joiner + fmt.response_open + "Answer:"
