@@ -30,7 +30,15 @@ ALLOW = set(CONFIG.get("allow", ["10.2.1.75"])) | {"127.0.0.1", "::1"}
 COMFY = CONFIG.get("comfyui_url", "http://127.0.0.1:8188").rstrip("/")
 IDLE_S = int(CONFIG.get("idle_minutes", 15)) * 60
 
-state = {"proc": None, "last": time.time(), "starting": False}
+state = {"proc": None, "last": time.time(), "starting": False, "tail": [], "exit": None}
+#: ComfyUI's last lines of output, in memory only, so /status can say why it stopped. Never written
+#: anywhere: ComfyUI's console shows progress, not prompts, but nothing of a chat is kept on this PC.
+TAIL_LINES = 40
+
+
+def _read(stream) -> None:
+    for raw in iter(stream.readline, b""):
+        state["tail"] = (state["tail"] + [raw.decode("utf-8", "replace").rstrip()])[-TAIL_LINES:]
 lock = threading.Lock()
 
 
@@ -55,9 +63,14 @@ def start() -> str:
         if proc is not None and proc.poll() is None:
             return "starting"
         flags = 0x08000000 if os.name == "nt" else 0  # CREATE_NO_WINDOW
+        state["tail"], state["exit"] = [], None
         state["proc"] = subprocess.Popen(
-            CONFIG["command"], cwd=CONFIG.get("cwd") or None, env={**os.environ, **CONFIG.get("env", {})},
-            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=flags)
+            # UTF-8 output: with no console, Python writes in the Windows code page, and a custom node
+            # printing an emoji at startup crashed ComfyUI (UnicodeEncodeError, exit 1) every time.
+            CONFIG["command"], cwd=CONFIG.get("cwd") or None,
+            env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", **CONFIG.get("env", {})},
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=flags)
+        threading.Thread(target=_read, args=(state["proc"].stdout,), daemon=True).start()
         return "starting"
 
 
@@ -106,7 +119,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(404, {})
         proc = state["proc"]
         now = "running" if answering() else "starting" if proc is not None and proc.poll() is None else "stopped"
-        self._send(200, {"comfyui": now, "idle_s": int(time.time() - state["last"]), "stops_after_s": IDLE_S})
+        body = {"comfyui": now, "idle_s": int(time.time() - state["last"]), "stops_after_s": IDLE_S}
+        if proc is not None and proc.poll() is not None:
+            # It exited by itself: the end of its output says why.
+            body.update(exit_code=proc.returncode, last_output=state["tail"][-15:])
+        self._send(200, body)
 
     def do_POST(self):
         if not self._allowed():

@@ -586,6 +586,11 @@ no pictures are wanted. The server can't start a Windows program, so a stdlib he
 XT), and it is stopped after 15 idle minutes, counted from the last /start or a job in ComfyUI's queue. It
 answers only the server's address, sends ComfyUI's console output nowhere and never stops a ComfyUI it
 didn't start. Settings asks the helper whether ComfyUI is merely stopped, so opening Settings never starts it.
+Two failures seen since: the helper was gone (most likely killed when another app ate the PC's memory)
+and its logon task had never run, as the PC hadn't signed in since the task was made; and then ComfyUI
+exited at once under the helper, because with no console Python wrote in the Windows code page and a
+custom node's emoji raised UnicodeEncodeError. The child now gets PYTHONUTF8/PYTHONIOENCODING, and the
+helper keeps ComfyUI's last 40 lines in memory only, shown in /status after an exit.
 
 **Your typed line gets its quotes and asterisks from the model, kept only if every word survives (`chat/tidy.py`).**
 Asked for by the owner, who types speech and actions together ("yeah okay ill try I smile"). Few-shot
