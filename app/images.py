@@ -345,9 +345,13 @@ async def render(positive: str, size: tuple[int, int], people: list[str] | None 
             if r.status_code >= 400:
                 raise ImagesUnavailable(f"ComfyUI refused the picture: {r.text[:300]}")
             prompt_id = r.json()["prompt_id"]
+            done = False
             try:
                 picture = await asyncio.wait_for(_collect(ws, prompt_id), TIMEOUT_S)
+                done = True
             finally:
+                if not done:
+                    await _cancel(http, base, prompt_id)
                 # Best effort: the prompt goes from ComfyUI's history whether or not it worked.
                 try:
                     await http.post(f"{base}/history", json={"delete": [prompt_id]})
@@ -362,6 +366,19 @@ async def render(positive: str, size: tuple[int, int], people: list[str] | None 
     if not picture:
         raise ImagesUnavailable("ComfyUI finished without sending a picture back.")
     return picture
+
+
+async def _cancel(http, base: str, prompt_id: str) -> None:
+    """Take a job the server has given up on out of ComfyUI: off the queue if it's waiting, stopped
+    if it's the one running. Live, slow pictures timed out here but still ran there, each retry
+    queued another, and the queue grew to seven, which made every picture slower still."""
+    try:
+        await http.post(f"{base}/queue", json={"delete": [prompt_id]})
+        q = (await http.get(f"{base}/queue")).json()
+        if any(len(job) > 1 and job[1] == prompt_id for job in q.get("queue_running") or []):
+            await http.post(f"{base}/interrupt", json={"prompt_id": prompt_id})
+    except Exception:
+        pass  # Best effort: ComfyUI may already be gone.
 
 
 async def _collect(ws, prompt_id: str) -> bytes:

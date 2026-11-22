@@ -6,6 +6,7 @@ each job is deleted from ComfyUI's history, and that an install that can't do th
 """
 from __future__ import annotations
 
+import asyncio
 import json
 
 import httpx
@@ -484,3 +485,42 @@ def test_the_style_words_are_the_owners(client, session, comfy, describes):
     pic = client.post(f"/api/sessions/{session}/pictures").json()
     assert pic["prompt"].endswith("ultra-realistic photograph, natural light")
     assert "digital painting" not in comfy.prompts[0]["prompt"]["2"]["inputs"]["text"]
+
+
+def test_a_picture_given_up_on_is_taken_out_of_comfyui(client, session, comfy, describes, monkeypatch):
+    # Live: timed-out pictures still ran in ComfyUI, retries queued more, and the queue grew to seven.
+    calls = []
+    real = comfy.handler
+
+    def handler(request):
+        if request.url.path == "/queue" and request.method == "POST":
+            calls.append(("unqueue", json.loads(request.content)["delete"]))
+            return httpx.Response(200)
+        if request.url.path == "/queue":
+            return httpx.Response(200, json={"queue_running": [[0, "p1", {}, {}, []]], "queue_pending": []})
+        if request.url.path == "/interrupt":
+            calls.append(("interrupt", json.loads(request.content)["prompt_id"]))
+            return httpx.Response(200)
+        return real(request)
+
+    monkeypatch.setattr(images, "_http",
+                        lambda timeout: httpx.AsyncClient(transport=httpx.MockTransport(handler), timeout=timeout))
+
+    def stuck(url):
+        class Socket:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            async def recv(self):
+                await asyncio.sleep(10)
+
+        return Socket()
+
+    monkeypatch.setattr(images, "_ws", stuck)
+    monkeypatch.setattr(images, "TIMEOUT_S", 0.2)
+    r = client.post(f"/api/sessions/{session}/pictures")
+    assert r.status_code == 503 and "too long" in r.json()["detail"]
+    assert ("unqueue", ["p1"]) in calls and ("interrupt", "p1") in calls
