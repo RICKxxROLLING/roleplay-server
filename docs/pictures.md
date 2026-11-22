@@ -66,8 +66,13 @@ picture is asked for and stop after 15 idle minutes, run the small helper in
    ```powershell
    $py = "D:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\.venv\Scripts\pythonw.exe"
    $act = New-ScheduledTaskAction -Execute $py -Argument '"D:\Comfy-Desktop\comfy-waker\comfy_waker.py"' -WorkingDirectory "D:\Comfy-Desktop\comfy-waker"
-   Register-ScheduledTask -TaskName "ComfyUI helper" -Action $act -Trigger (New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME) -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit 0)
+   $logon = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+   $every = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration (New-TimeSpan -Days 3650)
+   $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit 0 -MultipleInstances IgnoreNew -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+   Register-ScheduledTask -TaskName "ComfyUI helper" -Action $act -Trigger @($logon, $every) -Settings $settings
    ```
+   The second trigger brings the helper back within 5 minutes if it ever stops. While it runs, Windows
+   ignores the repeat ("IgnoreNew"), so there is never more than one copy and no restart loop.
 4. In the roleplay app, enter the helper's address (`http://10.2.1.123:8190`) under the ComfyUI
    address in **Settings → Pictures**. While ComfyUI is stopped the panel says so, and the first
    picture after that takes longer: about 17 s to start, plus loading the model.
